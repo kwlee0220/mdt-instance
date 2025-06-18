@@ -1,0 +1,374 @@
+drop table if exists equipment_parameters;
+drop table if exists equipment_parameter_values;
+drop table if exists equipments;
+drop table if exists operation_parameter_values;
+drop table if exists operation_parameters;
+drop table if exists operations;
+drop table if exists andons;
+drop table if exists repairs;
+drop table if exists boms;
+drop table if exists production_plannings;
+drop table if exists production_performances;
+drop table if exists item_masters;
+drop table if exists routings;
+drop table if exists lines;
+
+
+
+create table equipments (
+	equipmentId varchar not null,
+	equipmentName varchar,
+	equipmentType varchar,
+	useIndicator varchar,
+
+	primary key(equipmentId)
+);
+insert into equipments (equipmentId, equipmentName, equipmentType, useIndicator) values
+	('welder', '융착공정설비', null, 'Usable');
+
+INSERT INTO equipments (equipmentId, equipmentName, useIndicator) VALUES
+	('KRCW-01EATT018', 'F Door 부착', 'Usable'),
+	('KRCW-01EATT019', 'R Door 부착', 'Usable'),
+	('KRCW-01EATT020', '신규 Bush 부착기', 'Usable'),
+	('KRCW-01EATT021', 'Bush 부착기', 'Usable'),
+	('KRCW-01ECEM001', '센터링-In', 'Usable'),
+	('KRCW-01ECEM002', '센터링-Out', 'Usable'),
+	('KRCW-01ECEM003', '힌지 센터링', 'Usable'),
+	('KRCW-01ECON027', '폼PU 부착 C/V', 'Usable'),
+	('KRCW-01ECON028', 'VIP 부착 C/V', 'Usable'),
+	('KRCW-01ECON029', '힌지 C/V', 'Usable'),
+	('KRCW-01EETC025', '180턴 오버', 'Usable'),
+	('KRCW-01EETC026', '롤 포머', 'Usable'),
+	('KRCW-01EETC027', '플랜지 센싱', 'Usable'),
+	('KRCW-01EETC028', '엣지&Z벤더', 'Usable'),
+	('KRCW-01EETC029', 'L-벤더', 'Usable'),
+	('KRCW-01EETC030', 'U-벤더', 'Usable'),
+	('KRCW-01EETC031', '힌지코킹', 'Usable'),
+	('KRCW-01EETC032', '레인포스-In', 'Usable'),
+	('KRCW-01EETC033', '레인포스-Out', 'Usable'),
+	('KRCW-01EETC034', '발포 OP1 삽입기', 'Usable'),
+	('KRCW-01EETC035', '발포 OP2 OPEN', 'Usable'),
+	('KRCW-01EETC040', 'QDC OP3 LIFT#2', 'Usable'),
+	('KRCW-01EETC041', '메인대차', 'Usable'),
+	('KRCW-01EETC042', '도어 OPEN', 'Usable'),
+	('KRCW-01EETC043', '도어 CLOSE', 'Usable'),
+	('KRCW-01EETC044', '질소주입기', 'Usable'),
+	('KRCW-01EETC045', '액주입기', 'Usable'),
+	('KRCW-01EETC046', '비닐 랩핑기', 'Usable'),
+	('KRCW-01EETC048', '설치카드부착기', 'Usable'),
+	('KRCW-01EETC050', '고주파 락링 #1', 'Usable'),
+	('KRCW-01EETC051', 'CaseFoam눕힘', 'Usable'),
+	('KRCW-01EETC057', '발포 OP1 CLOSE', 'Usable'),
+	('KRCW-01EETC058', '발포 OP2 라이너', 'Usable'),
+	('KRCW-01EETC060', 'QDC OP3 배출', 'Usable'),
+	('KRCW-01EETC061', '가조립A라인 리프트', 'Usable'),
+	('KRCW-01EETC062', '형합기 형합', 'Usable'),
+	('KRCW-01EETC063', '형합기 배출', 'Usable'),
+	('KRCW-01EETC078', 'CaseFoam세움', 'Usable'),
+	('KRCW-01EINM044', '박스씌움', 'Usable'),
+	('KRCW-01EINM045', '코너삽입1', 'Usable'),
+	('KRCW-01EINM046', 'Packing Shelf 고내 삽입 (R실)', 'Usable'),
+	('KRCW-01EINM047', 'Packing Shelf 고내 삽입(F실)', 'Usable'),
+	('KRCW-01EINM051', '투입 이재 ZONE', 'Usable'),
+	('KRCW-01EINM052', '삽입 이재 ZONE', 'Usable'),
+	('KRCW-01EINM053', 'O/C 이재 ZONE', 'Usable'),
+	('KRCW-01EINM054', '발포 OP1 주입기', 'Usable'),
+	('KRCW-01EINM057', 'QDC OP3 투입', 'Usable'),
+	('KRCW-01EINM058', '형합기 투입', 'Usable'),
+	('KRCW-01EINM059', '코너삽입2', 'Usable'),
+	('KRCW-01EINM060', '어퍼삽입1', 'Usable'),
+	('KRCW-01EINM061', '폼멜트 주입기', 'Usable'),
+	('KRCW-01EINP001', '검사기-In', 'Usable'),
+	('KRCW-01EINP002', '검사기-Out', 'Usable'),
+	('KRCW-01ELAB005', '점검표라벨 부착기', 'Usable'),
+	('KRCW-01ELAB006', 'VIP 라벨 부착기', 'Usable'),
+	('KRCW-01ELAB007', 'Out Case', 'Usable'),
+	('KRCW-01ELAB008', '경고라벨', 'Usable'),
+	('KRCW-01ELAB009', 'SP라벨', 'Usable'),
+	('KRCW-01ELAM006', '레이저 각인&도포설비R#1', 'Usable'),
+	('KRCW-01ELAM007', '레이저 각인&도포설비R#2', 'Usable'),
+	('KRCW-01ELAM008', '레이저 각인&도포설비R#3', 'Usable'),
+	('KRCW-01ELAM009', '레이저 각인&도포설비R#4', 'Usable'),
+	('KRCW-01ELAM010', '레이저 각인&도포설비R#5', 'Usable'),
+	('KRCW-01ELAM011', '힌지커버 레이저각인', 'Usable'),
+	('KRCW-01ELIF026', '포크 Lift', 'Usable'),
+	('KRCW-01ELIF027', 'LQC진입라인 Lift', 'Usable'),
+	('KRCW-01ELIF037', 'QDC OP3 LIFT#3', 'Usable'),
+	('KRCW-01ELOA016', '발포 OP2 취출기', 'Usable'),
+	('KRCW-01ELOM001', '언로딩', 'Usable'),
+	('KRCW-01ELOM002', '로딩', 'Usable'),
+	('KRCW-01ELQI005', 'LQC외관검사라인 Lift', 'Usable'),
+	('KRCW-01EPAC001', '팔렛타이징', 'Usable'),
+	('KRCW-01EPPB002', 'PP밴드기 2호기', 'Usable'),
+	('KRCW-01EPPB003', 'PP밴드기 3호기', 'Usable'),
+	('KRCW-01EPPB004', 'PP밴드기 4호기', 'Usable'),
+	('KRCW-01EPPB005', 'PP밴드기 5호기', 'Usable'),
+	('KRCW-01EPRF010', '노칭프레스', 'Usable'),
+	('KRCW-01EPRF011', '포밍 프레스#1', 'Usable'),
+	('KRCW-01EPRF012', '포밍 프레스#2', 'Usable'),
+	('KRCW-01EROB045', '언로더로봇', 'Usable'),
+	('KRCW-01EROB049', 'Handle Volt_Robot #1', 'Usable'),
+	('KRCW-01EROB050', 'Handle Volt_Robot #2', 'Usable'),
+	('KRCW-01EROB051', 'Handle Volt_Robot #3', 'Usable'),
+	('KRCW-01EROB054', '블록자동화 10공정', 'Usable'),
+	('KRCW-01EROB055', '블록자동화 20공정', 'Usable'),
+	('KRCW-01EROB056', '블록자동화 30공정', 'Usable'),
+	('KRCW-01EROB063', '블록자동화 100공정', 'Usable'),
+	('KRCW-01EROB064', '블록자동화 110공정', 'Usable'),
+	('KRCW-01EROB065', '블록자동화 120공정', 'Usable'),
+	('KRCW-01EROB067', '블록자동화 140공정', 'Usable'),
+	('KRCW-01EROB068', '블록자동화 150공정', 'Usable'),
+	('KRCW-01EROB070', '블록자동화 170공정', 'Usable'),
+	('KRCW-01EROB071', '블록자동화 180공정', 'Usable'),
+	('KRCW-01EROB072', '블록자동화 190공정', 'Usable'),
+	('KRCW-01EROB073', '블록자동화 200공정', 'Usable'),
+	('KRCW-01EROB074', 'Base Plate 공급로봇', 'Usable'),
+	('KRCW-01EROB075', '박스 공급 로봇#1', 'Usable'),
+	('KRCW-01EROB076', '박스 공급 로봇#2', 'Usable'),
+	('KRCW-01EROM001', '180도 반전기 #1', 'Usable'),
+	('KRCW-01EROM002', '180도 반전기 #2', 'Usable'),
+	('KRCW-01ESUM006', 'Cover Back Transfer', 'Usable'),
+	('KRCW-01ESUU001', '시트피더', 'Usable'),
+	('KRCW-01ESUU002', '피더#1-In', 'Usable'),
+	('KRCW-01ESUU003', '피더#2-In', 'Usable'),
+	('KRCW-01ESUU004', '피더#1-Out', 'Usable'),
+	('KRCW-01ESUU005', '피더#2-Out', 'Usable'),
+	('KRCW-01ETAA001', '테이핑기', 'Usable'),
+	('KRCW-01ETHT006', 'Cover Back Robot', 'Usable'),
+	('KRCW-01ETHT007', 'Front-L', 'Usable'),
+	('KRCW-01EWEM013', '고주파 용접 #1', 'Usable'),
+	('KRCW-01EWEM015', '고주파 용접 #3', 'Usable'),
+	('KRCW-01EWEM016', '고주파 용접 #4', 'Usable'),
+	('KRCW-01EWEM020', '고주파 용접 #8', 'Usable'),
+	('KRCW-01EWEM021', '고주파 용접 #9', 'Usable'),
+	('KRCW-01EWEM022', '고주파 용접 #10', 'Usable'),
+	('KRCW-01EWEM023', '고주파 용접 #11', 'Usable'),
+	('KRCW-02ER1A001', '내함 성형', 'Usable'),
+	('KRCW-02ER1B001', '형합', 'Usable'),
+	('KRCW-02ER1C001', 'Cycle(냉매순환)', 'Usable');
+
+
+
+create table equipment_parameters (
+	equipmentId varchar not null,
+	parameterId varchar not null,
+	parameterName varchar,
+	parameterType varchar default 'STRING' not null,
+	parameterGrade varchar,
+	parameterUOMCode varchar,
+	LSL varchar,
+	USL varchar,
+	periodicDcIndicator varchar,
+	dataCollectionPeriod varchar,
+
+	primary key (equipmentId, parameterId),
+	constraint fk_equipment
+		foreign key(equipmentId)
+		references equipments(equipmentId)
+		on delete cascade
+);
+
+insert into equipment_parameters(equipmentId, parameterId, parameterType, parameterUOMCode, periodicDcIndicator, dataCollectionPeriod)
+	values ('welder', 'Mean', 'FLOAT', 'A', true, 'PT1S');
+insert into equipment_parameters(equipmentId, parameterId, parameterType, parameterUOMCode, periodicDcIndicator, dataCollectionPeriod)
+	values ('welder', 'PhaseA', 'FLOAT', 'A', true, 'PT1S');
+insert into equipment_parameters(equipmentId, parameterId, parameterType, parameterUOMCode, periodicDcIndicator, dataCollectionPeriod)
+	values ('welder', 'PhaseB', 'FLOAT', 'A', true, 'PT1S');
+insert into equipment_parameters(equipmentId, parameterId, parameterType, parameterUOMCode, periodicDcIndicator, dataCollectionPeriod)
+	values ('welder', 'PhaseC', 'FLOAT', 'A', true, 'PT1S');
+
+create table equipment_parameter_values (
+	equipmentId varchar not null,
+	parameterId varchar not null,
+	eventDateTime varchar,
+	parameterValue varchar,
+	validationResultCode varchar,
+
+	primary key (equipmentId, parameterId)
+);
+
+create table operations (
+	operationId varchar not null,
+	operationName varchar,
+	operationType varchar,
+	useIndicator varchar,
+
+	primary key(operationId)
+);
+INSERT INTO operations (operationid, operationname, operationtype, useindicator) VALUES
+	('내함_가조립', '내함 가조립', '생산공정', 'Usable'),
+	('내함_성형', '내함 성형', '생산공정', 'Usable'),
+	('출하', '출하', '생산공정', 'Usable'),
+	('포장', '포장', '생산공정', 'Usable'),
+	('형합', '형합', '생산공정', 'Usable'),
+	('CASE_발포', 'CASE 발포', '생산공정', 'Usable'),
+	('CRF', 'CRF', '생산공정', 'Usable'),
+	('Cycle_조립', 'Cycle 조립', '생산공정', 'Usable'),
+	('Cycle_냉매순환', 'Cycle(냉매순환)', '생산공정', 'Usable'),
+	('Door_조립', 'Door 조립', '생산공정', 'Usable'),
+	('QC', 'QC', '생산공정', 'Usable');
+
+
+
+create table operation_parameters (
+	operationId varchar not null,
+	parameterId varchar not null,
+	parameterName varchar,
+	parameterType varchar default 'xs:string' not null,
+	parameterGrade varchar,
+	parameterUOMCode varchar,
+	LSL varchar,
+	USL varchar,
+	periodicDcIndicator varchar,
+	dataCollectionPeriod varchar,
+
+	primary key (operationId, parameterId),
+	constraint fk_operation
+		foreign key(operationId)
+		references operations(operationId)
+		on delete cascade
+);
+
+create table operation_parameter_values (
+	operationId varchar not null,
+	parameterId varchar not null,
+	eventDateTime varchar,
+	parameterValue varchar,
+	validationResultCode varchar,
+
+	primary key (operationId, parameterId)
+);
+
+create table andons (
+	lineId varchar(100) not null,
+	andonId varchar(100) not null,
+	groupId varchar(100),
+	operationId varchar(100),
+
+	startDateTime varchar(64),
+	stopDateTime varchar(64),
+	endDateTime varchar(64),
+
+	causeNo varchar(64),
+	causeName varchar(100),
+	lineStopType varchar(100),
+	lineStopName varchar(100),
+	typeCode varchar(100),
+	typeName varchar(100),
+
+	primary key (andonId)
+);
+insert into andons(lineId, andonId, groupId, operationId, startDateTime, causeName)
+	values ('KR3', 'andon_001', '조립 작업', '조립 공정', '2024-06-19 12:16:03', '원인 미상');
+
+create table repairs (
+	lineId varchar(100) not null,
+	repairId varchar(100) not null,
+	groupId varchar(100),
+	defectRegOperationId varchar(100),
+	defectRegEquipmentId varchar(100),
+	defectRegDatetime varchar(100),
+	repairDatetime varchar(100),
+	productionItemSerialNO varchar(100),
+	detectedProcess varchar(100),
+	initialDefectLevel1 varchar(100),
+	initialDefectLevel2 varchar(100),
+	initialDefectLevel3 varchar(100),
+
+	primary key (repairId)
+);
+insert into repairs(lineId, repairId, groupId, repairDatetime, productionItemSerialNO, detectedProcess)
+	values ('KR3', 'repair_010', 'repair_group', '2024-06-19 12:16:03', '모터_9901', '성형');
+
+create table lines (
+	lineId varchar(100) not null,
+	lineName varchar(100),
+	lineType varchar(100),
+	useIndicator varchar(32),
+
+	primary key (lineId)
+);
+insert into lines(lineId, lineName, lineType, useIndicator)
+	values ('KR3', '냉장고 창원 생산라인', 'AS', 'Usable');
+	
+
+create table boms (
+	lineId varchar(64),
+	bomId varchar(64) not null,
+	bomType varchar(64),
+	itemId varchar(64),
+	bomQuantity varchar(32),
+	itemUOMCode varchar(32),
+	validStartDateTime varchar(32),
+	validEndDateTime varchar(32),
+
+	primary key (bomId)
+);
+insert into boms(lineId, bomId, bomType, itemId, bomQuantity, itemUOMCode, validStartDateTime, validEndDateTime)
+	values ('KR3', 'BOM_CNZN8000', 'MBOM', 'CNZN8000', '10', 'EA', '2024-06-19 12:16:03', '2025-06-19 12:16:03');
+	
+
+create table production_plannings (
+	lineId varchar(64),
+	productionPlanID varchar(64) not null,
+	itemID varchar(64),
+	productionPlanQuantity varchar(64),
+	scheduleStartDateTime varchar(32),
+	scheduleEndDateTime varchar(32),
+
+	primary key (productionPlanID)
+);
+insert into production_plannings(lineId, productionPlanID, itemID, productionPlanQuantity, scheduleStartDateTime, scheduleEndDateTime)
+	values ('KR3', 'PPD-20240619-KR3-01', 'CNZN8000', '2501', '2024-06-19 08:00:00', '2024-06-19 18:00:00');
+
+
+create table production_performances (
+	lineId varchar(100) not null,
+	productionPerformanceID varchar(100) not null,
+	productionPerformanceSequence varchar(100),
+	productionOrderID varchar(100),
+	productionOrderSequence varchar(100),
+	itemID varchar(100),
+	itemUOMCode varchar(100),
+	producedQuantity varchar(100),
+	defectQuantity varchar(100),
+	operationID varchar(100),
+	operationSequence varchar(100),
+
+	executionStartDateTime varchar(64),
+	executionEndDateTime varchar(64),
+	lotID varchar(64),
+
+	primary key (productionPerformanceID)
+);
+insert into production_performances(lineId, productionPerformanceID, productionPerformanceSequence, productionOrderID, productionOrderSequence,
+									itemID, itemUOMCode, producedQuantity, defectQuantity, operationID, operationSequence,
+									executionStartDateTime, executionEndDateTime, lotID)
+	values ('KR3', '20240619-KR3-01', '1', 'PO-20240619-KR3-01', '1', 'CNZN8000', 'EA', '0', '0', '출하', '1', null, null, null);
+	
+	
+create table item_masters (
+	lineId varchar(64),
+	itemId varchar(64) not null,
+	itemType varchar(64),
+	itemName varchar(64),
+	itemUOMCode varchar(64),
+	lotSize varchar(64),
+
+	primary key (itemId)
+);
+insert into item_masters(lineId, itemId, itemType, itemName, itemUOMCode, lotSize)
+	values ('KR3', 'CNZN8000', '제품', '팔렛타이징', 'EA', '1');
+	
+	
+create table routings (
+	lineId varchar(64),
+	routingId varchar(64) not null,
+	routingName varchar(64),
+	itemId varchar(64),
+	setupTime varchar(64),
+
+	primary key (routingId)
+);
+insert into routings(lineId, routingId, routingName, itemId, setupTime)
+	values ('KR3', 'ROUTE_CNZN8000', 'CNZN8000-공정경로', 'CNZN8000', '3600');

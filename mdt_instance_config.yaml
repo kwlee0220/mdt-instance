@@ -1,0 +1,6 @@
+---
+id: test
+managerEndpoint: http://localhost:12985
+instanceEndpoint: https://${env:LOCAL_HOST}:443
+global_config_file: mdt_global_config.json
+key_store: mdt_cert.p12

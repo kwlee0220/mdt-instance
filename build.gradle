@@ -1,0 +1,154 @@
+plugins {
+	id 'java'
+	id 'eclipse'
+	id 'application'
+	id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'etri'
+version = '1.0.0'
+mainClassName = 'mdt.MDTInstanceMain'
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+	
+//	withSourcesJar()
+//	withJavadocJar()
+}
+	
+[compileJava,compileTestJava]*.options*.encoding = 'UTF-8'
+tasks.withType(JavaCompile) {
+	options.encoding = 'UTF-8'
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+dependencies {
+	implementation project(":utils")
+	implementation project(":mdt-client")
+	implementation project(":faaast-lib")
+	implementation project(":faaast-starter")
+	
+	implementation "ch.qos.logback:logback-classic:${logback_version}"
+
+	// Guava (from the project :utils)
+	implementation "com.google.guava:guava:${guava_version}"
+	
+	// Checker framework
+	implementation("org.checkerframework:checker:${checker_version}")
+
+	// Lombok (from the project :utils)
+	compileOnly "org.projectlombok:lombok:${lombok_version}"
+	annotationProcessor "org.projectlombok:lombok:${lombok_version}"
+
+	// jackson json parser
+	implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jackson_version}"
+	
+	// AAS model
+	implementation "org.eclipse.digitaltwin.aas4j:aas4j-dataformat-json:${aas4j_version}"
+	
+	implementation ("commons-beanutils:commons-beanutils:${commons_beanutils_version}") {
+		exclude group: 'commons-logging', module: 'commons-logging'
+	}
+		
+	// picocli command line parser
+	implementation "info.picocli:picocli:${picocli_version}"
+
+	// Fa3st
+//	implementation "de.fraunhofer.iosb.ilt.faaast.service:persistence-memory:${faaast_version}"
+//	implementation "de.fraunhofer.iosb.ilt.faaast.service:assetconnection-common:${faaast_version}"
+//	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
+		
+	// HTTP Client
+	implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: "${okhttp_version}"
+	
+	// Hibernate
+	implementation "org.hibernate.orm:hibernate-core:${hibernate_version}"
+	implementation "com.zaxxer:HikariCP:${hikaricp_version}"
+	
+	// PostgreSQL
+	implementation "org.postgresql:postgresql:${postgresql_version}"
+	
+	// MariaDB
+	implementation "org.mariadb.jdbc:mariadb-java-client:${mariadb_version}"
+	
+	// Apache libraries
+	implementation "org.apache.commons:commons-text:${commons_text_version}"
+	
+	// MQTT
+	implementation "org.eclipse.paho:org.eclipse.paho.client.mqttv3:${paho_version}"
+	
+	// OPC UA client
+	implementation "org.eclipse.milo:sdk-client:${milo_version}"
+	// Spring Framework
+	implementation "org.springframework.data:spring-data-jpa:${spring_data_version}"
+	
+	testImplementation "junit:junit:${junit_version}"
+}
+configurations {
+	all {
+		exclude group: 'commons-logging', module: 'commons-logging'
+	}
+}
+
+task sourceJar(type: Jar) {
+	from sourceSets.main.allSource
+}
+
+test {
+	useJUnitPlatform()
+}
+
+shadowJar {
+	zip64 true
+	mergeServiceFiles()
+
+	exclude 'META-INF/*.SF'
+	exclude 'META-INF/*.DSA'
+	exclude 'META-INF/*.RSA'
+}
+
+eclipse {
+	classpath {
+		file {
+			withXml {
+				def node = it.asNode()
+				node.appendNode('classpathentry', [kind: 'output', path: 'build/classes'])
+			}
+			
+			whenMerged { cp ->
+				Map entryByPath = cp.entries.groupBy { entry -> entry.path }
+				entryByPath.each { key, values ->
+					if ( values.size() > 1 ) {
+						def entry = values.first()
+						if ( entry.kind == 'src' ) {
+							entry.includes = []
+							entry.excludes = []
+						}
+						int index = cp.entries.indexOf entry
+						cp.entries.removeAll values
+						cp.entries.add index, entry
+					}
+				}
+				cp.entries.each { entry ->
+					if ( entry.kind == 'src' && entry.hasProperty('output') ) {
+						if ( entry.path.contains('/test/') ) {
+							entry.output = 'build/test_classes'
+						}
+						else {
+							entry.output = 'build/classes'
+						}
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,3 @@
+#!	/bin/bash
+
+java -Dfile.encoding=UTF-8 -jar $MDT_HOME/mdt-instance/mdt-instance-all.jar "$@"

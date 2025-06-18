@@ -1,0 +1,67 @@
+package mdt.persistence.opcua;
+
+import java.io.IOException;
+import java.time.Duration;
+
+import javax.annotation.Nullable;
+
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonNode;
+
+import utils.json.JacksonUtils;
+
+import mdt.ElementLocation;
+import mdt.persistence.asset.AbstractAssetVariableConfig;
+import mdt.persistence.asset.AssetVariableConfig;
+
+
+/**
+ *
+ * @author Kang-Woo Lee (ETRI)
+ */
+public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
+	public static final String SERIALIZATION_TYPE = "mdt:asset:opcua:simple";
+	private static final String FIELD_NODE_PATH = "nodePath";
+	
+//	private String m_serverEndpoint;
+	private String m_nodePath;
+	
+	private OpcUaAssetVariableConfig() { }
+	public OpcUaAssetVariableConfig(ElementLocation elementLoc, @Nullable Duration validPeriod,
+									String nodePath) {
+		super(elementLoc, validPeriod);
+		
+//		m_serverEndpoint = serverEndpoint;
+		m_nodePath = nodePath;
+	}
+
+	@Override
+	public String getSerializationType() {
+		return SERIALIZATION_TYPE;
+	}
+	
+	@Override
+	public void serializeFields(JsonGenerator gen) throws IOException {
+		super.serializeFields(gen);
+//		gen.writeStringField("serverEndpoint", m_serverEndpoint);
+		gen.writeStringField("nodePath", m_nodePath);
+	}
+	
+	/**
+	 * JSON 노드로부터 {@link OpcUaAssetVariableConfig} 객체를 생성한다.
+	 * <p>
+	 * 본 메소드는 {@link AssetVariableConfig.Deserializer}에서 호출된다.
+	 * 
+	 * @param jnode	JSON 노드
+	 * @return	생성된 {@link OpcUaAssetVariableConfig} 객체.
+	 */
+	public static OpcUaAssetVariableConfig deserializeFields(JsonNode jnode) {
+		OpcUaAssetVariableConfig config = new OpcUaAssetVariableConfig();
+		config.loadFields(jnode);
+		
+//		config.m_serverEndpoint = JacksonUtils.getStringField(jnode, FIELD_SERVER_ENDPOINT);
+		config.m_nodePath = JacksonUtils.getStringField(jnode, FIELD_NODE_PATH);
+		
+		return config;
+	}
+}

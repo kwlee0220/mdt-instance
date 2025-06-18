@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="http://xmlns.jcp.org/xml/ns/persistence"
+             version="2.1">
+    <persistence-unit name="mdt-ksx9101" transaction-type="RESOURCE_LOCAL">
+        <properties>
+			<property name="jakarta.persistence.jdbc.driver" value="org.postgresql.Driver" />
+			<property name="jakarta.persistence.jdbc.url" value="jdbc:postgresql://localhost/mdt" />
+			<property name="jakarta.persistence.jdbc.user" value="mdt" />
+			<property name="jakarta.persistence.jdbc.password" value="urc2004" />
+			
+			<!--property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/-->
+			<property name="hibernate.hbm2ddl.auto" value="validate" />
+			<property name="hibernate.show_sql" value="true" />
+			<property name="hibernate.format_sql" value="true" />
+			
+        </properties>
+    </persistence-unit>
+</persistence>

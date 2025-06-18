@@ -1,0 +1,26 @@
+#####################################################################################
+##### MDT Server 시작
+cd /mnt/d/Dropbox/Temp/fa3st-repository
+java -jar /mnt/c/development/mdt/mdt.instance/build/libs/mdt.instance-0.0.1-all.jar
+
+
+#####################################################################################
+cd /mnt/d/Dropbox/Temp/fa3st-repository/ispark
+
+
+mdt instance add KR3 --jar mdt-instance.jar -m aas_KR3.json -c conf_KR3.json
+
+
+mdt instance add 01ESUU001 --jar mdt-instance.jar -m aas_01ESUU001.json -c conf_01ESUU001.json
+mdt instance add 01ESUU002 --jar mdt-instance.jar -m aas_01ESUU002.json -c conf_01ESUU002.json 
+mdt instance add 01ESUU004 --jar mdt-instance.jar -m aas_01ESUU004.json -c conf_01ESUU004.json 
+mdt instance add 01ESUU003 --jar mdt-instance.jar -m aas_01ESUU003.json -c conf_01ESUU003.json 
+mdt instance add 01ESUU005 --jar mdt-instance.jar -m aas_01ESUU005.json -c conf_01ESUU005.json
+
+mdt instance add 01EPRF011 --jar mdt-instance.jar -m aas_01EPRF011.json -c conf_01EPRF011.json
+mdt instance add 01EPRF012 --jar mdt-instance.jar -m aas_01EPRF012.json -c conf_01EPRF012.json
+mdt instance add 01EPRF010 --jar mdt-instance.jar -m aas_01EPRF010.json -c conf_01EPRF010.json
+mdt instance add 01ECEM001 --jar mdt-instance.jar -m aas_01ECEM001.json -c conf_01ECEM001.json
+mdt instance add 01ECEM003 --jar mdt-instance.jar -m aas_01ECEM003.json -c conf_01ECEM003.json
+
+mdt instance add 01ECEM002 --jar mdt-instance.jar -m aas_01ECEM002.json -c conf_01ECEM002.json
