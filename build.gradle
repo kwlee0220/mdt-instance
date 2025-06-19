@@ -66,6 +66,7 @@ dependencies {
 //	implementation "de.fraunhofer.iosb.ilt.faaast.service:persistence-memory:${faaast_version}"
 //	implementation "de.fraunhofer.iosb.ilt.faaast.service:assetconnection-common:${faaast_version}"
 //	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
+//	implementation fileTree(dir: '../faaast/faaast-jars', include: ['**/*.jar'])
 		
 	// HTTP Client
 	implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: "${okhttp_version}"
