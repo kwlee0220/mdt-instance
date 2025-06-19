@@ -50,7 +50,7 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 	@Override
 	public void init(CoreConfig coreConfig, C config, ServiceContext serviceContext)
 																		throws ConfigurationInitializationException {
-		PersistenceConfig baseConfig = config.getBasePersistenceConfig();
+		PersistenceConfig<?> baseConfig = config.getBasePersistenceConfig();
 		Preconditions.checkState(baseConfig != null, "%s: Base persistence config is null", getClass().getName());
 		
 		String name = baseConfig.getClass().getName();

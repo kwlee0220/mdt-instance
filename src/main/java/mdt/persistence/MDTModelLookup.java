@@ -35,6 +35,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
  * @author Kang-Woo Lee (ETRI)
  */
 public class MDTModelLookup {
+	@SuppressWarnings("unused")
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTModelLookup.class);
 	
 	private static MDTModelLookup s_lookup;
@@ -44,8 +45,10 @@ public class MDTModelLookup {
 	private BiMap<String,String> m_submodelIdToSubmodelIdShortMap;
 	private BiMap<String,String> m_submodelIdShortToSubmodelIdMap;
 	private BiMap<String,String> m_pathToParameterMap;
+	@SuppressWarnings("unused")
 	private BiMap<String,String> m_parameterToPathMap;
 	
+	@SuppressWarnings("rawtypes")
 	public static MDTModelLookup getInstanceOrCreate(Persistence perst) throws ConfigurationInitializationException {
 		if ( s_lookup == null ) {
 			try {
@@ -198,6 +201,7 @@ public class MDTModelLookup {
 		}
 	}
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private MDTModelLookup(Persistence perst) throws ResourceNotFoundException {
 		this(perst.getAllSubmodels(QueryModifier.DEFAULT, PagingInfo.ALL).getContent());
 	}

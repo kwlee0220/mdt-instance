@@ -5,10 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.milo.opcua.sdk.client.AddressSpace;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfigBuilder;
-import org.eclipse.milo.opcua.sdk.client.nodes.UaVariableNode;
 import org.eclipse.milo.opcua.stack.client.DiscoveryClient;
 import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
@@ -65,10 +63,6 @@ public class PandaRobotOpcUaReader {
 	    for (String jointName : JOINT_NAMES) {
 	        String nodePath = String.format("%s.%s.%s", BASE_FOLDER, JOINT_STATES_FOLDER, jointName);
 	        NodeId nodeId = new NodeId(namespaceIndex, nodePath);
-	        
-	        AddressSpace  aspace = client.getAddressSpace();
-	        UaVariableNode node = aspace.getVariableNode(new NodeId(2, 3));
-	        DataValue dv = node.getValue();
 
 	        DataValue value = client.readValue(0, TimestampsToReturn.Both, nodeId).get();
 	        Double jointValue = (Double) value.getValue().getValue();
@@ -131,6 +125,7 @@ public class PandaRobotOpcUaReader {
 	    }
 	}
 
+	@SuppressWarnings("unchecked")
 	public static void main(String[] args) {
 	    // Example server URL
 	    String serverUrl = "opc.tcp://localhost:4840/mdt/panda";

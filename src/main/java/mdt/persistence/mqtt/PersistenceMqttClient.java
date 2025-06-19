@@ -25,7 +25,7 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTInstanceStatusSubscriber.class);
 	private static final JsonMapper MAPPER = JsonMapper.builder().findAndAddModules().build();
 
-	private final MqttPublishingPersistence m_mqttPublishingPersistence;
+//	private final MqttPublishingPersistence m_mqttPublishingPersistence;
 	private final MqttBrokerConfig  m_brokerConfig;
 	private final int m_qos;
 	
@@ -33,7 +33,7 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 		throws ConfigurationInitializationException {
 		super(brokerConfig.getBrokerUrl(), null, brokerConfig.getReconnectTryInterval());
 		
-		m_mqttPublishingPersistence = persistence;
+//		m_mqttPublishingPersistence = persistence;
 		m_brokerConfig = brokerConfig;
 		m_qos = 0;
 		setLogger(s_logger);
@@ -56,7 +56,7 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 
 	@Override
 	public void messageArrived(String topic, MqttMessage msg) throws Exception {
-		String json = new String(msg.getPayload(), StandardCharsets.UTF_8);
+//		String json = new String(msg.getPayload(), StandardCharsets.UTF_8);
 		
 //		m_mqttPublishingPersistence.findMatchingSubscriber(topic)
 //			.ifPresent(sub -> {

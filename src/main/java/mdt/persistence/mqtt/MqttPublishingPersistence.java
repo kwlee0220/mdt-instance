@@ -140,6 +140,7 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 		}
 	}
 	
+	@SuppressWarnings("unused")
 	private List<MqttElementPublisher> findMatchingPublisherAll(String submodelIdShort, String elementPath) {
 		return FStream.from(m_config.getPublishers())
 					    .filter(pub -> {

@@ -8,13 +8,13 @@ project(':mdt-client').projectDir = file('../mdt-client')
 //include ':mdt-faaast'
 //project(':mdt-faaast').projectDir = file('../mdt-faaast')
 
-include ':mdt-operation-http'
-project(':mdt-operation-http').projectDir = file('../mdt-operation-http')
+//include ':mdt-operation-http'
+//project(':mdt-operation-http').projectDir = file('../mdt-operation-http')
 
 include ':faaast-lib'
 project(':faaast-lib').projectDir = file('../faaast/faaast-lib')
 include ':faaast-starter'
 project(':faaast-starter').projectDir = file('../faaast/faaast-starter')
 
-include ':argo-java-client'
-project(':argo-java-client').projectDir = file('../../misc/argo-java-client')
+//include ':argo-java-client'
+//project(':argo-java-client').projectDir = file('../../misc/argo-java-client')
