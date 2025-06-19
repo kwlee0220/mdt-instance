@@ -6,8 +6,11 @@ plugins {
 }
 
 group = 'etri'
-version = '1.0.0'
-mainClassName = 'mdt.MDTInstanceMain'
+version = '1.1.0'
+
+application {
+	mainClass = 'mdt.MDTInstanceMain'
+}
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
@@ -16,10 +19,11 @@ java {
 //	withSourcesJar()
 //	withJavadocJar()
 }
-	
-[compileJava,compileTestJava]*.options*.encoding = 'UTF-8'
+
+
 tasks.withType(JavaCompile) {
-	options.encoding = 'UTF-8'
+    options.encoding = 'UTF-8'
+//	options.compilerArgs += ["-Xlint:deprecation", "-Xlint:unchecked"]
 }
 
 configurations {
