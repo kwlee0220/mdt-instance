@@ -65,7 +65,7 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 									config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
 		
 		try {
-			JdbcConfiguration jdbcConfig = MDTGlobalConfigurations.getJdbcConfig(m_config.getJdbcConfig());
+			JdbcConfiguration jdbcConfig = MDTGlobalConfigurations.getJdbcConnectionConfig(m_config.getJdbcConfig());
 			m_jdbc = JdbcProcessor.create(jdbcConfig);
 			
 		}

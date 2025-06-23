@@ -52,9 +52,9 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 		m_config.getPublishers().forEach(pub -> pub.getElementLocation().activate(m_lookup));
 //		m_config.getSubscribers().forEach(sub -> sub.getElementLocation().activate(m_lookup));
 		
-		MqttBrokerConfig brokerConfig;
+		MqttBrokerConnectionConfig brokerConfig;
 		try {
-			brokerConfig = MDTGlobalConfigurations.getMqttConfig("default");
+			brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig("default");
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);

@@ -14,7 +14,7 @@ import mdt.FaaastRuntime;
 import mdt.MDTGlobalConfigurations;
 import mdt.client.support.MqttService;
 import mdt.persistence.MDTModelLookup;
-import mdt.persistence.mqtt.MqttBrokerConfig;
+import mdt.persistence.mqtt.MqttBrokerConnectionConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
@@ -38,7 +38,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 
 	private FaaastRuntime m_faaast;
 	private MqttEndpointConfig m_config;
-	private MqttBrokerConfig m_brokerConfig;
+	private MqttBrokerConnectionConfig m_brokerConfig;
 	private MqttService m_mqttService;
 	
 	private final HttpJsonApiDeserializer m_apiDeserializer = new HttpJsonApiDeserializer();
@@ -51,7 +51,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		m_faaast = new FaaastRuntime(serviceContext);
 		
 		try {
-			m_brokerConfig = MDTGlobalConfigurations.getMqttConfig(m_config.getMqttConfig());
+			m_brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig(m_config.getMqttConfig());
 			
 			m_mqttService = new MqttService(m_brokerConfig.getBrokerUrl(), "MqttEndpoint");
 			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {

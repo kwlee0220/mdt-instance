@@ -20,12 +20,13 @@ import utils.io.IOUtils;
 import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
 
+import mdt.endpoint.ros2.RosBridgeConnectionConfig;
 import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;
 import mdt.model.ResourceNotFoundException;
-import mdt.persistence.mqtt.MqttBrokerConfig;
-import mdt.persistence.opcua.OpcUaServerConfig;
+import mdt.persistence.mqtt.MqttBrokerConnectionConfig;
+import mdt.persistence.opcua.OpcUaConnectionConfig;
 
 /**
  *
@@ -41,8 +42,8 @@ public class MDTGlobalConfigurations {
 		s_globalConfigFile = globalConfigFile;
 	}
 	
-	public static JdbcConfiguration getJdbcConfig(String key) throws IOException, ResourceNotFoundException  {
-		JsonNode configNode = findConfigNode("jdbcConfigs", key);
+	public static JdbcConfiguration getJdbcConnectionConfig(String key) throws IOException, ResourceNotFoundException  {
+		JsonNode configNode = findConfigNode("jdbcs", key);
 		
 		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
 		return mapper.readValue(configNode.traverse(), JdbcConfiguration.class);
@@ -80,18 +81,25 @@ public class MDTGlobalConfigurations {
 		}
 	}
 	
-	public static MqttBrokerConfig getMqttConfig(String name) throws IOException  {
+	public static MqttBrokerConnectionConfig getMqttBrokerConnectionConfig(String name) throws IOException  {
 		JsonNode configNode = findConfigNode("mqttBrokers", name);
 		
 		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), MqttBrokerConfig.class);
+		return mapper.readValue(configNode.traverse(), MqttBrokerConnectionConfig.class);
 	}
 	
-	public static OpcUaServerConfig getOpcUaConfig(String name) throws IOException  {
-		JsonNode configNode = findConfigNode("opcUaServers", name);
+	public static OpcUaConnectionConfig getOpcUaConnectionConfig(String name) throws IOException  {
+		JsonNode configNode = findConfigNode("opcuas", name);
 		
 		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), OpcUaServerConfig.class);
+		return mapper.readValue(configNode.traverse(), OpcUaConnectionConfig.class);
+	}
+	
+	public static RosBridgeConnectionConfig getRosBridgeConnectionConfig(String name) throws IOException  {
+		JsonNode configNode = findConfigNode("rosBridges", name);
+		
+		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
+		return mapper.readValue(configNode.traverse(), RosBridgeConnectionConfig.class);
 	}
 	
 	private static JsonNode findConfigGroup(String configKey) throws IOException {

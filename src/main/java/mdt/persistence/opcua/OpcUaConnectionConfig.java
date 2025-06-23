@@ -17,10 +17,10 @@ import lombok.experimental.Accessors;
 @Getter
 @Accessors(prefix="m_")
 @JsonIncludeProperties({ "serverEndpoint" })
-public class OpcUaServerConfig {
+public class OpcUaConnectionConfig {
 	private final String m_serverEndpoint;
 	
-	public OpcUaServerConfig(@Nullable @JsonProperty("serverEndpoint") String serverEndpoint) {
+	public OpcUaConnectionConfig(@Nullable @JsonProperty("serverEndpoint") String serverEndpoint) {
 		Preconditions.checkArgument(serverEndpoint != null, "serverEndpoint must be specified");
 		
 		m_serverEndpoint = serverEndpoint;

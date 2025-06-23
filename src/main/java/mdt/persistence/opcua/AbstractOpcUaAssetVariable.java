@@ -33,9 +33,9 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 	public AbstractOpcUaAssetVariable(T config) throws ConfigurationInitializationException {
 		super(config);
 		
-		OpcUaServerConfig serverConfig;
+		OpcUaConnectionConfig serverConfig;
 		try {
-			serverConfig = MDTGlobalConfigurations.getOpcUaConfig("default");
+			serverConfig = MDTGlobalConfigurations.getOpcUaConnectionConfig("default");
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);
@@ -64,7 +64,7 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 		throw new AssetVariableException("update is not supported for OPC-UA AssetVariable");
 	}
 
-	private AutoReconnectingOpcUaClient connect(OpcUaServerConfig serverConfig) throws Exception {
+	private AutoReconnectingOpcUaClient connect(OpcUaConnectionConfig serverConfig) throws Exception {
 		AutoReconnectingOpcUaClient client = new AutoReconnectingOpcUaClient(serverConfig.getServerEndpoint(), "5s");
 		client.startAsync();
 		

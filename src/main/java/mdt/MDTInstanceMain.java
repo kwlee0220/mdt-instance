@@ -45,6 +45,7 @@ import mdt.config.MDTInstanceConfig;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
+import mdt.endpoint.ros2.Ros2EndpointConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.persistence.MDTModelLookup;
 import mdt.persistence.PersistenceStackConfig;
@@ -376,11 +377,18 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			throw new IllegalArgumentException("Unknown instance type: " + m_type);
 		}
 		
-		FOption.accept(instConf.getEndpoints(), conf -> {
+		FOption.accept(instConf.getMdtEndpoints(), conf -> {
 			FOption.accept(conf.getMqtt(), mqttConf -> {
 				MqttEndpointConfig c = new MqttEndpointConfig();
 				c.setMqttConfig(mqttConf.getMqttConfig());
 				c.setSubscribers(mqttConf.getSubscribers());
+				configs.add(c);
+			});
+
+			FOption.accept(conf.getRos2(), rosConf -> {
+				Ros2EndpointConfig c = new Ros2EndpointConfig();
+				c.setConnectionConfig(rosConf.getConnectionConfig());
+				c.setMessages(rosConf.getMessages());
 				configs.add(c);
 			});
 		});

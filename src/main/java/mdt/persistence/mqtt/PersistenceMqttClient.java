@@ -26,10 +26,10 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 	private static final JsonMapper MAPPER = JsonMapper.builder().findAndAddModules().build();
 
 //	private final MqttPublishingPersistence m_mqttPublishingPersistence;
-	private final MqttBrokerConfig  m_brokerConfig;
+	private final MqttBrokerConnectionConfig  m_brokerConfig;
 	private final int m_qos;
 	
-	PersistenceMqttClient(MqttPublishingPersistence persistence, MqttBrokerConfig brokerConfig)
+	PersistenceMqttClient(MqttPublishingPersistence persistence, MqttBrokerConnectionConfig brokerConfig)
 		throws ConfigurationInitializationException {
 		super(brokerConfig.getBrokerUrl(), null, brokerConfig.getReconnectTryInterval());
 		

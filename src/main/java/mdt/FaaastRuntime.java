@@ -6,11 +6,16 @@ import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+
+import utils.InternalException;
 import utils.func.Funcs;
 import utils.func.Lazy;
 
+import mdt.model.MDTModelSerDe;
 import mdt.model.ReferenceUtils;
 import mdt.model.ResourceNotFoundException;
+import mdt.model.sm.value.ElementValues;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.dataformat.DeserializationException;
@@ -105,6 +110,17 @@ public class FaaastRuntime {
 	
 	public void setSubmodelElementValueByPath(String submodelId, String path, String valueString) {
 		setSubmodelElementValueByPath(submodelId, path, valueString, newElementValueParser(submodelId, path));
+	}
+	
+	public void updateSubmodelElementValue(String submodelId, String elementPath, SubmodelElement element) {
+		mdt.model.sm.value.ElementValue ev = ElementValues.getValue(element);
+		try {
+			String valStr = MDTModelSerDe.getJsonMapper().writeValueAsString(ev);
+			setSubmodelElementValueByPath(submodelId, elementPath, valStr);
+		}
+		catch ( JsonProcessingException e ) {
+			throw new InternalException("error serializing element value: cause=" + e, e);
+		}
 	}
 	
 	private List<Submodel> loadSubmodels() {

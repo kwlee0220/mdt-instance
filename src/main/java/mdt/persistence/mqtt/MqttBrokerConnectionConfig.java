@@ -21,7 +21,7 @@ import utils.func.FOption;
 @Getter
 @Accessors(prefix="m_")
 @JsonIncludeProperties({ "brokerUrl", "reconnectTryInterval", "publishTimeout" })
-public class MqttBrokerConfig {
+public class MqttBrokerConnectionConfig {
 	private static final String DEFAULT_BROKER_URL = "tcp://localhost:1883";
 	private static final String DEFAULT_PUBLISH_TIMEOUT = "10s";
 	
@@ -29,9 +29,9 @@ public class MqttBrokerConfig {
 	private final String m_reconnectTryInterval;
 	private final String m_publishTimeout;
 	
-	public MqttBrokerConfig(@Nullable @JsonProperty("brokerUrl") String brokerUrl,
-							@JsonProperty("reconnectTryInterval") String reconnectTryInterval,
-							@Nullable @JsonProperty("publishTimeout") String publishTimeout) {
+	public MqttBrokerConnectionConfig(@Nullable @JsonProperty("brokerUrl") String brokerUrl,
+										@JsonProperty("reconnectTryInterval") String reconnectTryInterval,
+										@Nullable @JsonProperty("publishTimeout") String publishTimeout) {
 		m_brokerUrl = FOption.getOrElse(brokerUrl, DEFAULT_BROKER_URL);
 		m_reconnectTryInterval = FOption.getOrElse(reconnectTryInterval,  "10s");
 		m_publishTimeout = FOption.getOrElse(publishTimeout, DEFAULT_PUBLISH_TIMEOUT);

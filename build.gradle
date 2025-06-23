@@ -93,6 +93,10 @@ dependencies {
 	
 	// OPC UA client
 	implementation "org.eclipse.milo:sdk-client:${milo_version}"
+	
+	// WebSocket
+	implementation "org.java-websocket:Java-WebSocket:${websocket_version}"
+	
 	// Spring Framework
 	implementation "org.springframework.data:spring-data-jpa:${spring_data_version}"
 	

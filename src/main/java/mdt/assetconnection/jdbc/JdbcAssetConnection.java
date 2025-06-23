@@ -38,7 +38,7 @@ public class JdbcAssetConnection extends AbstractAssetConnection<JdbcAssetConnec
 	@Override
 	protected void doConnect() throws AssetConnectionException {
 		try {
-			JdbcConfiguration jdbcConf = MDTGlobalConfigurations.getJdbcConfig(config.getJdbcConfigKey());
+			JdbcConfiguration jdbcConf = MDTGlobalConfigurations.getJdbcConnectionConfig(config.getJdbcConfigKey());
 			m_jdbc = JdbcProcessor.create(jdbcConf);
 		}
 		catch ( Exception e ) {

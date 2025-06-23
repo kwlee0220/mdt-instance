@@ -22,6 +22,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.Level;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.OutputModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
@@ -70,6 +71,17 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	@Override
 	public SubmodelElement getSubmodelElement(SubmodelElementIdentifier identifier, QueryModifier modifier)
 		throws ResourceNotFoundException {
+		if ( modifier instanceof OutputModifier om ) {
+			switch ( om.getContent() ) {
+				case METADATA:
+				case PATH:
+				case REFERENCE:
+					return getBasePersistence().getSubmodelElement(identifier, modifier);
+				default:
+					break;
+			}
+		}
+		
 		// 주어진 identifier에 해당하는 AssetVariable을 찾는다.
 		// 검색되면 해당 AssetVariable을 통해 외부 asset에서 SubmodelElement를 읽어오고,
 		// 검색되지 않으면 m_basePersistence를 통해 SubmodelElement를 읽어온다.

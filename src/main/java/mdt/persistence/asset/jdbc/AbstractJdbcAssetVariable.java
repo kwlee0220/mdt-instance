@@ -46,7 +46,7 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 		
 		if ( config.getJdbcConfig() != null ) {
 			try {
-				JdbcConfiguration jdbcConf = MDTGlobalConfigurations.getJdbcConfig(config.getJdbcConfig());
+				JdbcConfiguration jdbcConf = MDTGlobalConfigurations.getJdbcConnectionConfig(config.getJdbcConfig());
 				m_jdbc = JdbcProcessor.create(jdbcConf);
 			}
 			catch ( Exception e ) {
