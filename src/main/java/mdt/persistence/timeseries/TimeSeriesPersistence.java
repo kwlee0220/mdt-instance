@@ -187,8 +187,8 @@ public class TimeSeriesPersistence extends PersistenceStack<TimeSeriesPersistenc
 			}
 			segmentList.add(segment);
 		}
-		if ( segmentId == null || segmentId.equals("Whole") ) {
-			JdbcWholeLinkedSegment segment = new JdbcWholeLinkedSegment(metadata.getRecordMetadata(), tsConfig);
+		if ( segmentId == null || segmentId.equals("FullRange") ) {
+			JdbcFullRangeLinkedSegment segment = new JdbcFullRangeLinkedSegment(metadata.getRecordMetadata(), tsConfig);
 			segment.load();
 			if ( getLogger().isDebugEnabled() ) {
 				getLogger().info("loaded: {}", segment);

@@ -35,7 +35,7 @@ public class TimeSeriesPersistenceConfig extends PersistenceStackConfig<TimeSeri
 
 	@Override
 	protected void deserializeFields(JsonNode jnode) throws IOException {
-		JsonNode smArrayNode = JacksonUtils.getNullableField(jnode, "timeSeriesSubmodels");
+		JsonNode smArrayNode = JacksonUtils.getFieldOrNull(jnode, "timeSeriesSubmodels");
 		if ( smArrayNode == null || !smArrayNode.isArray() ) {
 			throw new IOException("Cannot find 'timeSeriesSubmodels' field or it is not an array");
 		}
