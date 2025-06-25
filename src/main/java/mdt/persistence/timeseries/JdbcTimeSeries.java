@@ -44,10 +44,10 @@ public class JdbcTimeSeries extends SubmodelEntity implements TimeSeries {
 	public void loadAASModel() {
 		List<DefaultSegment> segmentList = Lists.newArrayList();
 		
-		// Whole segment 추가
-		JdbcWholeLinkedSegment whole = new JdbcWholeLinkedSegment(this.metadata.getRecordMetadata(), this.tsConfig);
-		whole.load();
-		segmentList.add(whole);
+		// FullRange segment 추가
+		JdbcFullRangeLinkedSegment fullRange = new JdbcFullRangeLinkedSegment(this.metadata.getRecordMetadata(), this.tsConfig);
+		fullRange.load();
+		segmentList.add(fullRange);
 		
 		// Tail configuration이 있으면 Tail segment 추가
 		TailConfig tailConfig = this.tsConfig.getTail();

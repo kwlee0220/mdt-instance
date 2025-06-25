@@ -8,7 +8,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.json.JsonMapper;
+import utils.func.FOption;
 
 import mdt.client.instance.MDTInstanceStatusSubscriber;
 import mdt.client.support.AutoReconnectingMqttClient;
@@ -23,7 +23,6 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
  */
 public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTInstanceStatusSubscriber.class);
-	private static final JsonMapper MAPPER = JsonMapper.builder().findAndAddModules().build();
 
 //	private final MqttPublishingPersistence m_mqttPublishingPersistence;
 	private final MqttBrokerConnectionConfig  m_brokerConfig;
@@ -43,7 +42,8 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 		try {
 			MqttClient client = waitMqttClient(m_brokerConfig.getPublishTimeout());
 			
-			String jsonStr = MAPPER.writeValueAsString(value);
+			// value-string이 null인 경우는 빈 문자열로 대체한다.
+			String jsonStr = FOption.getOrElse(value.toValueJsonString(), "");
 			MqttMessage message = new MqttMessage(jsonStr.getBytes(StandardCharsets.UTF_8));
 			message.setQos(m_qos);
 			

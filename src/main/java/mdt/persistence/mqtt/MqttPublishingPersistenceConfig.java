@@ -19,7 +19,7 @@ import mdt.persistence.PersistenceStackConfig;
  */
 public class MqttPublishingPersistenceConfig extends PersistenceStackConfig<MqttPublishingPersistence> {
 	private List<MqttElementPublisher> m_publishers;
-//	@Nullable private List<MqttElementSubscriber> m_subscribers;
+//	private @Nullable List<MqttElementSubscriber> m_subscribers;
 
 	public List<MqttElementPublisher> getPublishers() {
 		return m_publishers;

@@ -70,11 +70,11 @@ public class ReadRecordsOperation implements OperationProvider {
 		Preconditions.checkArgument(arg1 instanceof Range, "Input argument 'Timespan' is not a Range");
 		Range timespan = (Range)arg1;
 		
-		DefaultLinkedSegment wholeSegment = getTargetSegment();
-		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(wholeSegment.getEndpoint());
+		DefaultLinkedSegment fullRangeSegment = getTargetSegment();
+		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(fullRangeSegment.getEndpoint());
 		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
 		try ( Connection conn = jdbc.connect();
-			PreparedStatement pstmt = prepareStatement(conn, wholeSegment.getQuery(), timespan);
+			PreparedStatement pstmt = prepareStatement(conn, fullRangeSegment.getQuery(), timespan);
 			ResultSet rset = pstmt.executeQuery() ) {
 			DefaultRecords records = readRecords(rset);
 			
@@ -86,25 +86,25 @@ public class ReadRecordsOperation implements OperationProvider {
 	private static final String SQL_READ_RECORDS_IN_RANGE = "%s WHERE timestamp between ? and ? ORDER BY timestamp ASC;";
 	private static final String SQL_READ_RECORDS_LATER_THAN = "%s WHERE timestamp >= ? ORDER BY timestamp ASC;";
 	private static final String SQL_READ_RECORDS_EARLIER_THAN = "s WHERE timestamp <= ? ORDER BY timestamp ASC;";
-	private PreparedStatement prepareStatement(Connection conn, String wholeSql, Range timespan) throws SQLException {
+	private PreparedStatement prepareStatement(Connection conn, String fullRangeSql, Range timespan) throws SQLException {
 		Timestamp minTs = toSqlTimestamp(timespan.getMin());
 		Timestamp maxTs = toSqlTimestamp(timespan.getMax());
 		
 		if ( minTs != null && maxTs != null ) {
-			String sql = String.format(SQL_READ_RECORDS_IN_RANGE, wholeSql);
+			String sql = String.format(SQL_READ_RECORDS_IN_RANGE, fullRangeSql);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, minTs);
 			pstmt.setTimestamp(2, maxTs);
 			return pstmt;
 		}
 		else if ( minTs != null && maxTs == null ) {
-			String sql = String.format(SQL_READ_RECORDS_LATER_THAN, wholeSql);
+			String sql = String.format(SQL_READ_RECORDS_LATER_THAN, fullRangeSql);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, minTs);
 			return pstmt;
 		}
 		else if ( minTs == null && maxTs != null ) {
-			String sql = String.format(SQL_READ_RECORDS_EARLIER_THAN, wholeSql);
+			String sql = String.format(SQL_READ_RECORDS_EARLIER_THAN, fullRangeSql);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, maxTs);
 			return pstmt;
@@ -131,39 +131,39 @@ public class ReadRecordsOperation implements OperationProvider {
 	
 	private DefaultLinkedSegment getTargetSegment() throws mdt.model.ResourceNotFoundException {
 		SubmodelElementIdentifier opId = SubmodelElementIdentifier.fromReference(m_opRef);
-		SubmodelElementIdentifier wholeId
+		SubmodelElementIdentifier fullRangeId
 				= SubmodelElementIdentifier.builder()
 											.submodelId(opId.getSubmodelId())
-											.idShortPath(IdShortPath.parse("Segments.Whole"))
+											.idShortPath(IdShortPath.parse("Segments.FullRange"))
 											.build();
 		try {
-			SubmodelElement segSme = m_persist.getSubmodelElement(wholeId, QueryModifier.DEFAULT);
+			SubmodelElement segSme = m_persist.getSubmodelElement(fullRangeId, QueryModifier.DEFAULT);
 			DefaultLinkedSegment segment = new DefaultLinkedSegment();
 			segment.updateFromAasModel(segSme);
 			
 			return segment;
 		}
 		catch ( ResourceNotFoundException e ) {
-			throw new mdt.model.ResourceNotFoundException("Segment", "path=Segments.Whole");
+			throw new mdt.model.ResourceNotFoundException("Segment", "path=Segments.FullRange");
 		}
 	}
 	
 	private DefaultMetadata getMetadata() throws mdt.model.ResourceNotFoundException {
 		SubmodelElementIdentifier opId = SubmodelElementIdentifier.fromReference(m_opRef);
-		SubmodelElementIdentifier wholeId
+		SubmodelElementIdentifier fullRangeId
 				= SubmodelElementIdentifier.builder()
 											.submodelId(opId.getSubmodelId())
 											.idShortPath(IdShortPath.parse("Metadata"))
 											.build();
 		try {
-			SubmodelElement mdSMe = m_persist.getSubmodelElement(wholeId, QueryModifier.DEFAULT);
+			SubmodelElement mdSMe = m_persist.getSubmodelElement(fullRangeId, QueryModifier.DEFAULT);
 			DefaultMetadata metadata = new DefaultMetadata();
 			metadata.updateFromAasModel(mdSMe);
 			
 			return metadata;
 		}
 		catch ( ResourceNotFoundException e ) {
-			throw new mdt.model.ResourceNotFoundException("Segment", "path=Segments.Whole");
+			throw new mdt.model.ResourceNotFoundException("Segment", "path=Segments.FullRange");
 		}
 	}
 	

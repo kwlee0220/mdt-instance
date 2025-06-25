@@ -33,7 +33,7 @@ public class OpcUaServerReconnect extends AbstractLoopExecution<UaClient> {
 	
 	private final String m_endpointUrl;
 	private final Duration m_reconnectTrialInterval;
-	@Nullable private final SessionActivityListener m_listener;
+	private final @Nullable SessionActivityListener m_listener;
 	
 	@Override protected void initializeLoop() throws Exception { }
 	@Override protected void finalizeLoop() throws Exception { }
@@ -95,7 +95,7 @@ public class OpcUaServerReconnect extends AbstractLoopExecution<UaClient> {
 	public static class Builder {
 		private String m_opcUaServerEndpoint;
 		private Duration m_reconnectTryInterval = Duration.ofSeconds(10);
-		@Nullable private SessionActivityListener m_activityListener;
+		private @Nullable SessionActivityListener m_activityListener;
 		
 		public OpcUaServerReconnect build() {
 			return new OpcUaServerReconnect(this);

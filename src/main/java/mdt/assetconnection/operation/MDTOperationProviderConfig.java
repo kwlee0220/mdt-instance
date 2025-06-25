@@ -19,7 +19,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @JsonInclude(Include.NON_NULL)
 public class MDTOperationProviderConfig implements AssetOperationProviderConfig {
-	@Nullable private JavaOperationProviderConfig java;
-	@Nullable private ProgramOperationProviderConfig program;
-	@Nullable private HttpOperationProviderConfig http;
+	private @Nullable JavaOperationProviderConfig java;
+	private @Nullable ProgramOperationProviderConfig program;
+	private @Nullable HttpOperationProviderConfig http;
 }

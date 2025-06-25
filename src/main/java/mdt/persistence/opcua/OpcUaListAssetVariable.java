@@ -40,7 +40,7 @@ public class OpcUaListAssetVariable extends AbstractOpcUaAssetVariable<OpcUaList
 
 					Double newValue = readNode(opcuaId);
 					try {
-						ElementValues.updateWithRawString(buffer, "" +newValue);
+						ElementValues.updateWithRawValueString(buffer, "" +newValue);
 					}
 					catch ( IOException e ) {
 						String msg = String.format("Unexpected OPC-UA value: identifier=%d, value=%s, cause=%s",

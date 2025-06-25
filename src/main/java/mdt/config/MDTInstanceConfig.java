@@ -28,7 +28,7 @@ public class MDTInstanceConfig {
 	
 	private String m_heartbeatInterval;
 	private String m_managerCheckInterval;
-	@Nullable private MDTEndpointConfigs m_mdtEndpoints;
+	private @Nullable MDTEndpointConfigs m_mdtEndpoints;
 	
 	private List<PersistenceStackConfig> m_persistenceStacks = Lists.newArrayList();
 	private OperationsConfig m_operations;

@@ -22,20 +22,20 @@ import mdt.model.timeseries.RecordMetadata;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class JdbcWholeLinkedSegment extends DefaultLinkedSegment implements LinkedSegment {
-	private static final Logger s_logger = LoggerFactory.getLogger(JdbcWholeLinkedSegment.class);
+public class JdbcFullRangeLinkedSegment extends DefaultLinkedSegment implements LinkedSegment {
+	private static final Logger s_logger = LoggerFactory.getLogger(JdbcFullRangeLinkedSegment.class);
 	
 	private final TimeSeriesSubmodelConfig m_tsConfig;
 	private final String m_query;
 
-	public JdbcWholeLinkedSegment(RecordMetadata recordMetadata, TimeSeriesSubmodelConfig tsConfig) {
+	public JdbcFullRangeLinkedSegment(RecordMetadata recordMetadata, TimeSeriesSubmodelConfig tsConfig) {
 		m_tsConfig = tsConfig;
 		
-		setIdShort("Whole");
+		setIdShort("FullRange");
 		setSemanticId(LinkedSegment.SEMANTIC_ID);
 		
-		setName(new MultiLanguagePropertyValue("en", "Whole"));
-		setDescription(new MultiLanguagePropertyValue("en", "Whole linked segment"));
+		setName(new MultiLanguagePropertyValue("en", "FullRange"));
+		setDescription(new MultiLanguagePropertyValue("en", "FullRange linked segment"));
 
 		String columnExpr = FStream.from(m_tsConfig.getParameterColumns())
 									.map(pc -> pc.getColumn())
@@ -83,7 +83,7 @@ public class JdbcWholeLinkedSegment extends DefaultLinkedSegment implements Link
 			setDuration(Duration.between(getStartTime(), getEndTime()));
 			
 			if ( s_logger.isInfoEnabled() ) {
-				s_logger.info("loaded WholeLinkedSegment: {}[{}:{}]",
+				s_logger.info("loaded FullRangeLinkedSegment: {}[{}:{}]",
 								m_tsConfig.getTableName(), getStartTime(), getEndTime());
 			}
 		}
@@ -94,6 +94,6 @@ public class JdbcWholeLinkedSegment extends DefaultLinkedSegment implements Link
 	
 	@Override
 	public String toString() {
-		return String.format("JdbcWholeLinkedSegment(endpoint=%s, query=%s)", m_tsConfig.getEndpoint(), m_query);
+		return String.format("JdbcFullRangeLinkedSegment(endpoint=%s, query=%s)", m_tsConfig.getEndpoint(), m_query);
 	}
 }

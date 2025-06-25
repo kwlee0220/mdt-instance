@@ -53,8 +53,9 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 	}
 	
 	public void saveBuffer(Connection conn) throws AssetVariableException {
-		Object jdbcValue = m_handler.toJdbcObject(m_prototype); 
 		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()) ) {
+			Object jdbcValue = m_handler.toJdbcObject(m_prototype); 
+			
 			pstmt.setObject(1, jdbcValue);
 			pstmt.execute();
 		}

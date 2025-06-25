@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
-import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
@@ -21,9 +20,7 @@ import utils.io.IOUtils;
 import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
 
-import mdt.client.operation.OperationUtils;
 import mdt.model.MDTModelSerDe;
-import mdt.model.sm.value.ElementValue;
 import mdt.model.sm.value.ElementValues;
 import mdt.task.TaskException;
 import mdt.task.builtin.ProgramOperationDescriptor;
@@ -107,7 +104,7 @@ class ProgramOperationProvider implements OperationProvider {
 						CommandVariable var = match.value()._2;
 						
 						SubmodelElement old = opv.getValue();
-						ElementValues.updateWithRawString(old, var.getValue());
+						ElementValues.updateWithRawValueString(old, var.getValue());
 					});
 		}
 		finally {
@@ -142,21 +139,15 @@ class ProgramOperationProvider implements OperationProvider {
 					throw new TaskException("Failed to read AASFile " + aasFile, e);
 				}
 			}
-			else if ( data instanceof Property ) {
-				// PropertyValue인 경우, 바로 JSON으로 출력하면 double-quote가 추가되기 때문에
-				// 이를 막기 위해 값을 직접 저장한다.
-				cvFile = new File(workingDir, name);
-				String extStr = OperationUtils.toExternalString(data);
-				IOUtils.toFile(extStr, StandardCharsets.UTF_8, cvFile);
-				
-				return new FileVariable(name, cvFile);
-			}
 			else {
-				ElementValue ev = ElementValues.getValue(data);
-				String dataJson = MDTModelSerDe.getJsonMapper().writeValueAsString(ev);
+				String valStr = ElementValues.getValue(data).toValueString();
+				if ( valStr == null ) {
+					String msg = String.format("OperationVariable '%s' has no value" , name);
+					throw new TaskException(msg);
+				}
 				
 				cvFile = new File(workingDir, name);
-				IOUtils.toFile(dataJson, StandardCharsets.UTF_8, cvFile);
+				IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
 				
 				return new FileVariable(name, cvFile);
 			}

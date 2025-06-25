@@ -39,7 +39,7 @@ public class OpcUaCollectionAssetVariable extends AbstractOpcUaAssetVariable<Opc
 					SubmodelElement part = SubmodelUtils.traverse(smc, mapping.subPath());
 					Double newValue = readNode(mapping.opcuaId());
 					try {
-						ElementValues.updateWithRawString(part, "" +newValue);
+						ElementValues.updateWithRawValueString(part, "" +newValue);
 					}
 					catch ( IOException e ) {
 						String msg = String.format("Unexpected OPC-UA value: path=%s, identifier=%d, cause=%s",

@@ -28,7 +28,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	
 	private ElementLocation m_elementLoc;
 	private String m_jdbcConfig;
-	@Nullable private Duration m_validPeriod;
+	private @Nullable Duration m_validPeriod;
 	
 	protected AbstractJdbcAssetVariableConfig() { }
 	protected AbstractJdbcAssetVariableConfig(ElementLocation elementLoc, String jdbcConfig,

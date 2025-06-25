@@ -8,6 +8,8 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import utils.Throwables;
 import utils.func.Try;
@@ -20,6 +22,8 @@ import mdt.task.TaskException;
  * @author Kang-Woo Lee (ETRI)
  */
 public interface OperationProvider {
+	public static final Logger s_logger = LoggerFactory.getLogger(OperationProvider.class);
+	
 	public void invokeSync(OperationVariable[] inputVars,
 							OperationVariable[] inoutputVars,
 							OperationVariable[] outputVars) throws Exception;
@@ -43,6 +47,7 @@ public interface OperationProvider {
 					|| cause instanceof InterruptedException ) {
 					cause = new ExecutionException(cause);
 				}
+				s_logger.error("Failed to invoke AASOperation: {}", ""+cause);
 				callbackFailure.accept(cause);
 			}
 		});

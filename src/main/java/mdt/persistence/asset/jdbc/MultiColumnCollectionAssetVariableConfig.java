@@ -136,7 +136,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		config.m_whereClause = JacksonUtils.getStringField(jnode, FIELD_WHERE_CLAUSE);
 		config.m_insertOnUpdate = JacksonUtils.getBooleanField(jnode, "insertOnUpdate", false);
 		
-		JsonNode colNode = JacksonUtils.getNullableField(jnode, FIELD_COLUMNS);
+		JsonNode colNode = JacksonUtils.getFieldOrNull(jnode, FIELD_COLUMNS);
 		if ( colNode == null ) {
 			String msg = String.format("Cannot find '%s' field in multi-column AssetVariable config, %s",
 										FIELD_COLUMNS, jnode);

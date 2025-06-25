@@ -25,7 +25,7 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	static final String FIELD_UPDATE_QUERY = "updateQuery";
 	
 	private String m_readQuery;
-	@Nullable private String m_updateQuery;
+	private @Nullable String m_updateQuery;
 	
 	private SimpleJdbcAssetVariableConfig()  { }
 	public SimpleJdbcAssetVariableConfig(ElementLocation elementLoc, @Nullable String jdbcConfigKey,

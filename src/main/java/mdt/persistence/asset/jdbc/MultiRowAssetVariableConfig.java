@@ -32,7 +32,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 	private static final String FIELD_SUBPATH = "subPath";
 	
 	private String m_readQuery;
-	@Nullable private String m_updateQuery;
+	private @Nullable String m_updateQuery;
 	private Map<String,String> m_mapping;	// row key -> subpath mapping
 	
 	private MultiRowAssetVariableConfig()  { }

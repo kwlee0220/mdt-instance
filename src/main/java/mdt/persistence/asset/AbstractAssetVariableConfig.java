@@ -23,7 +23,7 @@ import mdt.ElementLocations;
  */
 public abstract class AbstractAssetVariableConfig implements AssetVariableConfig {
 	private ElementLocation m_elementLoc;
-	@Nullable private Duration m_validPeriod;
+	private @Nullable Duration m_validPeriod;
 	
 	protected AbstractAssetVariableConfig() { }
 	protected AbstractAssetVariableConfig(ElementLocation elementLoc, @Nullable Duration validPeriod) {
