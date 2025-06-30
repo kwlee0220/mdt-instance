@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 
+import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,17 +43,17 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 	
 	private WebSocketClientListener m_wsCallback = new WebSocketClientListener() {
 		@Override
-		public void onOpen(ServerHandshake handshakedata) {
+		public void onOpen(WebSocketClient wsClient, ServerHandshake handshakedata) {
 			for ( Ros2MessageHandler<?> handler : m_handlers.values() ) {
 				String subscribeMsg = String.format(SUBSCRIBE_MSG_FORMAT, handler.getTopic());
-				m_ros2Client.send(subscribeMsg);
-				s_logger.info("[ROS2Endpoint] Subscribed to topic: {}, messageType={}",
+				wsClient.send(subscribeMsg);
+				s_logger.info("Subscribed to topic: {}, messageType={}",
 								handler.getTopic(), handler.getMessageType());
 			}
 		}
 		
 		@Override
-		public void onMessage(String message) throws Exception {
+		public void onMessage(WebSocketClient wsClient, String message) throws Exception {
 			try {
 				JsonMapper mapper = MDTModelSerDe.getJsonMapper();
 				JsonNode jnode = mapper.readTree(message);
@@ -61,14 +62,16 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 				
 				Ros2Message msg = handler.readMessage(message);
 				handler.update(msg);
+				s_logger.debug("handle ROS2 message: topic={}, type={}, msg={}",
+								topic, handler.getMessageType(), msg);
 			}
 			catch ( IOException e ) {
 				s_logger.error("Failed to parse message: {}, cause={}", message, e);
 			}
 		}
 		
-		@Override public void onError(Exception ex) { }
-		@Override public void onClose(int code, String reason, boolean remote) { }
+		@Override public void onError(WebSocketClient wsClient, Exception ex) { }
+		@Override public void onClose(WebSocketClient wsClient, int code, String reason, boolean remote) { }
 	};
 
 	@Override
@@ -103,12 +106,12 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 		// 등록된 모든 메시지 핸들러에 대해 ElementLocation을 활성화한다.
     	FStream.from(m_handlers.values()).forEach(h -> h.initialize(m_faaast));
 		
-    	m_ros2Client.startAutoReconnecting();
+    	m_ros2Client.startAsync();
     }
 
     @Override
     public void stop() {
-    	m_ros2Client.close();
+    	m_ros2Client.stopAsync();
     }
 	
 	@Override
