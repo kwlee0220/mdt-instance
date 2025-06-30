@@ -28,26 +28,26 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 	private static final Logger s_logger = LoggerFactory.getLogger(AbstractOpcUaAssetVariable.class);
 	
 //	protected final OpcUaClient m_client;
+	private OpcUaConnectionConfig m_opcuaConnConfig;
 	protected final AutoReconnectingOpcUaClient m_reconnectingClient;
 	
 	public AbstractOpcUaAssetVariable(T config) throws ConfigurationInitializationException {
 		super(config);
 		
-		OpcUaConnectionConfig serverConfig;
 		try {
-			serverConfig = MDTGlobalConfigurations.getOpcUaConnectionConfig("default");
+			m_opcuaConnConfig = MDTGlobalConfigurations.getOpcUaConnectionConfig("default");
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);
 		}
 		
 		try {
-			m_reconnectingClient = connect(serverConfig);
+			m_reconnectingClient = connect(m_opcuaConnConfig);
 		}
 		catch ( Exception e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
 			String msg = String.format("Failed to connect OPC-UA Server: endpoint=%s, cause=%s",
-										serverConfig.getServerEndpoint(), cause);
+											m_opcuaConnConfig.getServerEndpoint(), cause);
 			throw new ConfigurationInitializationException(msg);
 		}
 		
@@ -97,7 +97,8 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 		}
 		catch ( Exception e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
-			String msg = String.format("Failed to read OPC-UA node: identifier=%d, cause=%s", opcuaId, e.getMessage());
+			String msg = String.format("Failed to read OPC-UA node: endpoint=%s, identifier=%d, cause=%s",
+										m_opcuaConnConfig.getServerEndpoint(), opcuaId, ""+e);
 			throw new AssetVariableException(msg, cause);
 		}
 	}

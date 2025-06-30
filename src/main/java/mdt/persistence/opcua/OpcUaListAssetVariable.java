@@ -1,7 +1,5 @@
 package mdt.persistence.opcua;
 
-import java.io.IOException;
-
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementList;
 import org.slf4j.Logger;
@@ -11,6 +9,7 @@ import utils.stream.FStream;
 
 import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.value.ElementValues;
+import mdt.model.sm.value.PropertyValue;
 import mdt.persistence.asset.AssetVariableException;
 
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
@@ -39,14 +38,7 @@ public class OpcUaListAssetVariable extends AbstractOpcUaAssetVariable<OpcUaList
 					SubmodelElement buffer = pair._2;
 
 					Double newValue = readNode(opcuaId);
-					try {
-						ElementValues.updateWithRawValueString(buffer, "" +newValue);
-					}
-					catch ( IOException e ) {
-						String msg = String.format("Unexpected OPC-UA value: identifier=%d, value=%s, cause=%s",
-													opcuaId, newValue, e.getMessage());
-						throw new AssetVariableException(msg, e);
-					}
+					ElementValues.update(buffer, PropertyValue.DOUBLE(newValue));
 				});
 		
 		return SubmodelUtils.duplicate(sml);
