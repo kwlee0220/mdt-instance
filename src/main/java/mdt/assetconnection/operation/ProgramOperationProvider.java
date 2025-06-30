@@ -21,6 +21,7 @@ import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
 
 import mdt.model.MDTModelSerDe;
+import mdt.model.sm.value.ElementValue;
 import mdt.model.sm.value.ElementValues;
 import mdt.task.TaskException;
 import mdt.task.builtin.ProgramOperationDescriptor;
@@ -103,8 +104,16 @@ class ProgramOperationProvider implements OperationProvider {
 						OperationVariable opv = match.value()._1;
 						CommandVariable var = match.value()._2;
 						
-						SubmodelElement old = opv.getValue();
-						ElementValues.updateWithRawValueString(old, var.getValue());
+						// CommandExecution에서 생성한 값은 ElementValue의 valueJson형태로 설정됨.
+						try {
+							SubmodelElement old = opv.getValue();
+							ElementValue newVal = ElementValues.parseValueJsonString(old, var.getValue());
+							ElementValues.update(old, newVal);
+						}
+						catch ( Exception e ) {
+							s_logger.error("Failed to update OperationVariable: {}, cause={}",
+											opv.getValue().getIdShort(), ""+e);
+						}
 					});
 		}
 		finally {
@@ -140,20 +149,18 @@ class ProgramOperationProvider implements OperationProvider {
 				}
 			}
 			else {
-				String valStr = ElementValues.getValue(data).toValueString();
-				if ( valStr == null ) {
+				ElementValue smev = ElementValues.getValue(data);
+				if ( smev == null ) {
 					String msg = String.format("OperationVariable '%s' has no value" , name);
 					throw new TaskException(msg);
 				}
 				
+				String valStr = smev.toValueJsonString();
 				cvFile = new File(workingDir, name);
 				IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
 				
 				return new FileVariable(name, cvFile);
 			}
-//			else {
-//				throw new IllegalArgumentException("Unsupported SubmodelElement type: " + data.getClass());
-//			}
 		}
 		catch ( IOException e ) {
 			throw new InternalException("Failed to write value to file: name=" + name
