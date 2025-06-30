@@ -35,6 +35,7 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 	private static final Logger s_logger = LoggerFactory.getLogger(MqttPublishingPersistence.class);
 
 	MDTModelLookup m_lookup;
+	private MqttBrokerConnectionConfig m_mqttBrokerConfig;
 	MqttPublishingPersistenceConfig m_config;
 	private PersistenceMqttClient m_mqttClient;
 	
@@ -52,14 +53,13 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 		m_config.getPublishers().forEach(pub -> pub.getElementLocation().activate(m_lookup));
 //		m_config.getSubscribers().forEach(sub -> sub.getElementLocation().activate(m_lookup));
 		
-		MqttBrokerConnectionConfig brokerConfig;
 		try {
-			brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig("default");
+			m_mqttBrokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig("default");
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);
 		}
-		m_mqttClient = new PersistenceMqttClient(this, brokerConfig);
+		m_mqttClient = new PersistenceMqttClient(this, m_mqttBrokerConfig);
 		m_mqttClient.startAsync();
 		
 		if ( getLogger().isInfoEnabled() ) {
@@ -138,6 +138,13 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 				m_mqttClient.publishMessage(publisher.getTopic(), value);
 			}
 		}
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("MqttPublishingPersistence[broker=%s, publishers=%s]",
+							m_mqttBrokerConfig.getBrokerUrl(),
+							m_config.getPublishers());
 	}
 	
 	@SuppressWarnings("unused")

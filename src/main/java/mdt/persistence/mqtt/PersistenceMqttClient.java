@@ -50,13 +50,14 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 			client.publish(topic, message);
 		}
 		catch ( Exception e ) {
-			getLogger().warn("Failed to publish event, cause=" + e);
+			getLogger().warn("Failed to publish event: broker={}. topic={}, cause={}",
+								m_brokerConfig.getBrokerUrl(), topic, ""+e);
 		}
 	}
 
 	@Override
 	public void messageArrived(String topic, MqttMessage msg) throws Exception {
-//		String json = new String(msg.getPayload(), StandardCharsets.UTF_8);
+		String json = new String(msg.getPayload(), StandardCharsets.UTF_8);
 		
 //		m_mqttPublishingPersistence.findMatchingSubscriber(topic)
 //			.ifPresent(sub -> {
