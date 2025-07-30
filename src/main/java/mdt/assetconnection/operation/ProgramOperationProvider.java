@@ -87,7 +87,7 @@ class ProgramOperationProvider implements OperationProvider {
 
 		// stdout/stderr redirection
 		builder.redirectErrorStream();
-		builder.redictStdoutToFile(new File(workingDir, "output.log"));
+		builder.redirectStdoutToFile(new File(workingDir, "output.log"));
 		
 		m_cmdExec = builder.build();
 		try {
