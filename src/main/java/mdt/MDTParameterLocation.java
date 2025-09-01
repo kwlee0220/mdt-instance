@@ -13,16 +13,14 @@ import mdt.persistence.MDTModelLookup;
  * @author Kang-Woo Lee (ETRI)
  */
 public class MDTParameterLocation implements ElementLocation {
-	private final String m_parameterName;
-	private final String m_subPath;
+	private final String m_paramExpr;
 	
 	private String m_submodelId;
 	private String m_submodelIdShort;
 	private String m_elementPath;
 	
-	public MDTParameterLocation(String parameterName, String subPath) {
-		m_parameterName = parameterName;
-		m_subPath = subPath;
+	public MDTParameterLocation(String paramExpr) {
+		m_paramExpr = paramExpr;
 	}
 
 	@Override
@@ -33,16 +31,16 @@ public class MDTParameterLocation implements ElementLocation {
 		
 		String pathPrefix = SubmodelUtils.getParameterValuePrefix(dataSubmodel);
 		SubmodelElementList paramValues = SubmodelUtils.traverse(dataSubmodel, pathPrefix, SubmodelElementList.class);
-		int paramIdx = SubmodelUtils.getFieldSMCByIdValue(paramValues.getValue(),
-															"ParameterID", m_parameterName).index();
-		m_elementPath = String.format("%s[%d]", pathPrefix, paramIdx);
-		if ( m_subPath != null && m_subPath.length() > 0 ) {
-			m_elementPath = m_elementPath + "." + m_subPath;
-		}
+		
+		// parameter expression에서 parameter ID를 추출하여 해당 parameter의 인덱스를 구한다.
+		m_elementPath = SubmodelUtils.resolveParameterValueElementPath(pathPrefix, m_paramExpr, paramId -> {
+			return SubmodelUtils.getFieldSMCByIdValue(paramValues.getValue(),
+														"ParameterID", paramId).index();
+		});
 	}
 	
 	public String getParameterName() {
-		return m_parameterName;
+		return m_paramExpr;
 	}
 
 	@Override
@@ -68,13 +66,7 @@ public class MDTParameterLocation implements ElementLocation {
 
 	@Override
 	public String toStringExpr() {
-		String str = "param:" + m_parameterName;
-		if ( m_subPath != null && m_subPath.length() > 0 ) {
-			return str + ":" + m_subPath;
-		}
-		else {
-			return str;
-		}
+		return "param:" + m_paramExpr;
 	}
 
 	@Override

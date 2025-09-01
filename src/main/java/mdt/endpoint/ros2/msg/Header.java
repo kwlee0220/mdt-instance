@@ -8,9 +8,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class Header {
 	private final Stamp m_stamp;
-	private final Long m_frameId;
+	private final String m_frameId;
 	
-	public Header(@JsonProperty("stamp") Stamp stamp, @JsonProperty("frame_id") Long frameId) {
+	public Header(@JsonProperty("stamp") Stamp stamp, @JsonProperty("frame_id") String frameId) {
 		m_stamp = stamp;
 		m_frameId = frameId;
 	}
@@ -19,7 +19,7 @@ public class Header {
 		return m_stamp;
 	}
 	
-	public Long getFrameId() {
+	public String getFrameId() {
 		return m_frameId;
 	}
 }

@@ -46,19 +46,27 @@ public class UpdateDefectList implements OperationProvider {
 																.map(OperationVariable::getValue)
 																.tagKey(SubmodelElement::getIdShort)
 																.toMap();
+		Map<String, SubmodelElement> outputVarList = FStream.of(outputVars)
+																.map(OperationVariable::getValue)
+																.tagKey(SubmodelElement::getIdShort)
+																.toMap();
 		
 		SubmodelElement defectProp = inputVarList.get("Defect");
 		Preconditions.checkArgument(defectProp != null, "Input argument is missing: 'Defect'");
 		Preconditions.checkArgument(defectProp instanceof Property, "Argument 'Defect' is not Property");
 		String defect = ((Property)inputVarList.get("Defect")).getValue();
 		
-		SubmodelElement defectListProp = inoutputVarList.get("DefectList");
-		Preconditions.checkArgument(defectProp != null, "Inoutput argument is missing: 'DefectList'");
-		Preconditions.checkArgument(defectProp instanceof Property, "Argument 'DefectList' is not Property");
+		SubmodelElement defectListProp = inputVarList.get("DefectList");
+		Preconditions.checkArgument(defectListProp != null, "Input argument is missing: 'DefectList'");
+		Preconditions.checkArgument(defectListProp instanceof Property, "Input argument 'DefectList' is not Property");
 		String defectList = ((Property)defectListProp).getValue();
 		
+		SubmodelElement updateDefectListProp = outputVarList.get("UpdatedDefectList");
+		Preconditions.checkArgument(updateDefectListProp != null, "Output argument is missing: 'DefectList'");
+		Preconditions.checkArgument(updateDefectListProp instanceof Property, "Output argument 'DefectList' is not Property");
+
 		String updateDefectList = update(defect, defectList);
-		((Property)defectListProp).setValue(updateDefectList);
+		((Property)updateDefectListProp).setValue(updateDefectList);
 	}
 	
 	private String update(String defect, String defectList) {

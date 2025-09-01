@@ -1,5 +1,7 @@
 package mdt;
 
+import com.google.common.base.Preconditions;
+
 import lombok.experimental.UtilityClass;
 
 import mdt.model.sm.ref.MDTArgumentKind;
@@ -15,12 +17,8 @@ public class ElementLocations {
 		String[] parts = expr.split(":");
 		switch ( parts[0] ) {
 			case "param":
-				if ( parts.length == 2 ) {
-					return new MDTParameterLocation(parts[1], null);
-				}
-				else {
-					return new MDTParameterLocation(parts[1], parts[2]);
-				}
+				Preconditions.checkArgument(parts.length == 2, "Invalid MDTParameterLocation expr=" + expr);
+				return new MDTParameterLocation(parts[1]);
 			case "oparg":
 				return new MDTOperationArgumentLocation(parts[1], MDTArgumentKind.valueOf(parts[2]), parts[3]);
 			default:

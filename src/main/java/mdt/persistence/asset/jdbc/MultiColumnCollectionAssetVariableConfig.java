@@ -26,6 +26,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	public static final String SERIALIZATION_TYPE = "mdt:asset:jdbc:multi-column";
 	private static final String FIELD_TABLE = "table";
 	private static final String FIELD_WHERE_CLAUSE = "whereClause";
+	private static final String FIELD_UPDATE_MODE= "updateMode";
 	private static final String FIELD_COLUMNS = "columns";
 	private static final String FIELD_COLUMN = "column";
 	private static final String FIELD_SUBPATH = "subPath";
@@ -34,10 +35,16 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	private static String UPDATE_QUERY_FORMAT = "update %s set %s %s";
 	private static String INSERT_QUERY_FORMAT = "insert into %s (%s) values (%s)";
 	
+	public static enum UpdateMode {
+		APPEND,
+		UPDATE,
+		DISABLED
+	}
+	
 	private String m_table;
 	private String m_whereClause;
 	private List<ColumnToSubPath> m_columnToSubPathMappings;
-	private boolean m_insertOnUpdate;
+	private UpdateMode m_updateMode = UpdateMode.DISABLED;
 	private String m_readQuery;
 	private String m_updateQuery;
 	
@@ -67,13 +74,13 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	private MultiColumnCollectionAssetVariableConfig()  {}
 	public MultiColumnCollectionAssetVariableConfig(ElementLocation smcLoc, @Nullable Duration validPeriod,
 													@Nullable String jdbcConfigKey, String table, String whereClause,
-													boolean insertOnUpdate, List<ColumnToSubPath> columnToSubPathMapping)  {
+													UpdateMode updateMode, List<ColumnToSubPath> columnToSubPathMapping)  {
 		super(smcLoc, jdbcConfigKey, validPeriod);
 		
 		m_table = table;
 		m_whereClause = whereClause;
 		m_columnToSubPathMappings = columnToSubPathMapping;
-		m_insertOnUpdate = insertOnUpdate;
+		m_updateMode = updateMode;
 	}
 	
 	public List<ColumnToSubPath> getColumnToSubpathMapping() {
@@ -89,8 +96,12 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	}
 	
 	public String getUpdateQuery() {
+		if ( m_updateMode == UpdateMode.DISABLED ) {
+			throw new AssetVariableException("update is disabled");
+		}
+		
 		if ( m_updateQuery == null ) {
-			if ( m_insertOnUpdate ) {
+			if ( m_updateMode == UpdateMode.APPEND ) {
 				var colCsv = FStream.from(m_columnToSubPathMappings).map(ColumnToSubPath::getColumn).join(", ");
 				var valueHolderCsv = FStream.range(0, m_columnToSubPathMappings.size()).map(i -> "?").join(", ");
 				m_updateQuery = String.format(INSERT_QUERY_FORMAT, m_table, colCsv, valueHolderCsv);
@@ -117,7 +128,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 
 		gen.writeStringField(FIELD_TABLE, m_table);
 		gen.writeStringField(FIELD_WHERE_CLAUSE, m_whereClause);
-		gen.writeBooleanField("insertOnUpdate", m_insertOnUpdate);
+		gen.writeStringField(FIELD_UPDATE_MODE, m_updateMode.name());
 		gen.writeArrayFieldStart(FIELD_COLUMNS);
 		for ( ColumnToSubPath mapping : m_columnToSubPathMappings ) {
 			gen.writeStartObject();
@@ -134,7 +145,9 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 
 		config.m_table = JacksonUtils.getStringField(jnode, FIELD_TABLE);
 		config.m_whereClause = JacksonUtils.getStringField(jnode, FIELD_WHERE_CLAUSE);
-		config.m_insertOnUpdate = JacksonUtils.getBooleanField(jnode, "insertOnUpdate", false);
+		
+		String modeStr = JacksonUtils.getStringFieldOrDefault(jnode, FIELD_UPDATE_MODE, "DISABLED");
+		config.m_updateMode = UpdateMode.valueOf(modeStr);
 		
 		JsonNode colNode = JacksonUtils.getFieldOrNull(jnode, FIELD_COLUMNS);
 		if ( colNode == null ) {

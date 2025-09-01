@@ -41,6 +41,8 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 	private AutoReconnectingWebSocketClient m_ros2Client;
 	private Map<String,Ros2MessageHandler<?>> m_handlers = Maps.newHashMap();
 	
+	private static final JsonMapper JSON_MAPPER = MDTModelSerDe.getJsonMapper();
+	
 	private WebSocketClientListener m_wsCallback = new WebSocketClientListener() {
 		@Override
 		public void onOpen(WebSocketClient wsClient, ServerHandshake handshakedata) {
@@ -55,8 +57,7 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 		@Override
 		public void onMessage(WebSocketClient wsClient, String message) throws Exception {
 			try {
-				JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-				JsonNode jnode = mapper.readTree(message);
+				JsonNode jnode = JSON_MAPPER.readTree(message);
 				String topic = jnode.get("topic").asText();
 				Ros2MessageHandler handler = m_handlers.get(topic);
 				

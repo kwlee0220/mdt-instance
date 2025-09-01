@@ -197,7 +197,8 @@ public class MDTModelLookup {
                     });
 		}
 		else {
-			throw new IllegalStateException("Invalid DataInfo: " + data.getDataInfo());
+			String msg = String.format("DataInfo must have either Equipment or Operation");
+			throw new IllegalStateException("Invalid DataInfo: cause=" + msg);
 		}
 	}
 

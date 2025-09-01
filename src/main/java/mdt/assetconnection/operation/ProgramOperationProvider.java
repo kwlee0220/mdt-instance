@@ -150,15 +150,20 @@ class ProgramOperationProvider implements OperationProvider {
 			}
 			else {
 				ElementValue smev = ElementValues.getValue(data);
-				if ( smev == null ) {
-					String msg = String.format("OperationVariable '%s' has no value" , name);
-					throw new TaskException(msg);
-				}
-				
-				String valStr = smev.toValueJsonString();
 				cvFile = new File(workingDir, name);
-				IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
-				
+				if ( smev == null ) {
+					// 빈 파일을 생성함.
+					if ( !cvFile.createNewFile() ) {
+						String msg = String.format("Failed to create empty file: name=%s, path=%s",
+													name, cvFile.getAbsolutePath());
+						throw new InternalException(msg);
+					}
+				}
+				else {
+					String valStr = smev.toValueJsonString();
+					IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
+				}
+					
 				return new FileVariable(name, cvFile);
 			}
 		}
