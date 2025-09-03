@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -97,6 +98,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
     private static final String ENV_MDT_MANAGER_ENDPOINT = "MDT_MANAGER_ENDPOINT";
     private static final String ENV_MDT_GLOBAL_CONFIG_FILE = "MDT_GLOBAL_CONFIG_FILE";
     private static final String ENV_MDT_KEY_STORE_FILE = "MDT_KEY_STORE_FILE";
+    private static final String ENV_MDT_KEY_STORE_PASSWORD = "MDT_KEY_STORE_PASSWORD";
     
     protected static final String ENV_PATH_SEPARATOR = ".";
     protected static final String ENV_PATH_ALTERNATIVE_SEPARATOR = "_";
@@ -126,9 +128,6 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	
 	@Option(names={"--managerEndpoint"}, paramLabel="endpoint", description="MDTManager endpoint")
 	private String m_managerEndpoint;
-	
-//    @Option(names = "--endpoint", split = ",", description = "Additional endpoints that should be started.")
-//    public List<EndpointType> endpoints = new ArrayList<>();
 
     @Option(names = "--globalConfig", paramLabel="path", description = "global configuration file path")
     private File m_globalConfigFile;
@@ -336,16 +335,31 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	
 	@SuppressWarnings("rawtypes")
 	private List<EndpointConfig> loadEndpointConfigs(MDTInstanceConfig instConf) {
+		Preconditions.checkArgument(instConf.getManagerEndpoint() != null,
+										"MDTInstanceManager endpoint not specified in the configuration");
+		Preconditions.checkArgument(instConf.getInstanceEndpoint() != null,
+										"MDTInstance endpoint not specified in the configuration");
+		
 		Map<String,String> parts = extractHostAndPort(instConf.getInstanceEndpoint());
 		int port = Integer.parseInt(parts.get("port"));
 		
 		List<EndpointConfig> configs = Lists.newArrayList();
-		
+
+		if ( instConf.getKeyStorePassword() == null && instConf.getKeyPassword() == null ) {
+			String keyStorePassword = System.getenv(ENV_MDT_KEY_STORE_PASSWORD);
+			if ( keyStorePassword != null && !keyStorePassword.isBlank() ) {
+				instConf.setKeyStorePassword(keyStorePassword);
+			}
+			else {
+				throw new IllegalArgumentException(
+						"Keystore or key password not specified in the configuration");
+			}
+		}
 		CertificateConfig certConfig = CertificateConfig.builder()
 														.keyStoreType(KEYSTORE_TYPE)
 														.keyStorePath(instConf.getKeyStoreFile())
-														.keyStorePassword("mdt2024^^")
-														.keyPassword("mdt2024^^")
+														.keyStorePassword(instConf.getKeyStorePassword())
+														.keyPassword(instConf.getKeyPassword())
 														.build();
 		certConfig.setKeyAlias("server-key");
 		HttpEndpointConfig httpEpConfig = HttpEndpointConfig.builder()
@@ -358,7 +372,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		if ( m_type == InstanceType.EXTERNAL ) { 
 			String heartbeatInterval = FOption.getOrElse(instConf.getHeartbeatInterval(),
 															DEFAULT_HEARTBEAT_INTERVAL);
-//			String repositoryEndpoint = String.format("%s/api/v3.0", instConf.getInstanceEndpoint());
+			Preconditions.checkArgument(instConf.getId() != null,
+											"MDTInstance's id is not specified in the configuration");
 			MDTManagerReconnectorConfig reconnectConfig
 								= new MDTManagerReconnectorConfig(instConf.getId(), instConf.getManagerEndpoint(),
 																	instConf.getInstanceEndpoint(), heartbeatInterval,

@@ -25,6 +25,8 @@ public class MDTInstanceConfig {
 	private String m_managerEndpoint;
 	private File m_globalConfigFile;
 	private File m_keyStoreFile;
+	private String m_keyStorePassword;
+	private String m_keyPassword;
 	
 	private String m_heartbeatInterval;
 	private String m_managerCheckInterval;
@@ -67,7 +69,20 @@ public class MDTInstanceConfig {
 	public void setKeyStoreFile(File file) {
 		m_keyStoreFile = file;
 	}
-
+	
+	public void setKeyStorePassword(String password) {
+		m_keyStorePassword = password;
+		if ( m_keyPassword == null ) {
+			m_keyPassword = password;
+		}
+	}
+	public void setKeyPassword(String password) {
+		m_keyPassword = password;
+		if ( m_keyStorePassword == null ) {
+			m_keyStorePassword = password;
+		}
+	}
+	
 	public String getHeartbeatInterval() {
 		return m_heartbeatInterval;
 	}
