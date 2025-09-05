@@ -19,5 +19,5 @@ import mdt.endpoint.ros2.msg.Ros2MessageHandler;
 public class MDTRos2EndpointConfig {
 	private String m_connectionConfig = "default";
 	private Duration m_reconnectInterval = Duration.ofSeconds(10);
-	private List<Ros2MessageHandler> m_messages;
+	private List<Ros2MessageHandler<?>> m_messages;
 }

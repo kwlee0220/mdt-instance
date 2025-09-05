@@ -13,6 +13,6 @@ import lombok.experimental.Accessors;
 @Getter @Setter
 @Accessors(prefix="m_")
 public class MDTMqttEndpointConfig {
-    private String m_mqttConfig = "default";
+    private String m_mqttConfigName = "default";
 	private List<MqttElementSubscriber> m_subscribers;
 }

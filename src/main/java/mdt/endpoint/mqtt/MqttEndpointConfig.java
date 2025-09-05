@@ -2,9 +2,11 @@ package mdt.endpoint.mqtt;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
-import utils.func.FOption;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 
@@ -13,27 +15,15 @@ import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
  *
  * @author Kang-Woo Lee (ETRI)
  */
+@JsonPropertyOrder({ "mqttConfigName", "subscribers" })
+@Accessors(prefix="m_")
+@Getter @Setter
 public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
-	private String m_mqttConfig = "default";
-	private List<MqttElementSubscriber> m_subscribers;
-
-	@JsonProperty("mqttConfig")
-	public String getMqttConfig() {
-		return m_mqttConfig;
-	}
-
-	@JsonProperty("mqttConfig")
-	public void setMqttConfig(String mqttConfig) {
-		m_mqttConfig = mqttConfig;
-	}
-
-	@JsonProperty("subscribers")
-	public List<MqttElementSubscriber> getSubscribers() {
-		return FOption.getOrElse(m_subscribers, List.of());
-	}
-
-	@JsonProperty("subscribers")
-	public void setSubscribers(List<MqttElementSubscriber> subscribers) {
-		m_subscribers = subscribers;
+	private String m_mqttConfigName = "default";
+	private List<MqttElementSubscriber> m_subscribers = List.of();
+	
+	@Override
+	public String toString() {
+		return String.format("MqttEndpointConfig[mqttConfigName=%s, subscribers=%s]", m_mqttConfigName, m_subscribers);
 	}
 }

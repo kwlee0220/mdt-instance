@@ -106,7 +106,8 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
     public void start() throws EndpointException {
 		// 등록된 모든 메시지 핸들러에 대해 ElementLocation을 활성화한다.
     	FStream.from(m_handlers.values()).forEach(h -> h.initialize(m_faaast));
-		
+
+		s_logger.info("Starting service: {}", this);
     	m_ros2Client.startAsync();
     }
 

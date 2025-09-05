@@ -51,12 +51,14 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		m_faaast = new FaaastRuntime(serviceContext);
 		
 		try {
-			m_brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig(m_config.getMqttConfig());
+			m_brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig(m_config.getMqttConfigName());
 			
 			m_mqttService = new MqttService(m_brokerConfig.getBrokerUrl(), "MqttEndpoint");
 			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
 				m_mqttService.subscribe(sub.getTopic(), new MqttSubscriber(sub));
 			}
+			
+			s_logger.info("Initialized MqttEndpoint: {}", m_brokerConfig);
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);
@@ -79,7 +81,8 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		catch ( ConfigurationInitializationException e ) {
 			throw new EndpointException("Failed to activate element location, cause=" + e);
 		}
-    
+
+		s_logger.info("Starting service: {}", this);
     	m_mqttService.startAsync();
     }
 

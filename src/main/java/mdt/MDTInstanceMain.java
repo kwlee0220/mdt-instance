@@ -351,8 +351,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				instConf.setKeyStorePassword(keyStorePassword);
 			}
 			else {
-				throw new IllegalArgumentException(
-						"Keystore or key password not specified in the configuration");
+				throw new IllegalArgumentException("Keystore or key password not specified in the configuration");
 			}
 		}
 		CertificateConfig certConfig = CertificateConfig.builder()
@@ -392,21 +391,29 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			throw new IllegalArgumentException("Unknown instance type: " + m_type);
 		}
 		
-		FOption.accept(instConf.getMdtEndpoints(), conf -> {
-			FOption.accept(conf.getMqtt(), mqttConf -> {
+		// 추가의 service endpoint들의 설정 정보가 있으면 이를 추가한다.
+		// FA3ST의 endpoint 설정에 추가한다.
+		if ( instConf.getServiceEndpoints() != null ) {
+			// MQTT endpoint 설정 정보가 있으면 추가한다.
+			FOption.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
 				MqttEndpointConfig c = new MqttEndpointConfig();
-				c.setMqttConfig(mqttConf.getMqttConfig());
+				c.setMqttConfigName(mqttConf.getMqttConfigName());
 				c.setSubscribers(mqttConf.getSubscribers());
 				configs.add(c);
+				
+				getLogger().info("Register MQTT endpoint: {}", c);
 			});
-
-			FOption.accept(conf.getRos2(), rosConf -> {
+			
+			// ROS2 endpoint 설정 정보가 있으면 추가한다.
+			FOption.accept(instConf.getServiceEndpoints().getRos2(), rosConf -> {
 				Ros2EndpointConfig c = new Ros2EndpointConfig();
 				c.setConnectionConfig(rosConf.getConnectionConfig());
 				c.setMessages(rosConf.getMessages());
 				configs.add(c);
+				
+				getLogger().info("Register ROS2 endpoint: {}", c);
 			});
-		});
+		}
 		
 		return configs;
 	}
