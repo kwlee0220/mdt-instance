@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
+import mdt.model.AASUtils;
 import mdt.persistence.PersistenceStackConfig;
 
 /**
@@ -54,6 +55,11 @@ public class MDTInstanceConfig {
 	}
 	public void setManagerEndpoint(String endpoint) {
 		m_managerEndpoint = endpoint;
+	}
+	
+	public String getSubmodelEndpoint(String submodelId) {
+		String smIdEncoded = AASUtils.encodeBase64UrlSafe(submodelId);
+		return String.format("%s/submodels/%s", m_instanceEndpoint, smIdEncoded);
 	}
 	
 	public File getGlobalConfigFile() {

@@ -43,6 +43,7 @@ import mdt.config.AASOperationConfig.HttpOperationConfig;
 import mdt.config.AASOperationConfig.JavaOperationConfig;
 import mdt.config.AASOperationConfig.ProgramOperationConfig;
 import mdt.config.MDTInstanceConfig;
+import mdt.config.MDTServiceContext;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
@@ -204,45 +205,71 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		StringSubstitutor interpolator = StringSubstitutor.createInterpolator();
 		confJson = interpolator.replace(confJson);
     	
-        MDTInstanceConfig conf = JsonMapper.builder()
-											.findAndAddModules()
-											.addModule(new JavaTimeModule())
-											.build()
-											.readerFor(MDTInstanceConfig.class)
-											.readValue(confJson);
+        MDTInstanceConfig mdtInstanceConfig = JsonMapper.builder()
+														.findAndAddModules()
+														.addModule(new JavaTimeModule())
+														.build()
+														.readerFor(MDTInstanceConfig.class)
+														.readValue(confJson);
 		if ( m_id != null ) {
-			conf.setId(m_id);
+			mdtInstanceConfig.setId(m_id);
 		}
 		if ( m_instanceEndpoint != null ) {
-			conf.setInstanceEndpoint(m_instanceEndpoint);
+			mdtInstanceConfig.setInstanceEndpoint(m_instanceEndpoint);
 		}
 		else if ( System.getenv(ENV_MDT_INSTANCE_ENDPOINT) != null ) {
-			conf.setInstanceEndpoint(System.getenv(ENV_MDT_INSTANCE_ENDPOINT));
+			mdtInstanceConfig.setInstanceEndpoint(System.getenv(ENV_MDT_INSTANCE_ENDPOINT));
 		}
 		if ( m_managerEndpoint != null ) {
-			conf.setManagerEndpoint(m_managerEndpoint);
+			mdtInstanceConfig.setManagerEndpoint(m_managerEndpoint);
 		}
 		else if ( System.getenv(ENV_MDT_MANAGER_ENDPOINT) != null ) {
-			conf.setInstanceEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
+			mdtInstanceConfig.setInstanceEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
 		}
-		
+
+		//
+		// 다음과 같은 순서로 전역 설정 파일을 확인하여 사용한다.
+		// 1) 명령어 인자를 통해 지정된 전역 설정 파일 위치
+		// 2) 설정 파일에 지정된 전역 설정 파일 위치
+		// 3) 홈 디렉토리에 'mdt_global_config.json' 파일
+		// 4) 환경 변수에 설정된 전역 설정 파일 위치
+		// 5) 전역 설정 파일을 사용하지 않음.
+		//
 		if ( m_globalConfigFile != null ) {
+			// 명령어 인자를 통해 전역 설정 파일이 지정된 경우
+			getLogger().warn("Using GlobalConfigFile (from command-line argument : {}",
+							m_globalConfigFile.getAbsolutePath());
 			if ( !m_globalConfigFile.exists() ) {
 				String msg = String.format("GlobalConfig file does not exist: %s", m_globalConfigFile);
 				throw new InitializationException(msg);
 			}
-			conf.setGlobalConfigFile(m_globalConfigFile);
+			mdtInstanceConfig.setGlobalConfigFile(m_globalConfigFile);
+		}
+		else if ( mdtInstanceConfig.getGlobalConfigFile() != null ) {
+			getLogger().warn("Using GlobalConfigFile (from instance configuration file: {}",
+								mdtInstanceConfig.getGlobalConfigFile().getAbsolutePath());
+			if ( !mdtInstanceConfig.getGlobalConfigFile().exists() ) {
+				String msg = String.format("GlobalConfig file does not exist: %s", mdtInstanceConfig.getGlobalConfigFile());
+				throw new InitializationException(msg);
+			}
 		}
 		else {
-			String globalConfigFilePath = System.getenv(ENV_MDT_GLOBAL_CONFIG_FILE);
-			if ( globalConfigFilePath != null && new File(globalConfigFilePath).exists() ) {
-				conf.setGlobalConfigFile(new File(globalConfigFilePath));
-			}
-			else if ( conf.getGlobalConfigFile() == null ) {
-				File globalConfigFile = homeDir.resolve(DEFAULT_GLOBAL_CONFIG_FILE).toFile();
-				getLogger().warn("GlobalConfig file not specified, using default: {}",
+			File globalConfigFile = homeDir.resolve(DEFAULT_GLOBAL_CONFIG_FILE).toFile();
+			if ( globalConfigFile.exists() ) {
+				getLogger().info("Use GlobalConfigFile (from instance home-directory) : {}",
 									globalConfigFile.getAbsolutePath());
-				conf.setGlobalConfigFile(globalConfigFile);
+				mdtInstanceConfig.setGlobalConfigFile(globalConfigFile);
+			}
+			else {
+				String globalConfigFilePath = System.getenv(ENV_MDT_GLOBAL_CONFIG_FILE);
+				if ( globalConfigFilePath != null && new File(globalConfigFilePath).exists() ) {
+					getLogger().info("Using GlobalConfigFile (from environment-variable) : {}",
+										globalConfigFile.getAbsolutePath());
+					mdtInstanceConfig.setGlobalConfigFile(new File(globalConfigFilePath));
+				}
+				else {
+					getLogger().warn("GlobalConfigFile is not specified");
+				}
 			}
 		}
 		
@@ -251,33 +278,33 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				String msg = String.format("Keystore file does not exist: %s", m_keyStoreFile);
 				throw new InitializationException(msg);
 			}
-			conf.setKeyStoreFile(m_keyStoreFile);
+			mdtInstanceConfig.setKeyStoreFile(m_keyStoreFile);
 		}
 		else {
 			String keyStoreFilePath = System.getenv(ENV_MDT_KEY_STORE_FILE);
 			if ( keyStoreFilePath != null && new File(keyStoreFilePath).exists() ) {
-				conf.setKeyStoreFile(new File(keyStoreFilePath));
+				mdtInstanceConfig.setKeyStoreFile(new File(keyStoreFilePath));
 			}
-			else if ( conf.getKeyStoreFile() == null ) {
+			else if ( mdtInstanceConfig.getKeyStoreFile() == null ) {
 				File keyStoreFile = homeDir.resolve(DEFAULT_CERT_FILE).toFile();
 				getLogger().warn("Keystore file not specified, using default: {}", keyStoreFile.getAbsolutePath());
-				conf.setKeyStoreFile(keyStoreFile);
+				mdtInstanceConfig.setKeyStoreFile(keyStoreFile);
 			}
 		}
 		
 		configureLogging();
 		if ( getLogger().isInfoEnabled() ) {
 			getLogger().info("MDTInstance Configuration:");
-			getLogger().info("\tMDTInstance id: {}",  conf.getId());
+			getLogger().info("\tMDTInstance id: {}",  mdtInstanceConfig.getId());
 			getLogger().info("\tInitial model: " + m_initModel);
 			getLogger().info("\tConfiguration file: " + m_confFile);
-			getLogger().info("\tMDTInstance endpoint: {}", conf.getInstanceEndpoint());
-			getLogger().info("\tMDTManager endpoint: {}", conf.getManagerEndpoint());
-			getLogger().info("\tMDTGlobalConfig file: {}", conf.getGlobalConfigFile());
-			getLogger().info("\tKeyStore: {}", conf.getKeyStoreFile());
+			getLogger().info("\tMDTInstance endpoint: {}", mdtInstanceConfig.getInstanceEndpoint());
+			getLogger().info("\tMDTManager endpoint: {}", mdtInstanceConfig.getManagerEndpoint());
+			getLogger().info("\tMDTGlobalConfig file: {}", mdtInstanceConfig.getGlobalConfigFile());
+			getLogger().info("\tKeyStore: {}", mdtInstanceConfig.getKeyStoreFile());
 		}
 		
-		MDTGlobalConfigurations.setGlobalConfigFile(conf.getGlobalConfigFile());
+		MDTGlobalConfigurations.setGlobalConfigFile(mdtInstanceConfig.getGlobalConfigFile());
 		
 		// Initial model을 읽어서 MDTModelLookup를 생성한다.
     	loadMDTModelLookup(m_initModel.toFile());
@@ -285,7 +312,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		ImplementationManager.init();
 		ServiceConfig config = null;
 		try {
-			config = toServiceConfig(conf);
+			config = toServiceConfig(mdtInstanceConfig);
 		}
 		catch ( IOException e ) {
 			getLogger().error("Failed to load ServiceConfig, file={}, cause={}", m_confFile, ""+e);
@@ -296,11 +323,13 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		config = withEndpoints(config);
 //        config = withOverrides(config);
 //        validate(config);
-		runService(config);
+
+//		config = ServiceConfigAugmentor.augment(config, mdtInstanceConfig);
+		runService(config, mdtInstanceConfig);
 		
-		Map<String,String> parts = extractHostAndPort(conf.getInstanceEndpoint());
+		Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
 		if ( m_type == InstanceType.JAR ) {
-			System.out.println("[***MARKER***] MDTInstance started: " + conf.getInstanceEndpoint());
+			System.out.println("[***MARKER***] MDTInstance started: " + mdtInstanceConfig.getInstanceEndpoint());
 		}
 	}
 	
@@ -351,7 +380,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				instConf.setKeyStorePassword(keyStorePassword);
 			}
 			else {
-				throw new IllegalArgumentException("Keystore or key password not specified in the configuration");
+				throw new IllegalArgumentException("Password for keystore or key is not specified in the configuration");
 			}
 		}
 		CertificateConfig certConfig = CertificateConfig.builder()
@@ -559,9 +588,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
             throw new InitializationException("Adding endpoints to config failed", e);
         }
     }
-    private void runService(ServiceConfig config) {
+    private void runService(ServiceConfig config, MDTInstanceConfig instConf) {
 		try {
-			serviceRef.set(new Service(config));
+			serviceRef.set(new MDTServiceContext(config, instConf));
 			LOGGER.info("Starting FA³ST Service...");
 			LOGGER.debug("Using configuration file: ");
 			printConfig(config);

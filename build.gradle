@@ -48,6 +48,8 @@ dependencies {
 	// Lombok (from the project :utils)
 	compileOnly "org.projectlombok:lombok:${lombok_version}"
 	annotationProcessor "org.projectlombok:lombok:${lombok_version}"
+	
+//	implementation "net.bytebuddy:byte-buddy:${byte_buddy_version}"
 
 	// jackson json parser
 	implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jackson_version}"

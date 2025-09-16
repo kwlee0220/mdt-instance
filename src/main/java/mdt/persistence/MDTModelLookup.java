@@ -163,43 +163,44 @@ public class MDTModelLookup {
 		m_submodelsByIdShort = FStream.from(submodels)
 										.tagKey(Submodel::getIdShort)
 										.toMap();
+		
+		m_pathToParameterMap = HashBiMap.create();
+		m_parameterToPathMap = m_pathToParameterMap.inverse();
 		m_dataSubmodel = FStream.from(submodels)
 								.findFirst(SubmodelUtils::isDataSubmodel)
-								.getOrThrow(() -> new ResourceNotFoundException("Data Submodel"));
+								.getOrNull();
+		if ( m_dataSubmodel != null ) {
+			DefaultData data = new DefaultData();
+			data.updateFromAasModel(m_dataSubmodel);
+			DataInfo dataInfo = data.getDataInfo();
+			if ( dataInfo.isEquipment() ) {
+				FStream.from(dataInfo.getEquipment().getParameterValueList())
+						.zipWithIndex()
+						.forEach(idxed -> {
+	                        String path = String.format(EQ_FORMAT, idxed.index());
+	                        String paramId = idxed.value().getParameterId();
+	                        m_pathToParameterMap.put(path, paramId);
+	                    });
+			}
+			else if ( dataInfo.isOperation() ) {
+				FStream.from(dataInfo.getOperation().getParameterValueList())
+						.zipWithIndex()
+						.forEach(idxed -> {
+	                        String path = String.format(OP_FORMAT, idxed.index());
+	                        String paramId = idxed.value().getParameterId();
+	                        m_pathToParameterMap.put(path, paramId);
+	                    });
+			}
+			else {
+				String msg = String.format("DataInfo must have either Equipment or Operation");
+				throw new IllegalStateException("Invalid DataInfo: cause=" + msg);
+			}
+		}
 		
 		m_submodelIdToSubmodelIdShortMap = HashBiMap.create();
 		FStream.from(submodels)
 				.forEach(sm -> m_submodelIdToSubmodelIdShortMap.put(sm.getId(), sm.getIdShort()));
 		m_submodelIdShortToSubmodelIdMap = m_submodelIdToSubmodelIdShortMap.inverse();
-		
-		m_pathToParameterMap = HashBiMap.create();
-		m_parameterToPathMap = m_pathToParameterMap.inverse();
-		
-		DefaultData data = new DefaultData();
-		data.updateFromAasModel(m_dataSubmodel);
-		DataInfo dataInfo = data.getDataInfo();
-		if ( dataInfo.isEquipment() ) {
-			FStream.from(dataInfo.getEquipment().getParameterValueList())
-					.zipWithIndex()
-					.forEach(idxed -> {
-                        String path = String.format(EQ_FORMAT, idxed.index());
-                        String paramId = idxed.value().getParameterId();
-                        m_pathToParameterMap.put(path, paramId);
-                    });
-		}
-		else if ( dataInfo.isOperation() ) {
-			FStream.from(dataInfo.getOperation().getParameterValueList())
-					.zipWithIndex()
-					.forEach(idxed -> {
-                        String path = String.format(OP_FORMAT, idxed.index());
-                        String paramId = idxed.value().getParameterId();
-                        m_pathToParameterMap.put(path, paramId);
-                    });
-		}
-		else {
-			String msg = String.format("DataInfo must have either Equipment or Operation");
-			throw new IllegalStateException("Invalid DataInfo: cause=" + msg);
-		}
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })

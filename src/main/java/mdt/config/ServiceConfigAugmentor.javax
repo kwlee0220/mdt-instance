@@ -1,0 +1,84 @@
+package mdt.config;
+
+import java.lang.reflect.Constructor;
+
+import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
+/**
+ *
+ * @author Kang-Woo Lee (ETRI)
+ */
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.implementation.FieldAccessor;
+import net.bytebuddy.implementation.MethodCall;
+
+public class ServiceConfigAugmentor {
+	/**
+	 * 사용 예:
+	 * - 동적 클래스를 만들고
+	 * - MDTInstanceConfig를 주입하여 인스턴스를 만든 뒤
+	 * - 기존 ServiceConfig 상태를 복사
+	 */
+	public static ServiceConfig augment(ServiceConfig original, MDTInstanceConfig instanceCfg) {
+		try {
+			Class<? extends ServiceConfig> clazz = generateSubclass();
+			Constructor<? extends ServiceConfig> ctor = clazz.getConstructor(MDTInstanceConfig.class);
+			ServiceConfig augmented = ctor.newInstance(instanceCfg);
+
+			// 기존 상태 복사
+			copyState(original, augmented);
+
+			return augmented;
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to create augmented instance", e);
+		}
+	}
+	
+	/**
+	 * ServiceConfig를 상속하고 MDTServiceConfig를 구현하는 런타임 클래스를 생성합니다. - private
+	 * MDTInstanceConfig m_instConfig 필드 정의 - public MDTInstanceConfig
+	 * getInstanceConfig() 메서드 구현 - public 생성자(MDTInstanceConfig) 추가 및 super() 호출 후
+	 * 필드 주입
+	 */
+	public static Class<? extends ServiceConfig> generateSubclass() {
+		try {
+			return new ByteBuddy()
+					.subclass(ServiceConfig.class)
+					.name("mdt.config.MDTServiceConfigImpl")
+					.implement(MDTServiceConfig.class)
+
+					// 1) 필드 추가: private MDTInstanceConfig m_instConfig;
+					.defineField("m_instConfig", MDTInstanceConfig.class, Visibility.PRIVATE)
+
+					// 2) 인터페이스 메서드 구현: public MDTInstanceConfig getInstanceConfig()
+					.defineMethod("getInstanceConfig", MDTInstanceConfig.class, Visibility.PUBLIC)
+					.intercept(FieldAccessor.ofField("m_instConfig"))
+
+					// 3) 생성자 추가: public <init>(MDTInstanceConfig cfg) { super();
+					// this.m_instConfig = cfg; }
+					.defineConstructor(Visibility.PUBLIC).withParameters(MDTInstanceConfig.class)
+					.intercept(MethodCall.invoke(ServiceConfig.class.getDeclaredConstructor()) // super()
+							.andThen(FieldAccessor.ofField("m_instConfig").setsArgumentAt(0)))
+
+					.make()
+					// 일반적으로 WRAPPER로 충분합니다. 같은 로더에 주입하려면 INJECTION 고려
+					.load(ServiceConfig.class.getClassLoader(), ClassLoadingStrategy.Default.WRAPPER).getLoaded();
+		}
+		catch ( Exception e ) {
+			throw new RuntimeException("Failed to generate subclass", e);
+		}
+	}
+
+	/**
+	 * 기존 ServiceConfig 상태를 새 인스턴스에 복사합니다. 필요 시 BeanCopier/MapStruct 등을 써도 됩니다.
+	 */
+	private static void copyState(ServiceConfig from, ServiceConfig to) {
+		to.setCore(from.getCore());
+		to.setAssetConnections(from.getAssetConnections());
+		to.setEndpoints(from.getEndpoints());
+		to.setFileStorage(from.getFileStorage());
+		to.setMessageBus(from.getMessageBus());
+		to.setPersistence(from.getPersistence());
+	}
+ }
