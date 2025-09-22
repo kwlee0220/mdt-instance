@@ -24,6 +24,7 @@ import mdt.persistence.timeseries.TimeSeriesSubmodelConfig;
 @Accessors(prefix="m_")
 public class MDTInstanceConfig {
 	private String m_id;
+	private Integer m_port;
 	private String m_instanceEndpoint;
 	private String m_managerEndpoint;
 	

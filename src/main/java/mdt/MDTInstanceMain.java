@@ -125,6 +125,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				description="attach type: ${COMPLETION-CANDIDATES}")
 	private InstanceType m_type;
 	
+	@Option(names={"--port", "-p"}, paramLabel="number", description="port number for MDTInstance")
+	private Integer m_port;
+	
 	@Option(names={"--instanceEndpoint"}, paramLabel="endpoint", description="endpoint to this MDTInstance")
 	private String m_instanceEndpoint;
 	
@@ -212,18 +215,34 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		if ( m_id != null ) {
 			mdtInstanceConfig.setId(m_id);
 		}
+		Preconditions.checkArgument(mdtInstanceConfig.getId() != null, "MDTInstance id not specified");
+		
+		 // command-line 인자로 port가 지정된 경우 설정 파일의 port 설정을 override한다.
+		
 		if ( m_instanceEndpoint != null ) {
 			mdtInstanceConfig.setInstanceEndpoint(m_instanceEndpoint);
 		}
 		else if ( System.getenv(ENV_MDT_INSTANCE_ENDPOINT) != null ) {
 			mdtInstanceConfig.setInstanceEndpoint(System.getenv(ENV_MDT_INSTANCE_ENDPOINT));
 		}
+		if ( (m_port != null || mdtInstanceConfig.getPort() != null)
+			&& mdtInstanceConfig.getInstanceEndpoint() == null ) {
+			String host = (System.getenv("LOCAL_HOST") != null) ? System.getenv("LOCAL_HOST") : "localhost";
+			int port = (m_port != null) ? m_port : mdtInstanceConfig.getPort();
+			String endpoint = String.format("https://%s:%d/api/v3.0", host, port);
+			mdtInstanceConfig.setInstanceEndpoint(endpoint);
+		}
+		Preconditions.checkArgument(mdtInstanceConfig.getInstanceEndpoint() != null,
+									"MDTInstance instanceEndpoint not specified");
+		
 		if ( m_managerEndpoint != null ) {
 			mdtInstanceConfig.setManagerEndpoint(m_managerEndpoint);
 		}
 		else if ( System.getenv(ENV_MDT_MANAGER_ENDPOINT) != null ) {
 			mdtInstanceConfig.setManagerEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
 		}
+		Preconditions.checkArgument(mdtInstanceConfig.getManagerEndpoint() != null,
+									"MDTInstance managerEndpoint not specified");
 
 		//
 		// 다음과 같은 순서로 전역 설정 파일을 확인하여 사용한다.
