@@ -11,10 +11,9 @@ import utils.Throwables;
 
 import mdt.ElementLocation;
 import mdt.FaaastRuntime;
-import mdt.MDTGlobalConfigurations;
 import mdt.client.support.MqttService;
 import mdt.persistence.MDTModelLookup;
-import mdt.persistence.mqtt.MqttBrokerConnectionConfig;
+import mdt.persistence.mqtt.MqttBrokerConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
@@ -26,6 +25,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValue;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValueParser;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.typing.TypeInfo;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
 
@@ -38,7 +38,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 
 	private FaaastRuntime m_faaast;
 	private MqttEndpointConfig m_config;
-	private MqttBrokerConnectionConfig m_brokerConfig;
+	private MqttBrokerConfig m_brokerConfig;
 	private MqttService m_mqttService;
 	
 	private final HttpJsonApiDeserializer m_apiDeserializer = new HttpJsonApiDeserializer();
@@ -51,7 +51,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		m_faaast = new FaaastRuntime(serviceContext);
 		
 		try {
-			m_brokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig(m_config.getMqttConfigName());
+			m_brokerConfig = m_config.getMqttBrokerConfig();
 			
 			m_mqttService = new MqttService(m_brokerConfig.getBrokerUrl(), "MqttEndpoint");
 			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
@@ -59,6 +59,9 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 			}
 			
 			s_logger.info("Initialized MqttEndpoint: {}", m_brokerConfig);
+		}
+		catch ( InitializationException e ) {
+			throw e;
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);

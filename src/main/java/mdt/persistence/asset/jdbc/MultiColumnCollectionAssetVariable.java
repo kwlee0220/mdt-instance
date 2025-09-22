@@ -49,8 +49,13 @@ public class MultiColumnCollectionAssetVariable
 	}
 
 	@Override
-	public boolean isUpdateable() {
-		return true;
+	public boolean isReadable() {
+		return getConfig().isReadable();
+	}
+
+	@Override
+	public boolean isUpdatable() {
+		return getConfig().isUpdatable();
 	}
 
 	// 레코드가 없는 경우 반복해서 경고를 출력하지 않도록 flag를 정의함

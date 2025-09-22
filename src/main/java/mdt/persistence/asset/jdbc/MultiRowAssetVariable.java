@@ -43,7 +43,12 @@ public class MultiRowAssetVariable extends AbstractJdbcAssetVariable<MultiRowAss
 	}
 
 	@Override
-	public boolean isUpdateable() {
+	public boolean isReadable() {
+		return getConfig().getReadQuery() != null;
+	}
+
+	@Override
+	public boolean isUpdatable() {
         return getConfig().getUpdateQuery() != null;
     }
 

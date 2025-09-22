@@ -8,6 +8,7 @@ import javax.annotation.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import utils.func.FOption;
 import utils.json.JacksonUtils;
 
 import mdt.ElementLocation;
@@ -22,9 +23,11 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:opcua:simple";
 	private static final String FIELD_NODE_PATH = "nodePath";
+	private static final String FIELD_READABLE = "readable";
 	
 //	private String m_serverEndpoint;
 	private String m_nodePath;
+	private Boolean m_readable = null;
 	
 	private OpcUaAssetVariableConfig() { }
 	public OpcUaAssetVariableConfig(ElementLocation elementLoc, @Nullable Duration validPeriod,
@@ -40,11 +43,16 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		return SERIALIZATION_TYPE;
 	}
 	
+	public boolean isReadable() {
+		return m_readable == null || m_readable;
+	}
+	
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
 //		gen.writeStringField("serverEndpoint", m_serverEndpoint);
 		gen.writeStringField("nodePath", m_nodePath);
+		FOption.acceptOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_NODE_PATH, f));
 	}
 	
 	/**
@@ -61,6 +69,7 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		
 //		config.m_serverEndpoint = JacksonUtils.getStringField(jnode, FIELD_SERVER_ENDPOINT);
 		config.m_nodePath = JacksonUtils.getStringField(jnode, FIELD_NODE_PATH);
+		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
 		
 		return config;
 	}

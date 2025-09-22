@@ -1,6 +1,5 @@
 package mdt.endpoint.audit;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 
@@ -64,14 +63,8 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 		m_insertSql = String.format("insert into %s(%s,%s) values (?, %s)",
 									config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
 		
-		try {
-			JdbcConfiguration jdbcConfig = MDTGlobalConfigurations.getJdbcConnectionConfig(m_config.getJdbcConfig());
-			m_jdbc = JdbcProcessor.create(jdbcConfig);
-			
-		}
-		catch ( IOException e ) {
-			throw new ConfigurationInitializationException("Failed to find JdbcConfiguration, cause=" + e);
-		}
+		JdbcConfiguration jdbcConfig = MDTGlobalConfigurations.getJdbcConfig(m_config.getJdbcConfig());
+		m_jdbc = JdbcProcessor.create(jdbcConfig);
 	}
 
 	@Override

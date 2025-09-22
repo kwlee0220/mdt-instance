@@ -35,7 +35,7 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 		super(config);
 		
 		try {
-			m_opcuaConnConfig = MDTGlobalConfigurations.getOpcUaConnectionConfig("default");
+			m_opcuaConnConfig = MDTGlobalConfigurations.getOpcUaConfig("default");
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);
@@ -55,7 +55,7 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 	}
 
 	@Override
-	public boolean isUpdateable() {
+	public boolean isUpdatable() {
         return false;
     }
 

@@ -22,8 +22,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -49,8 +47,11 @@ import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
 import mdt.endpoint.ros2.Ros2EndpointConfig;
 import mdt.model.MDTModelSerDe;
+import mdt.persistence.ConcurrentPersistenceConfig;
 import mdt.persistence.MDTModelLookup;
-import mdt.persistence.PersistenceStackConfig;
+import mdt.persistence.MDTPersistenceStackConfig;
+import mdt.persistence.asset.AssertVariableBasedPersistenceConfig;
+import mdt.persistence.timeseries.TimeSeriesPersistenceStackConfig;
 
 import ch.qos.logback.classic.Level;
 import de.fraunhofer.iosb.ilt.faaast.service.Service;
@@ -96,7 +97,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
     private static final String DEFAULT_GLOBAL_CONFIG_FILE = "mdt_global_config.json";
     private static final String DEFAULT_CERT_FILE = "mdt_cert.p12";
     private static final String ENV_MDT_INSTANCE_ENDPOINT = "MDT_INSTANCE_ENDPOINT";
-    private static final String ENV_MDT_MANAGER_ENDPOINT = "MDT_MANAGER_ENDPOINT";
+    private static final String ENV_MDT_MANAGER_ENDPOINT = "MDT_ENDPOINT";
     private static final String ENV_MDT_GLOBAL_CONFIG_FILE = "MDT_GLOBAL_CONFIG_FILE";
     private static final String ENV_MDT_KEY_STORE_FILE = "MDT_KEY_STORE_FILE";
     private static final String ENV_MDT_KEY_STORE_PASSWORD = "MDT_KEY_STORE_PASSWORD";
@@ -205,12 +206,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		StringSubstitutor interpolator = StringSubstitutor.createInterpolator();
 		confJson = interpolator.replace(confJson);
     	
-        MDTInstanceConfig mdtInstanceConfig = JsonMapper.builder()
-														.findAndAddModules()
-														.addModule(new JavaTimeModule())
-														.build()
-														.readerFor(MDTInstanceConfig.class)
-														.readValue(confJson);
+        MDTInstanceConfig mdtInstanceConfig = MDTModelSerDe.MAPPER
+															.readerFor(MDTInstanceConfig.class)
+															.readValue(confJson);
 		if ( m_id != null ) {
 			mdtInstanceConfig.setId(m_id);
 		}
@@ -224,7 +222,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			mdtInstanceConfig.setManagerEndpoint(m_managerEndpoint);
 		}
 		else if ( System.getenv(ENV_MDT_MANAGER_ENDPOINT) != null ) {
-			mdtInstanceConfig.setInstanceEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
+			mdtInstanceConfig.setManagerEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
 		}
 
 		//
@@ -289,6 +287,13 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				File keyStoreFile = homeDir.resolve(DEFAULT_CERT_FILE).toFile();
 				getLogger().warn("Keystore file not specified, using default: {}", keyStoreFile.getAbsolutePath());
 				mdtInstanceConfig.setKeyStoreFile(keyStoreFile);
+			}
+		}
+		
+		if ( mdtInstanceConfig.getKeyStorePassword() == null ) {
+			String keyStorePassword = System.getenv(ENV_MDT_KEY_STORE_PASSWORD);
+			if ( keyStorePassword != null ) {
+				mdtInstanceConfig.setKeyStorePassword(keyStorePassword);
 			}
 		}
 		
@@ -425,12 +430,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		if ( instConf.getServiceEndpoints() != null ) {
 			// MQTT endpoint 설정 정보가 있으면 추가한다.
 			FOption.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
-				MqttEndpointConfig c = new MqttEndpointConfig();
-				c.setMqttConfigName(mqttConf.getMqttConfigName());
-				c.setSubscribers(mqttConf.getSubscribers());
-				configs.add(c);
-				
-				getLogger().info("Register MQTT endpoint: {}", c);
+				configs.add(new MqttEndpointConfig(mqttConf));
+				getLogger().info("Register MQTT endpoint: {}", mqttConf);
 			});
 			
 			// ROS2 endpoint 설정 정보가 있으면 추가한다.
@@ -448,13 +449,29 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	}
 	
 	private PersistenceConfig<?> loadPersistenceConfig(MDTInstanceConfig instConf) {
-		PersistenceConfig topConfig = PersistenceInMemoryConfig.builder()
+		PersistenceConfig<?> topConfig = PersistenceInMemoryConfig.builder()
 																.initialModelFile(m_initModel.toFile())
 																.build();
+		
+		if ( !instConf.getAssetVariables().isEmpty() ) {
+			AssertVariableBasedPersistenceConfig.Core assetConfig = new AssertVariableBasedPersistenceConfig.Core();
+			assetConfig.setAssetVariableConfigs(instConf.getAssetVariables());
+			topConfig = new AssertVariableBasedPersistenceConfig(assetConfig, topConfig);
+		}
+		if ( !instConf.getTimeSeriesSubmodels().isEmpty() ) {
+			TimeSeriesPersistenceStackConfig.Core tsConfig = new TimeSeriesPersistenceStackConfig.Core();
+			tsConfig.setTimeSeriesSubmodels(instConf.getTimeSeriesSubmodels());
+			topConfig = new TimeSeriesPersistenceStackConfig(tsConfig, topConfig);
+		}
+		
 		for ( int i = instConf.getPersistenceStacks().size() - 1; i >= 0; --i ) {
-			PersistenceStackConfig<?> stackConfig = instConf.getPersistenceStacks().get(i);
-			stackConfig.setBasePersistenceConfig(topConfig);
-			topConfig = stackConfig;
+			MDTPersistenceStackConfig stackConfig = instConf.getPersistenceStacks().get(i);
+			if ( stackConfig instanceof ConcurrentPersistenceConfig.Core ccConfig ) {
+				topConfig = new ConcurrentPersistenceConfig(ccConfig, topConfig);
+			}
+			else {
+				throw new IllegalArgumentException("Unknown persistence stack config: " + stackConfig);
+			}
 		}
 		
 		return topConfig;

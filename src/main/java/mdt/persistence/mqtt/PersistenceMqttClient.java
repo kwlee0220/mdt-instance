@@ -24,15 +24,13 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
 public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTInstanceStatusSubscriber.class);
 
-//	private final MqttPublishingPersistence m_mqttPublishingPersistence;
-	private final MqttBrokerConnectionConfig  m_brokerConfig;
+	private final MqttBrokerConfig  m_brokerConfig;
 	private final int m_qos;
 	
-	PersistenceMqttClient(MqttPublishingPersistence persistence, MqttBrokerConnectionConfig brokerConfig)
+	PersistenceMqttClient(MqttPublishingPersistence persistence, MqttBrokerConfig brokerConfig)
 		throws ConfigurationInitializationException {
-		super(brokerConfig.getBrokerUrl(), null, brokerConfig.getReconnectTryInterval());
+		super(brokerConfig.getBrokerUrl(), null, brokerConfig.getReconnectInterval());
 		
-//		m_mqttPublishingPersistence = persistence;
 		m_brokerConfig = brokerConfig;
 		m_qos = 0;
 		setLogger(s_logger);
@@ -40,7 +38,7 @@ public class PersistenceMqttClient extends AutoReconnectingMqttClient {
 	
 	public void publishMessage(String topic, ElementValue value) {
 		try {
-			MqttClient client = waitMqttClient(m_brokerConfig.getPublishTimeout());
+			MqttClient client = waitMqttClient(m_brokerConfig.getConnectTimeoutDuration());
 			
 			// value-string이 null인 경우는 빈 문자열로 대체한다.
 			String jsonStr = FOption.getOrElse(value.toValueJsonString(), "");

@@ -24,8 +24,10 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:opcua:list";
 	private static final String FIELD_IDENTIFIERS = "identifiers";
+	private static final String FIELD_READABLE = "readable";
 	
 	private List<Integer> m_identifiers;
+	private Boolean m_readable = null;
 	
 	private OpcUaListAssetVariableConfig() { }
 	public OpcUaListAssetVariableConfig(ElementLocation elementLoc, @Nullable Duration validPeriod,
@@ -38,6 +40,10 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 	@Override
 	public String getSerializationType() {
 		return SERIALIZATION_TYPE;
+	}
+	
+	public boolean isReadable() {
+		return m_readable == null || m_readable;
 	}
 	
 	public List<Integer> getIdentifierAll() {
@@ -66,7 +72,8 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 	public static OpcUaListAssetVariableConfig deserializeFields(JsonNode jnode) {
 		OpcUaListAssetVariableConfig config = new OpcUaListAssetVariableConfig();
 		config.loadFields(jnode);
-		
+
+		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
 		config.m_identifiers = FStream.from(JacksonUtils.getArrayFieldOrNull(jnode, FIELD_IDENTIFIERS))
 										.map(JsonNode::asInt)
 										.toList();

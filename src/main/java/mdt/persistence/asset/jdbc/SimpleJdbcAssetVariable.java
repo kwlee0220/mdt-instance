@@ -31,7 +31,12 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 	}
 
 	@Override
-	public boolean isUpdateable() {
+	public boolean isReadable() {
+		return getConfig().getReadQuery() != null;
+	}
+
+	@Override
+	public boolean isUpdatable() {
         return getConfig().getUpdateQuery() != null;
     }
 

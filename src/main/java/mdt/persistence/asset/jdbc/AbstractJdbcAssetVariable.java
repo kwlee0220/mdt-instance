@@ -13,8 +13,6 @@ import utils.async.Guard;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 
-import mdt.MDTGlobalConfigurations;
-import mdt.persistence.MDTPersistenceException;
 import mdt.persistence.asset.AbstractAssetVariable;
 import mdt.persistence.asset.AssetVariable;
 import mdt.persistence.asset.AssetVariableException;
@@ -43,24 +41,14 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 	public AbstractJdbcAssetVariable(T config) {
 		super(config);
 		setLogger(LoggerFactory.getLogger(getClass()));
-		
-		if ( config.getJdbcConfig() != null ) {
-			try {
-				JdbcConfiguration jdbcConf = MDTGlobalConfigurations.getJdbcConnectionConfig(config.getJdbcConfig());
-				m_jdbc = JdbcProcessor.create(jdbcConf);
-			}
-			catch ( Exception e ) {
-				String msg = String.format("Failed to initialize %s", this);
-				throw new MDTPersistenceException(msg, e);
-			}
-		}
-		else {
-			m_jdbc = null;
-		}
+
+		JdbcConfiguration jdbcConf = config.getJdbcConfig();
+		m_jdbc = JdbcProcessor.create(jdbcConf);
 	}
 
 	@Override
 	public SubmodelElement read() {
+		Preconditions.checkState(isReadable(), "This AssetVariable is not readable");
 		assertJdbcProcessor();
 		
 		// 'm_prototype' 값을 공유하여 동시성 문제를 방지하기 위해 Guard를 사용한다.
@@ -88,7 +76,7 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 
 	@Override
 	public void update(SubmodelElement sme) {
-		if ( !isUpdateable() ) {
+		if ( !isUpdatable() ) {
 			throw new AssetVariableException("This AssetVariable is not updateable");
 		}
 		

@@ -27,7 +27,6 @@ import mdt.client.operation.HttpSimulationClient;
 import mdt.client.operation.OperationStatus;
 import mdt.client.operation.OperationStatusResponse;
 import mdt.config.MDTInstanceConfig;
-import mdt.config.MDTServiceConfig;
 import mdt.config.MDTServiceContext;
 import mdt.model.ResourceNotFoundException;
 import mdt.model.sm.SubmodelUtils;

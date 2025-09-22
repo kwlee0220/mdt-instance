@@ -1,6 +1,8 @@
 package mdt;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
@@ -35,9 +37,14 @@ import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
 public class FaaastRuntime {
 	private final ServiceContext m_service;
 	private final Lazy<List<Submodel>> m_submodels = Lazy.of(() -> loadSubmodels());
+	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4);
 	
 	public FaaastRuntime(ServiceContext service) {
 		m_service = service;
+	}
+	
+	public static ExecutorService getExecutor() {
+		return EXECUTOR;
 	}
 	
 	public ServiceContext getServiceContext() {

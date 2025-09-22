@@ -67,7 +67,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
-		
+
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
 		FOption.acceptOrThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
 		
@@ -81,7 +81,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		gen.writeEndArray();
 	}
 
-	public static MultiRowAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static MultiRowAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		MultiRowAssetVariableConfig config = new MultiRowAssetVariableConfig();
 		config.loadFields(jnode);
 		

@@ -29,6 +29,11 @@ public class OpcUaListAssetVariable extends AbstractOpcUaAssetVariable<OpcUaList
 	}
 
 	@Override
+	public boolean isReadable() {
+		return getConfig().isReadable();
+	}
+
+	@Override
 	public SubmodelElement read() throws AssetVariableException {
 		SubmodelElementList sml = (SubmodelElementList)m_prototype;
 		FStream.from(m_config.getIdentifierAll())

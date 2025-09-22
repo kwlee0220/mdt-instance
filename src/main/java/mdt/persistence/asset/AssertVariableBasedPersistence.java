@@ -91,6 +91,10 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		
 		SubmodelElement baseSme = null;
 		for ( AssetVariable var : m_assetVariables ) {
+			if ( !var.isReadable() ) {
+				continue;
+			}
+			
 			ElementLocation varLoc = var.getElementLocation();
 			
 			// SubmodelIdShort이 다른 경우는 제외시킨다.
@@ -144,6 +148,10 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		String elementPath = identifier.getIdShortPath().toString();
 		
 		for ( AssetVariable var : m_assetVariables ) {
+			if ( !var.isUpdatable() ) {
+				continue;
+			}
+			
 			ElementLocation varLoc = var.getElementLocation();
 			
 			// SubmodelIdShort이 다른 경우는 제외시킨다.
@@ -187,7 +195,7 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	public Submodel getSubmodel(String id, QueryModifier modifier) throws ResourceNotFoundException {
 		Submodel submodel = getBasePersistence().getSubmodel(id, modifier);
 		FStream.from(m_assetVariables)
-                .filter(var -> id.equals(var.getElementLocation().getSubmodelId()))
+                .filter(var -> var.isReadable() && id.equals(var.getElementLocation().getSubmodelId()))
                 .forEach(var -> {
                 	String elementPath = var.getElementLocation().getElementPath();
                 	SubmodelElement buffer = SubmodelUtils.traverse(submodel, elementPath);

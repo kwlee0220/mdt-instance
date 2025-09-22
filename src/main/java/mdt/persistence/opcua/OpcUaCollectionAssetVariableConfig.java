@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import utils.json.JacksonUtils;
 import utils.stream.FStream;
 
 import mdt.ElementLocation;
@@ -23,8 +24,10 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:opcua:collection";
 	private static final String FIELD_MAPPINGS = "mappings";
+	private static final String FIELD_READABLE = "readable";
 	
 	private String m_folder;
+	private Boolean m_readable = null;
 	private List<SubPathToOpcUaId> m_mappings;	// subpath -> opcua identifier mapping
 	
 	public static record SubPathToOpcUaId(String subPath, int opcuaId) { }
@@ -40,6 +43,10 @@ public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableCon
 	@Override
 	public String getSerializationType() {
 		return SERIALIZATION_TYPE;
+	}
+	
+	public boolean isReadable() {
+		return m_readable == null || m_readable;
 	}
 	
 	public String getFolder() {
@@ -72,7 +79,8 @@ public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableCon
 	public static OpcUaCollectionAssetVariableConfig deserializeFields(JsonNode jnode) {
 		OpcUaCollectionAssetVariableConfig config = new OpcUaCollectionAssetVariableConfig();
 		config.loadFields(jnode);
-		
+
+		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
 		config.m_mappings = FStream.from(jnode.get(FIELD_MAPPINGS).fields())
 									.map(ent -> {
 										String subPath = ent.getKey();

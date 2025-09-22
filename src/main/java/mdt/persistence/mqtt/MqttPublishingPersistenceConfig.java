@@ -1,16 +1,13 @@
 package mdt.persistence.mqtt;
 
-import java.io.IOException;
 import java.util.List;
 
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 
-import utils.stream.FStream;
-
+import mdt.persistence.MDTPersistenceStackConfig;
 import mdt.persistence.PersistenceStackConfig;
+
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
 
 
 /**
@@ -18,40 +15,28 @@ import mdt.persistence.PersistenceStackConfig;
  * @author Kang-Woo Lee (ETRI)
  */
 public class MqttPublishingPersistenceConfig extends PersistenceStackConfig<MqttPublishingPersistence> {
-	private List<MqttElementPublisher> m_publishers;
-//	private @Nullable List<MqttElementSubscriber> m_subscribers;
+	private final Core m_config;
+	
+	public MqttPublishingPersistenceConfig(Core config, PersistenceConfig<?> baseConfig) {
+		super(baseConfig);
+		
+		m_config = config;
+	}
 
 	public List<MqttElementPublisher> getPublishers() {
-		return m_publishers;
+		return m_config.getPublishers();
 	}
-	
-	public void setPublishers(List<MqttElementPublisher> publishers) {
-		m_publishers = publishers;
-	}
-	
-//	public List<MqttElementSubscriber> getSubscribers() {
-//		return FOption.getOrElse(m_subscribers, List.of());
-//	}
-//	
-//	public void setSubscribers(List<MqttElementSubscriber> subscribers) {
-//		m_subscribers = subscribers;
-//	}
 
-	@Override
-	protected void serializeFields(JsonGenerator gen) throws IOException {
-		gen.writeArrayFieldStart("publishers");
-		for ( MqttElementPublisher pubConf: m_publishers ) {
-			gen.writeObject(pubConf);
+	@JsonIncludeProperties({"publishers"})
+	public static class Core implements MDTPersistenceStackConfig {
+		private List<MqttElementPublisher> m_publishers = List.of();
+	
+		public List<MqttElementPublisher> getPublishers() {
+			return m_publishers;
 		}
-		gen.writeEndArray();
-	}
-
-	@Override
-	protected void deserializeFields(JsonNode jnode) throws JacksonException {
-		ObjectMapper mapper = new ObjectMapper();
-		m_publishers = FStream.from(jnode.get("publishers").elements())
-								.mapOrThrow(varConfNode -> mapper.treeToValue(varConfNode,
-																			MqttElementPublisher.class))
-								.toList();
+		
+		public void setPublishers(List<MqttElementPublisher> publishers) {
+			m_publishers = publishers;
+		}
 	}
 }

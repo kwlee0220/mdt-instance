@@ -48,7 +48,12 @@ public class OpcUaAssetVariable extends AbstractAssetVariable<OpcUaAssetVariable
 	}
 
 	@Override
-	public boolean isUpdateable() {
+	public boolean isReadable() {
+		return getConfig().isReadable();
+	}
+
+	@Override
+	public boolean isUpdatable() {
         return false;
     }
 

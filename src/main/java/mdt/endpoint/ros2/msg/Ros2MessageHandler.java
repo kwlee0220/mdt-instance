@@ -2,7 +2,8 @@ package mdt.endpoint.ros2.msg;
 
 import java.io.IOException;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import mdt.FaaastRuntime;
 
@@ -11,11 +12,12 @@ import mdt.FaaastRuntime;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-//@JsonSerialize(using = Ros2MessageHandlers.Serializer.class)
-@JsonDeserialize(using = Ros2MessageHandlers.Deserializer.class)
+@JsonTypeInfo(use=JsonTypeInfo.Id.NAME, include=JsonTypeInfo.As.PROPERTY, property="messageType")
+@JsonSubTypes({
+	@JsonSubTypes.Type(value=JointStateMessageHandler.class, name="joint_states"),
+})
 public interface Ros2MessageHandler<T extends Ros2Message> {
 	public String getTopic();
-	public String getMessageType();
 	
 	public Ros2Message readMessage(String message) throws IOException;
 	

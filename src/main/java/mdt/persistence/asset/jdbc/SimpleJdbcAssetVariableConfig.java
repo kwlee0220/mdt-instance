@@ -64,8 +64,9 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link SimpleJdbcAssetVariableConfig} 객체.
+	 * @throws IOException 
 	 */
-	public static SimpleJdbcAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static SimpleJdbcAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		SimpleJdbcAssetVariableConfig config = new SimpleJdbcAssetVariableConfig();
 		config.loadFields(jnode);
 		

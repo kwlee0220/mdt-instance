@@ -30,6 +30,11 @@ public class OpcUaCollectionAssetVariable extends AbstractOpcUaAssetVariable<Opc
 	}
 
 	@Override
+	public boolean isReadable() {
+		return getConfig().isReadable();
+	}
+
+	@Override
 	public SubmodelElement read() throws AssetVariableException {
 		// subpath -> opcua identifier mapping
 		SubmodelElementCollection smc = (SubmodelElementCollection)m_prototype;

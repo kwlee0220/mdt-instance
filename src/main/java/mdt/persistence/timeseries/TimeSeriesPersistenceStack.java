@@ -39,19 +39,19 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class TimeSeriesPersistence extends PersistenceStack<TimeSeriesPersistenceConfig> {
-	private static final Logger s_logger = LoggerFactory.getLogger(TimeSeriesPersistence.class);
+public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersistenceStackConfig> {
+	private static final Logger s_logger = LoggerFactory.getLogger(TimeSeriesPersistenceStack.class);
 	
-	private TimeSeriesPersistenceConfig m_config;
+	private TimeSeriesPersistenceStackConfig m_config;
 	private Map<String,TimeSeriesSubmodelConfig> m_tsSubmodelConfigs;
 	private Map<String,Submodel> m_rawTimeSeriesSubmodels;
 	
-	public TimeSeriesPersistence() {
+	public TimeSeriesPersistenceStack() {
 		setLogger(s_logger);
 	}
 
 	@Override
-	public void init(CoreConfig coreConfig, TimeSeriesPersistenceConfig config, ServiceContext serviceContext)
+	public void init(CoreConfig coreConfig, TimeSeriesPersistenceStackConfig config, ServiceContext serviceContext)
 		throws ConfigurationInitializationException {
 		super.init(coreConfig, config, serviceContext);
 		
@@ -66,7 +66,7 @@ public class TimeSeriesPersistence extends PersistenceStack<TimeSeriesPersistenc
 	}
 
 	@Override
-	public TimeSeriesPersistenceConfig asConfig() {
+	public TimeSeriesPersistenceStackConfig asConfig() {
 		return m_config;
 	}
 

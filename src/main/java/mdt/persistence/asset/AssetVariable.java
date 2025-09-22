@@ -15,7 +15,7 @@ import mdt.persistence.MDTModelLookup;
  * {@link #update()}를 통해 SubmodelElement의 값이 해당 설비에 전달된다.
  * <p>
  * 일부 설비의 경우에는 설비로 부터 데이터 읽기만 가능하고, 데이터 쓰기는 불가능한 경우가 있다.
- * 이 경우에는 {@link #isUpdateable()}이 false를 반환한다. 
+ * 이 경우에는 {@link #isUpdatable()}이 false를 반환한다. 
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -28,11 +28,18 @@ public interface AssetVariable {
 	public ElementLocation getElementLocation();
 	
 	/**
+	 * 본 {@code AssetVariable}을 통해 SubmodelElement를 읽을 수 있는지 여부를 반환한다.
+	 * 
+	 * @return 읽기 여부.
+	 */
+	public boolean isReadable();
+	
+	/**
 	 * 본 {@code AssetVariable}을 통해 SubmodelElement를 갱신할 수 있는지 여부를 반환한다.
 	 * 
 	 * @return 갱신 여부.
 	 */
-	public boolean isUpdateable();
+	public boolean isUpdatable();
 	
 	/**
      * 이 {@code AssetVariable}과 AAS내 SubmodelElement를 연결한다.

@@ -25,8 +25,10 @@ import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;
 import mdt.model.ResourceNotFoundException;
-import mdt.persistence.mqtt.MqttBrokerConnectionConfig;
+import mdt.persistence.mqtt.MqttBrokerConfig;
 import mdt.persistence.opcua.OpcUaConnectionConfig;
+
+import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
 /**
  *
@@ -34,19 +36,33 @@ import mdt.persistence.opcua.OpcUaConnectionConfig;
  */
 @UtilityClass
 public class MDTGlobalConfigurations {
-//	private static final String ENVVAR_MDT_GLOBAL_CONFIG = "MDT_GLOBAL_CONFIG_FILE";
-//	private static final File DEFAULT_MDT_GLOBAL_CONFIG = new File(MDTInstanceManager.GLOBAL_CONF_FILE_NAME);
+	public static final String CONFIG_GROUP_JDBC = "jdbcs";
+	public static final String CONFIG_GROUP_MQTT_BROKER = "mqttBrokers";
+	public static final String CONFIG_GROUP_OPC_UA = "opcuas";
+	public static final String CONFIG_GROUP_ROS_BRIDGE = "rosBridges";
+	
 	private static File s_globalConfigFile;
 	
 	public static void setGlobalConfigFile(File globalConfigFile) {
 		s_globalConfigFile = globalConfigFile;
 	}
 	
-	public static JdbcConfiguration getJdbcConnectionConfig(String key) throws IOException, ResourceNotFoundException  {
-		JsonNode configNode = findConfigNode("jdbcs", key);
+	public static <T> T getConfig(String configGroup, String configName, Class<T> cls)
+		throws ResourceNotFoundException {
+		JsonNode configNode = getConfigNode(configGroup, configName);
 		
-		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), JdbcConfiguration.class);
+		try {
+			JsonMapper mapper = MDTModelSerDe.getJsonMapper();
+			return mapper.readValue(configNode.traverse(), cls);
+		}
+		catch ( IOException e ) {
+			throw new InitializationException("Failed to read configuration: group="
+														+ configGroup + ", name=" + configName, e);
+		}
+	}
+	
+	public static JdbcConfiguration getJdbcConfig(String configName) throws ResourceNotFoundException  {
+		return getConfig(CONFIG_GROUP_JDBC, configName, JdbcConfiguration.class);
 	}
 	
 	public static FOption<JpaConfiguration> loadJpaConfiguration() {
@@ -81,28 +97,19 @@ public class MDTGlobalConfigurations {
 		}
 	}
 	
-	public static MqttBrokerConnectionConfig getMqttBrokerConnectionConfig(String name) throws IOException  {
-		JsonNode configNode = findConfigNode("mqttBrokers", name);
-		
-		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), MqttBrokerConnectionConfig.class);
+	public static MqttBrokerConfig getMqttBrokerConfig(String configName) throws ResourceNotFoundException  {
+		return getConfig(CONFIG_GROUP_MQTT_BROKER, configName, MqttBrokerConfig.class);
 	}
 	
-	public static OpcUaConnectionConfig getOpcUaConnectionConfig(String name) throws IOException  {
-		JsonNode configNode = findConfigNode("opcuas", name);
-		
-		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), OpcUaConnectionConfig.class);
+	public static OpcUaConnectionConfig getOpcUaConfig(String configName) throws ResourceNotFoundException  {
+		return getConfig(CONFIG_GROUP_OPC_UA, configName, OpcUaConnectionConfig.class);
 	}
 	
-	public static RosBridgeConnectionConfig getRosBridgeConnectionConfig(String name) throws IOException  {
-		JsonNode configNode = findConfigNode("rosBridges", name);
-		
-		JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-		return mapper.readValue(configNode.traverse(), RosBridgeConnectionConfig.class);
+	public static RosBridgeConnectionConfig getRosBridgeConfig(String configName) throws ResourceNotFoundException  {
+		return getConfig(CONFIG_GROUP_ROS_BRIDGE, configName, RosBridgeConnectionConfig.class);
 	}
 	
-	private static JsonNode findConfigGroup(String configKey) throws IOException {
+	private static JsonNode findConfigGroup(String configKey) {
 		Preconditions.checkState(s_globalConfigFile != null, "GlobalConfigurationFile has not been set");
 		
 		if ( !s_globalConfigFile.exists() ) {
@@ -132,23 +139,28 @@ public class MDTGlobalConfigurations {
 										s_globalConfigFile.getAbsolutePath(), configKey, e);
 			throw new IllegalStateException(msg);
 		}
+		catch ( IOException e ) {
+			String msg = String.format("Failed to read global_configuration: file=%s, cause=%s",
+										s_globalConfigFile.getAbsolutePath(), e);
+			throw new InitializationException(msg);
+		}
 	}
 	
-	private static JsonNode findConfigNode(String groupKey, String key) throws IOException {
-		JsonNode configGroupNode = findConfigGroup(groupKey);
+	private static JsonNode getConfigNode(String configGroup, String configKey) {
+		JsonNode configGroupNode = findConfigGroup(configGroup);
 		Map<String,JsonNode> configs = FStream.from(configGroupNode.fields())
 												.mapToKeyValue(ent -> KeyValue.of(ent.getKey(), ent.getValue()))
 												.toMap(Maps.newLinkedHashMap());
 		
-		JsonNode configNode = configs.get(key);
+		JsonNode configNode = configs.get(configKey);
 		if ( configNode != null ) {
 			return configNode;
 		}
-		else if ( key.equalsIgnoreCase("default") ) {
+		else if ( configKey.equalsIgnoreCase("default") ) {
 			return configs.values().iterator().next();
 		}
 		else {
-			throw new ResourceNotFoundException("Global configuration", String.format("key=%s.%s", groupKey, key));
+			throw new ResourceNotFoundException("Global configuration", String.format("key=%s.%s", configGroup, configKey));
 		}
 	}
 }

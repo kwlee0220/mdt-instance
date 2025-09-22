@@ -24,6 +24,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
 
 /**
@@ -35,7 +36,7 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 	private static final Logger s_logger = LoggerFactory.getLogger(MqttPublishingPersistence.class);
 
 	MDTModelLookup m_lookup;
-	private MqttBrokerConnectionConfig m_mqttBrokerConfig;
+	private MqttBrokerConfig m_mqttBrokerConfig;
 	MqttPublishingPersistenceConfig m_config;
 	private PersistenceMqttClient m_mqttClient;
 	
@@ -54,7 +55,10 @@ public class MqttPublishingPersistence extends PersistenceStack<MqttPublishingPe
 //		m_config.getSubscribers().forEach(sub -> sub.getElementLocation().activate(m_lookup));
 		
 		try {
-			m_mqttBrokerConfig = MDTGlobalConfigurations.getMqttBrokerConnectionConfig("default");
+			m_mqttBrokerConfig = MDTGlobalConfigurations.getConfig("mqttBrokers", "default", MqttBrokerConfig.class);
+		}
+		catch ( InitializationException e ) {
+			throw e;
 		}
 		catch ( Exception e ) {
 			throw new ConfigurationInitializationException("Failed to read global configuration, cause=" + e);

@@ -1,10 +1,7 @@
 package mdt.persistence.asset.jdbc;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.List;
-
-import javax.annotation.Nullable;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,7 +9,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
 
-import mdt.ElementLocation;
 import mdt.persistence.asset.AssetVariableConfig;
 import mdt.persistence.asset.AssetVariableException;
 
@@ -26,6 +22,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	public static final String SERIALIZATION_TYPE = "mdt:asset:jdbc:multi-column";
 	private static final String FIELD_TABLE = "table";
 	private static final String FIELD_WHERE_CLAUSE = "whereClause";
+	private static final String FIELD_READABLE= "readable";
 	private static final String FIELD_UPDATE_MODE= "updateMode";
 	private static final String FIELD_COLUMNS = "columns";
 	private static final String FIELD_COLUMN = "column";
@@ -43,8 +40,9 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	
 	private String m_table;
 	private String m_whereClause;
-	private List<ColumnToSubPath> m_columnToSubPathMappings;
+	private Boolean m_readable = null;
 	private UpdateMode m_updateMode = UpdateMode.DISABLED;
+	private List<ColumnToSubPath> m_columnToSubPathMappings;
 	private String m_readQuery;
 	private String m_updateQuery;
 	
@@ -72,15 +70,13 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	}
 	
 	private MultiColumnCollectionAssetVariableConfig()  {}
-	public MultiColumnCollectionAssetVariableConfig(ElementLocation smcLoc, @Nullable Duration validPeriod,
-													@Nullable String jdbcConfigKey, String table, String whereClause,
-													UpdateMode updateMode, List<ColumnToSubPath> columnToSubPathMapping)  {
-		super(smcLoc, jdbcConfigKey, validPeriod);
-		
-		m_table = table;
-		m_whereClause = whereClause;
-		m_columnToSubPathMappings = columnToSubPathMapping;
-		m_updateMode = updateMode;
+	
+	public boolean isReadable() {
+		return m_readable != null ? m_readable : true;
+	}
+	
+	public boolean isUpdatable() {
+		return m_updateMode != UpdateMode.DISABLED;
 	}
 	
 	public List<ColumnToSubPath> getColumnToSubpathMapping() {
@@ -128,6 +124,9 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 
 		gen.writeStringField(FIELD_TABLE, m_table);
 		gen.writeStringField(FIELD_WHERE_CLAUSE, m_whereClause);
+		if ( m_readable != null ) {
+			gen.writeBooleanField(FIELD_READABLE, m_readable);
+		}
 		gen.writeStringField(FIELD_UPDATE_MODE, m_updateMode.name());
 		gen.writeArrayFieldStart(FIELD_COLUMNS);
 		for ( ColumnToSubPath mapping : m_columnToSubPathMappings ) {
@@ -139,12 +138,14 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		gen.writeEndArray();
 	}
 
-	public static MultiColumnCollectionAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static MultiColumnCollectionAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		MultiColumnCollectionAssetVariableConfig config = new MultiColumnCollectionAssetVariableConfig();
 		config.loadFields(jnode);
 
 		config.m_table = JacksonUtils.getStringField(jnode, FIELD_TABLE);
 		config.m_whereClause = JacksonUtils.getStringField(jnode, FIELD_WHERE_CLAUSE);
+		
+		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
 		
 		String modeStr = JacksonUtils.getStringFieldOrDefault(jnode, FIELD_UPDATE_MODE, "DISABLED");
 		config.m_updateMode = UpdateMode.valueOf(modeStr);

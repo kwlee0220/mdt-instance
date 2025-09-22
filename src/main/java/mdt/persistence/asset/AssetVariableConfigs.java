@@ -20,6 +20,7 @@ import utils.json.JacksonUtils;
 import mdt.persistence.asset.jdbc.MultiColumnCollectionAssetVariableConfig;
 import mdt.persistence.asset.jdbc.MultiRowAssetVariableConfig;
 import mdt.persistence.asset.jdbc.SimpleJdbcAssetVariableConfig;
+import mdt.persistence.asset.mqtt.MqttAssetVariableConfig;
 import mdt.persistence.opcua.OpcUaAssetVariableConfig;
 import mdt.persistence.opcua.OpcUaCollectionAssetVariableConfig;
 import mdt.persistence.opcua.OpcUaListAssetVariableConfig;
@@ -85,6 +86,8 @@ public class AssetVariableConfigs {
 				return MultiColumnCollectionAssetVariableConfig.deserializeFields(jnode);
 			case MultiRowAssetVariableConfig.SERIALIZATION_TYPE:
 				return MultiRowAssetVariableConfig.deserializeFields(jnode);
+			case MqttAssetVariableConfig.SERIALIZATION_TYPE:
+				return MqttAssetVariableConfig.deserializeFields(jnode);
 			case OpcUaAssetVariableConfig.SERIALIZATION_TYPE:
 				return OpcUaAssetVariableConfig.deserializeFields(jnode);
 			case OpcUaListAssetVariableConfig.SERIALIZATION_TYPE:

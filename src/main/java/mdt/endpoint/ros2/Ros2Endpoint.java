@@ -50,7 +50,7 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 				String subscribeMsg = String.format(SUBSCRIBE_MSG_FORMAT, handler.getTopic());
 				wsClient.send(subscribeMsg);
 				s_logger.info("Subscribed to topic: {}, messageType={}",
-								handler.getTopic(), handler.getMessageType());
+								handler.getTopic(), handler.getClass().getSimpleName());
 			}
 		}
 		
@@ -64,7 +64,7 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 				Ros2Message msg = handler.readMessage(message);
 				handler.update(msg);
 				s_logger.debug("handle ROS2 message: topic={}, type={}, msg={}",
-								topic, handler.getMessageType(), msg);
+								topic, handler.getClass().getSimpleName(), msg);
 			}
 			catch ( IOException e ) {
 				s_logger.error("Failed to parse message: {}, cause={}", message, e);
@@ -86,7 +86,7 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 		}
 		
 		try {
-			m_connConfig = MDTGlobalConfigurations.getRosBridgeConnectionConfig(m_config.getConnectionConfig());
+			m_connConfig = MDTGlobalConfigurations.getRosBridgeConfig(m_config.getConnectionConfig());
 
 			URI uri = new URI(m_connConfig.getServerUri());
 			m_ros2Client = new AutoReconnectingWebSocketClient(uri, m_config.getReconnectInterval());

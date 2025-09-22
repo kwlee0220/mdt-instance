@@ -6,7 +6,6 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.google.common.util.concurrent.AbstractScheduledService;
 
 import utils.Throwables;
@@ -15,6 +14,7 @@ import utils.http.HttpRESTfulClient;
 import utils.http.JacksonErrorEntityDeserializer;
 import utils.http.RESTfulIOException;
 
+import mdt.model.MDTModelSerDe;
 import mdt.model.instance.MDTInstanceManagerException;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
@@ -46,9 +46,8 @@ public class MDTManagerReconnector extends AbstractScheduledService
 
 		m_registerUrl = String.format("%s/instance-manager/registry/%s", config.getMdtEndpoint(), config.getInstanceId());
 		
-		JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
 		m_restfulClient = HttpRESTfulClient.builder()
-											.errorEntityDeserializer(new JacksonErrorEntityDeserializer(mapper))
+											.errorEntityDeserializer(new JacksonErrorEntityDeserializer(MDTModelSerDe.MAPPER))
 											.build();
 		
 		String repoEp = config.getRepositoryEndpoint();

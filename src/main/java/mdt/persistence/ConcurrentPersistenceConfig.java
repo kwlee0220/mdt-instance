@@ -1,13 +1,20 @@
 package mdt.persistence;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonNode;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
 
 /**
  *
  * @author Kang-Woo Lee (ETRI)
  */
 public class ConcurrentPersistenceConfig extends PersistenceStackConfig<ConcurrentPersistence> {
+	private final Core m_config;
+	
+	public ConcurrentPersistenceConfig(Core config, PersistenceConfig<?> baseConfig) {
+		super(baseConfig);
+		
+		m_config = config;
+	}
+	
 	@Override
 	public String toString() {
 		return String.format("%s: %s", getClass().getSimpleName(), super.toString());
@@ -30,11 +37,5 @@ public class ConcurrentPersistenceConfig extends PersistenceStackConfig<Concurre
 		return super.hashCode();
 	}
 
-	@Override
-	protected void serializeFields(JsonGenerator gen)  {
-	}
-
-	@Override
-	protected void deserializeFields(JsonNode jnode) {
-	}
+	public static class Core implements MDTPersistenceStackConfig { }
 }

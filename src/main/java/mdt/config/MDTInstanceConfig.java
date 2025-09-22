@@ -12,7 +12,9 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import mdt.model.AASUtils;
-import mdt.persistence.PersistenceStackConfig;
+import mdt.persistence.MDTPersistenceStackConfig;
+import mdt.persistence.asset.AssetVariableConfig;
+import mdt.persistence.timeseries.TimeSeriesSubmodelConfig;
 
 /**
  *
@@ -24,56 +26,25 @@ public class MDTInstanceConfig {
 	private String m_id;
 	private String m_instanceEndpoint;
 	private String m_managerEndpoint;
+	
 	private File m_globalConfigFile;
+	
 	private File m_keyStoreFile;
 	private String m_keyStorePassword;
 	private String m_keyPassword;
 	
 	private String m_heartbeatInterval;
 	private String m_managerCheckInterval;
-	private @Nullable MDTEndpointConfigs m_serviceEndpoints;
 	
-	private List<PersistenceStackConfig> m_persistenceStacks = Lists.newArrayList();
+	private @Nullable ServiceEndpointConfigs m_serviceEndpoints;
+	private List<AssetVariableConfig> m_assetVariables = Lists.newArrayList();
+	private List<MDTPersistenceStackConfig> m_persistenceStacks = Lists.newArrayList();
+	private List<TimeSeriesSubmodelConfig> m_timeSeriesSubmodels = Lists.newArrayList();
 	private OperationsConfig m_operations;
-	
-	public String getId() {
-		return m_id;
-	}
-	public void setId(String id) {
-		m_id = id;
-	}
-	
-	public String getInstanceEndpoint() {
-		return m_instanceEndpoint;
-	}
-	public void setInstanceEndpoint(String endpoint) {
-		m_instanceEndpoint = endpoint;
-	}
-	
-	public String getManagerEndpoint() {
-		return m_managerEndpoint;
-	}
-	public void setManagerEndpoint(String endpoint) {
-		m_managerEndpoint = endpoint;
-	}
 	
 	public String getSubmodelEndpoint(String submodelId) {
 		String smIdEncoded = AASUtils.encodeBase64UrlSafe(submodelId);
 		return String.format("%s/submodels/%s", m_instanceEndpoint, smIdEncoded);
-	}
-	
-	public File getGlobalConfigFile() {
-		return m_globalConfigFile;
-	}
-	public void setGlobalConfigFile(File file) {
-		m_globalConfigFile = file;
-	}
-	
-	public File getKeyStoreFile() {
-		return m_keyStoreFile;
-	}
-	public void setKeyStoreFile(File file) {
-		m_keyStoreFile = file;
 	}
 	
 	public void setKeyStorePassword(String password) {
@@ -87,19 +58,5 @@ public class MDTInstanceConfig {
 		if ( m_keyStorePassword == null ) {
 			m_keyStorePassword = password;
 		}
-	}
-	
-	public String getHeartbeatInterval() {
-		return m_heartbeatInterval;
-	}
-	public void setHeartbeatInterval(String interval) {
-		m_heartbeatInterval = interval;
-	}
-	
-	public String getManagerCheckInterval() {
-		return m_managerCheckInterval;
-	}
-	public void setManagerCheckInterval(String interval) {
-		m_managerCheckInterval = interval;
 	}
 }
