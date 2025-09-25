@@ -12,6 +12,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.text.StringSubstitutor;
+import org.apache.commons.text.lookup.StringLookup;
+import org.apache.commons.text.lookup.StringLookupFactory;
 import org.eclipse.digitaltwin.aas4j.v3.model.Environment;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.slf4j.Logger;
@@ -30,6 +32,7 @@ import utils.HomeDirPicocliCommand;
 import utils.LogbackConfigLoader;
 import utils.Throwables;
 import utils.func.FOption;
+import utils.io.FileUtils;
 import utils.io.IOUtils;
 
 import mdt.assetconnection.MDTAssetConnectionConfig;
@@ -41,8 +44,10 @@ import mdt.config.AASOperationConfig.HttpOperationConfig;
 import mdt.config.AASOperationConfig.JavaOperationConfig;
 import mdt.config.AASOperationConfig.ProgramOperationConfig;
 import mdt.config.MDTInstanceConfig;
+import mdt.config.MDTServiceConfig;
 import mdt.config.MDTServiceContext;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
+import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
 import mdt.endpoint.ros2.Ros2EndpointConfig;
@@ -165,6 +170,19 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	@Option(names={"--verbose", "-v"},
 			description={"Enables verbose logging (INFO for FA³ST packages and all other packages)."})
 	private boolean verbose;
+	
+	private MDTInstanceConfig m_mdtInstanceConfig;
+	private Map<String,String> m_instanceVariables;
+	
+	public MDTInstanceConfig getMdtInstanceConfig() {
+		Preconditions.checkState(m_mdtInstanceConfig != null, "MDTInstance configuration not initialized yet");
+		return m_mdtInstanceConfig;
+	}
+	
+	public Map<String,String> getInstanceVariables() {
+		Preconditions.checkState(m_instanceVariables != null, "MDTInstance variables not initialized yet");
+		return m_instanceVariables;
+	}
 
 	public static final void main(String... args) throws Exception {
 		MDTInstanceMain app = new MDTInstanceMain();
@@ -229,6 +247,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			&& mdtInstanceConfig.getInstanceEndpoint() == null ) {
 			String host = (System.getenv("LOCAL_HOST") != null) ? System.getenv("LOCAL_HOST") : "localhost";
 			int port = (m_port != null) ? m_port : mdtInstanceConfig.getPort();
+			mdtInstanceConfig.setPort(port);
 			String endpoint = String.format("https://%s:%d/api/v3.0", host, port);
 			mdtInstanceConfig.setInstanceEndpoint(endpoint);
 		}
@@ -243,7 +262,27 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		Preconditions.checkArgument(mdtInstanceConfig.getManagerEndpoint() != null,
 									"MDTInstance managerEndpoint not specified");
-
+		
+		if ( mdtInstanceConfig.getPort() == null ) {
+			Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
+			Preconditions.checkArgument(parts.containsKey("port"), "MDTInstance port not specified");
+			mdtInstanceConfig.setPort(Integer.parseInt(parts.get("port")));
+		}
+		
+		m_instanceVariables = buildInstanceVariables(mdtInstanceConfig);
+		
+		// 설정 파일을 variable substitution을 다시 수행한다.
+		confJson = createStringSubstitutor(m_instanceVariables).replace(confJson);
+		MDTInstanceConfig reloaded = MDTModelSerDe.MAPPER
+												.readerFor(MDTInstanceConfig.class)
+												.readValue(confJson);
+		reloaded.setId(mdtInstanceConfig.getId());
+		reloaded.setInstanceEndpoint(mdtInstanceConfig.getInstanceEndpoint());
+		reloaded.setManagerEndpoint(mdtInstanceConfig.getManagerEndpoint());
+		reloaded.setPort(mdtInstanceConfig.getPort());
+		mdtInstanceConfig = reloaded;
+		m_mdtInstanceConfig = mdtInstanceConfig;
+		
 		//
 		// 다음과 같은 순서로 전역 설정 파일을 확인하여 사용한다.
 		// 1) 명령어 인자를 통해 지정된 전역 설정 파일 위치
@@ -462,6 +501,16 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				
 				getLogger().info("Register ROS2 endpoint: {}", c);
 			});
+			
+			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
+				companionConfig.setEnvironments(m_instanceVariables);
+				
+				ProgramCompanionConfig c = new ProgramCompanionConfig();
+				c.setProgramConfig(companionConfig);
+				configs.add(c);
+				
+				getLogger().info("Register Companion endpoint: {}", c);
+			});
 		}
 		
 		return configs;
@@ -626,7 +675,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
     }
     private void runService(ServiceConfig config, MDTInstanceConfig instConf) {
 		try {
-			serviceRef.set(new MDTServiceContext(config, instConf));
+			serviceRef.set(new MDTServiceContext(new MDTServiceConfig(config, instConf)));
 			LOGGER.info("Starting FA³ST Service...");
 			LOGGER.debug("Using configuration file: ");
 			printConfig(config);
@@ -655,4 +704,24 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
             }
         }
     }
+	
+	private Map<String,String> buildInstanceVariables(MDTInstanceConfig config) {
+		return Map.of(
+			"MDT_INSTANCE_ID", config.getId(),
+			"MDT_INSTANCE_ENDPOINT", config.getInstanceEndpoint(),
+			"MDT_MANAGER_ENDPOINT", config.getManagerEndpoint(),
+			"MDT_INSTANCE_PORT", config.getPort() != null ? Integer.toString(config.getPort()) : "",
+			"MDT_INSTANCE_DIR", FileUtils.getCurrentWorkingDirectory().getAbsolutePath()
+		);
+	}
+	
+	private StringSubstitutor createStringSubstitutor(Map<String,String> variables) {
+		StringLookup customLookup = StringLookupFactory.INSTANCE.mapStringLookup(variables);
+		StringLookup compositeLookup = StringLookupFactory.INSTANCE.interpolatorStringLookup(
+			Map.of(), 		// 프리픽스 기반 lookup 없음
+			customLookup,	// ${foo} → "FOO_VALUE"
+			true			// sys/env/java/... 기본 lookup 포함
+		);
+		return new StringSubstitutor(compositeLookup);
+	}
 }

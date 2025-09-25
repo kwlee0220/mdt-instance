@@ -1,4 +1,4 @@
-package mdt.persistence.opcua;
+package mdt.persistence.asset.opcua;
 
 import java.io.IOException;
 import java.time.Duration;

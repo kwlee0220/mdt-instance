@@ -3,8 +3,6 @@ package mdt.persistence;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-import mdt.persistence.mqtt.MqttPublishingPersistenceConfig;
-
 
 /**
  *
@@ -12,7 +10,7 @@ import mdt.persistence.mqtt.MqttPublishingPersistenceConfig;
  */
 @JsonTypeInfo(use=JsonTypeInfo.Id.NAME, include=JsonTypeInfo.As.PROPERTY, property="@type")
 @JsonSubTypes({
-	@JsonSubTypes.Type(value=MqttPublishingPersistenceConfig.Core.class, name="mqtt"),
+//	@JsonSubTypes.Type(value=MqttPublishingPersistenceConfig.Core.class, name="mqtt"),
 //	@JsonSubTypes.Type(value=TimeSeriesPersistenceStackConfig.Core.class, name="timeseries"),
 //	@JsonSubTypes.Type(value=AssertVariableBasedPersistenceConfig.Core.class, name="asset"),
 	@JsonSubTypes.Type(value=ConcurrentPersistenceConfig.Core.class, name="concurrent"),

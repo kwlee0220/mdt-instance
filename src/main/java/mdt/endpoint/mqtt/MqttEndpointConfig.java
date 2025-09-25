@@ -9,7 +9,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import mdt.MDTGlobalConfigurations;
-import mdt.persistence.mqtt.MqttBrokerConfig;
+import mdt.client.support.MqttBrokerConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 

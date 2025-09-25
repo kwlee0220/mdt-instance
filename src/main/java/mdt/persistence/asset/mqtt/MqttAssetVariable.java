@@ -7,12 +7,12 @@ import com.google.common.util.concurrent.Service.Listener;
 import utils.Throwables;
 
 import mdt.FaaastRuntime;
+import mdt.client.support.MqttBrokerConfig;
 import mdt.client.support.MqttService;
 import mdt.model.sm.value.ElementValues;
 import mdt.persistence.MDTModelLookup;
 import mdt.persistence.asset.AbstractAssetVariable;
 import mdt.persistence.asset.AssetVariableException;
-import mdt.persistence.mqtt.MqttBrokerConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
@@ -37,7 +37,7 @@ public class MqttAssetVariable extends AbstractAssetVariable<MqttAssetVariableCo
 		if ( brokerConfig == null ) {
 			throw new InitializationException("No MQTT broker configuration: " + this);
 		}
-		m_mqtt = new MqttService(brokerConfig.getBrokerUrl(), "MqttEndpoint");
+		m_mqtt = new MqttService(brokerConfig);
 		m_mqtt.addListener(new Listener() {
 		    public void running() {
 		        getLogger().info("Initialized {}", MqttAssetVariable.this);

@@ -20,13 +20,13 @@ import utils.io.IOUtils;
 import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
 
+import mdt.client.support.MqttBrokerConfig;
 import mdt.endpoint.ros2.RosBridgeConnectionConfig;
 import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;
 import mdt.model.ResourceNotFoundException;
-import mdt.persistence.mqtt.MqttBrokerConfig;
-import mdt.persistence.opcua.OpcUaConnectionConfig;
+import mdt.persistence.asset.opcua.OpcUaConnectionConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 

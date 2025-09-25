@@ -21,9 +21,9 @@ import mdt.persistence.asset.jdbc.MultiColumnCollectionAssetVariableConfig;
 import mdt.persistence.asset.jdbc.MultiRowAssetVariableConfig;
 import mdt.persistence.asset.jdbc.SimpleJdbcAssetVariableConfig;
 import mdt.persistence.asset.mqtt.MqttAssetVariableConfig;
-import mdt.persistence.opcua.OpcUaAssetVariableConfig;
-import mdt.persistence.opcua.OpcUaCollectionAssetVariableConfig;
-import mdt.persistence.opcua.OpcUaListAssetVariableConfig;
+import mdt.persistence.asset.opcua.OpcUaAssetVariableConfig;
+import mdt.persistence.asset.opcua.OpcUaCollectionAssetVariableConfig;
+import mdt.persistence.asset.opcua.OpcUaListAssetVariableConfig;
 
 
 /**

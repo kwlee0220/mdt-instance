@@ -1,4 +1,4 @@
-package mdt.persistence.opcua;
+package mdt.persistence.asset.opcua;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementList;

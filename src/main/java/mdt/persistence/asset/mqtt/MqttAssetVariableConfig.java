@@ -8,10 +8,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.json.JacksonUtils;
 
 import mdt.MDTGlobalConfigurations;
+import mdt.client.support.MqttBrokerConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
 import mdt.persistence.asset.AssetVariableConfig;
-import mdt.persistence.mqtt.MqttBrokerConfig;
 
 
 /**

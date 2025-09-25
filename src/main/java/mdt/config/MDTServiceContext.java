@@ -1,7 +1,8 @@
 package mdt.config;
 
+import utils.ReflectionUtils;
+
 import de.fraunhofer.iosb.ilt.faaast.service.Service;
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
 import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationException;
@@ -10,17 +11,17 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationException;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class MDTServiceContext extends Service implements ServiceContext {
-	private final MDTInstanceConfig m_instConfig;
-	
-	public MDTServiceContext(ServiceConfig config, MDTInstanceConfig instConfig)
-		throws ConfigurationException, AssetConnectionException {
-		super(config);
-		
-		m_instConfig = instConfig;
+public class MDTServiceContext extends Service {
+	public MDTServiceContext(ServiceConfig svc) throws ConfigurationException, AssetConnectionException {
+		super(svc);
 	}
-
+	
 	public MDTInstanceConfig getInstanceConfig() {
-		return m_instConfig;
+		try {
+			return ((MDTServiceConfig)ReflectionUtils.getFieldValue(this, "config")).getInstanceConfig();
+		}
+		catch ( Throwable e ) {
+			return null;
+		}
 	}
 }

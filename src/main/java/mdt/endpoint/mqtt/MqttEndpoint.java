@@ -11,9 +11,9 @@ import utils.Throwables;
 
 import mdt.ElementLocation;
 import mdt.FaaastRuntime;
+import mdt.client.support.MqttBrokerConfig;
 import mdt.client.support.MqttService;
 import mdt.persistence.MDTModelLookup;
-import mdt.persistence.mqtt.MqttBrokerConfig;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
@@ -53,9 +53,9 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		try {
 			m_brokerConfig = m_config.getMqttBrokerConfig();
 			
-			m_mqttService = new MqttService(m_brokerConfig.getBrokerUrl(), "MqttEndpoint");
+			m_mqttService = new MqttService(m_brokerConfig);
 			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
-				m_mqttService.subscribe(sub.getTopic(), new MqttSubscriber(sub));
+				m_mqttService.subscribe(sub.getTopic(), 1, new MqttSubscriber(sub));
 			}
 			
 			s_logger.info("Initialized MqttEndpoint: {}", m_brokerConfig);
