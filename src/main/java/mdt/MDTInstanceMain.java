@@ -390,7 +390,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 //		config = ServiceConfigAugmentor.augment(config, mdtInstanceConfig);
 		runService(config, mdtInstanceConfig);
 		
-		Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
+//		Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
 		if ( m_type == InstanceType.JAR ) {
 			System.out.println("[***MARKER***] MDTInstance started: " + mdtInstanceConfig.getInstanceEndpoint());
 		}

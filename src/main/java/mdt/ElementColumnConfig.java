@@ -1,8 +1,6 @@
 package mdt;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -12,7 +10,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * @author Kang-Woo Lee (ETRI)
  */
 @JsonIncludeProperties({ "name", "element" })
-@JsonInclude(Include.NON_NULL)
 public class ElementColumnConfig {
 	private final String m_name;
 	private final ElementLocation m_elementLoc;

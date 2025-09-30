@@ -18,7 +18,6 @@ import utils.stream.FStream;
 import mdt.ElementColumnConfig;
 import mdt.ElementLocation;
 import mdt.FaaastRuntime;
-import mdt.MDTGlobalConfigurations;
 import mdt.aas.DataType;
 import mdt.aas.DataTypes;
 import mdt.model.MDTModelSerDe;
@@ -63,7 +62,7 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 		m_insertSql = String.format("insert into %s(%s,%s) values (?, %s)",
 									config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
 		
-		JdbcConfiguration jdbcConfig = MDTGlobalConfigurations.getJdbcConfig(m_config.getJdbcConfig());
+		JdbcConfiguration jdbcConfig = m_config.getJdbcConfig();
 		m_jdbc = JdbcProcessor.create(jdbcConfig);
 	}
 
@@ -78,7 +77,7 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
     		return;
     	}
     	
-    	m_periodicAudit = new PeriodicLoopExecution<Void>(m_config.getInterval()) {
+    	m_periodicAudit = new PeriodicLoopExecution<Void>(m_config.getIntervalDuration()) {
 			@Override
 			protected FOption<Void> performPeriodicAction(long loopIndex) throws Exception {
 				audit(loopIndex);

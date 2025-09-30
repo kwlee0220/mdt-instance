@@ -27,12 +27,15 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 	}
 	
 	public MqttBrokerConfig getMqttBrokerConfig() {
-		MqttBrokerConfig config = m_conf.getMqttBrokerConfig();
-		if ( config == null ) {
-			config = MDTGlobalConfigurations.getMqttBrokerConfig(m_conf.getMqttBrokerConfigName());
+		if ( m_conf.m_mqttBrokerConfig instanceof MqttBrokerConfig mqttConf ) {
+			return mqttConf;
 		}
-		
-		return config;
+		else if ( m_conf.m_mqttBrokerConfig instanceof String configName ) {
+			return MDTGlobalConfigurations.getMqttBrokerConfig(configName);
+		}
+		else {
+			throw new IllegalArgumentException("unsupported MqttBrokerConfig: " + m_conf.m_mqttBrokerConfig);
+		}
 	}
 	
 	public List<MqttElementSubscriber> getSubscribers() {
@@ -45,12 +48,11 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 							getMqttBrokerConfig().getBrokerUrl(), getSubscribers());
 	}
 
-	@JsonIncludeProperties({ "mqttBrokerConfigName", "mqttBrokerConfig", "subscribers" })
+	@JsonIncludeProperties({ "mqttBrokerConfig", "subscribers" })
 	@Getter @Setter
 	@Accessors(prefix="m_")
 	public static class MDTConfig {
-		private String m_mqttBrokerConfigName = "default";
-	    private MqttBrokerConfig m_mqttBrokerConfig;
+	    private Object m_mqttBrokerConfig = "default";;
 		private List<MqttElementSubscriber> m_subscribers = List.of();
 	}
 }
