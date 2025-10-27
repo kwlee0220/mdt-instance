@@ -45,7 +45,7 @@ import mdt.config.AASOperationConfig.JavaOperationConfig;
 import mdt.config.AASOperationConfig.ProgramOperationConfig;
 import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTServiceConfig;
-import mdt.config.MDTServiceContext;
+import mdt.config.MDTService;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
@@ -144,6 +144,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 
     @Option(names = "--keyStore", paramLabel="path", description = "path to KeyStore file")
     private File m_keyStoreFile;
+
+    @Option(names = "--keyStorePassword", paramLabel="password", description = "password to KeyStore file")
+    private String m_keyStorePassword;
 	
 	@Option(names={"--model", "-m"}, paramLabel="modelFile", defaultValue="model.json",
 			description={"Asset Administration Shell Environment FilePath. Default Value = model.json"})
@@ -243,13 +246,15 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		else if ( System.getenv(ENV_MDT_INSTANCE_ENDPOINT) != null ) {
 			mdtInstanceConfig.setInstanceEndpoint(System.getenv(ENV_MDT_INSTANCE_ENDPOINT));
 		}
-		if ( (m_port != null || mdtInstanceConfig.getPort() != null)
-			&& mdtInstanceConfig.getInstanceEndpoint() == null ) {
-			String host = (System.getenv("LOCAL_HOST") != null) ? System.getenv("LOCAL_HOST") : "localhost";
-			int port = (m_port != null) ? m_port : mdtInstanceConfig.getPort();
-			mdtInstanceConfig.setPort(port);
-			String endpoint = String.format("https://%s:%d/api/v3.0", host, port);
-			mdtInstanceConfig.setInstanceEndpoint(endpoint);
+		if ( mdtInstanceConfig.getInstanceEndpoint() == null ) {
+			if ( m_port != null || mdtInstanceConfig.getPort() != null ) {
+				String host = FOption.getOrElse(System.getenv("LOCAL_HOST"), "localhost");
+				int port = FOption.getOrElse(m_port, mdtInstanceConfig.getPort());
+				mdtInstanceConfig.setPort(port);
+				
+				String endpoint = String.format("https://%s:%d/api/v3.0", host, port);
+				mdtInstanceConfig.setInstanceEndpoint(endpoint);
+			}
 		}
 		Preconditions.checkArgument(mdtInstanceConfig.getInstanceEndpoint() != null,
 									"MDTInstance instanceEndpoint not specified");
@@ -347,11 +352,14 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				mdtInstanceConfig.setKeyStoreFile(keyStoreFile);
 			}
 		}
-		
-		if ( mdtInstanceConfig.getKeyStorePassword() == null ) {
-			String keyStorePassword = System.getenv(ENV_MDT_KEY_STORE_PASSWORD);
-			if ( keyStorePassword != null ) {
-				mdtInstanceConfig.setKeyStorePassword(keyStorePassword);
+
+		if ( m_keyStorePassword != null ) {
+			mdtInstanceConfig.setKeyStorePassword(m_keyStorePassword);
+		}
+		else {
+			String password = System.getenv(ENV_MDT_KEY_STORE_PASSWORD);
+			if ( password != null ) {
+				mdtInstanceConfig.setKeyStorePassword(password);
 			}
 		}
 		
@@ -675,7 +683,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
     }
     private void runService(ServiceConfig config, MDTInstanceConfig instConf) {
 		try {
-			serviceRef.set(new MDTServiceContext(new MDTServiceConfig(config, instConf)));
+			serviceRef.set(new MDTService(new MDTServiceConfig(config, instConf)));
 			LOGGER.info("Starting FA³ST Service...");
 			LOGGER.debug("Using configuration file: ");
 			printConfig(config);

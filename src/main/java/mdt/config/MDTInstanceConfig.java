@@ -29,7 +29,6 @@ public class MDTInstanceConfig {
 	private String m_managerEndpoint;
 	
 	private File m_globalConfigFile;
-	
 	private File m_keyStoreFile;
 	private String m_keyStorePassword;
 	private String m_keyPassword;

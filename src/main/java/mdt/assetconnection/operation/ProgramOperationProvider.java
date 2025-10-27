@@ -20,6 +20,7 @@ import utils.io.IOUtils;
 import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
 
+import mdt.config.MDTService;
 import mdt.model.MDTModelSerDe;
 import mdt.model.sm.value.ElementValue;
 import mdt.model.sm.value.ElementValues;
@@ -39,7 +40,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundExc
 class ProgramOperationProvider implements OperationProvider {
 	private static final Logger s_logger = LoggerFactory.getLogger(ProgramOperationProvider.class);
 	
-	private final ServiceContext m_svcContext;
+	private final MDTService m_svcContext;
 	private final ProgramOperationProviderConfig m_config;
 	private final File m_opDescFile;
 	
@@ -47,7 +48,7 @@ class ProgramOperationProvider implements OperationProvider {
 	
 	ProgramOperationProvider(ServiceContext serviceContext, Reference operationRef,
 								ProgramOperationProviderConfig config) throws IOException {
-		m_svcContext = serviceContext;
+		m_svcContext = (MDTService)serviceContext;
 		m_config = config;
 		
 		m_opDescFile = FileUtils.path(FileUtils.getCurrentWorkingDirectory(), m_config.getOperationDescriptorFile());
@@ -74,9 +75,11 @@ class ProgramOperationProvider implements OperationProvider {
 		}
 		
 		File workingDir = opDesc.getWorkingDirectory();
+		File envFile = new File(workingDir, "env.file");
 		CommandExecution.Builder builder = CommandExecution.builder()
 															.addCommand(opDesc.getCommandLine())
 															.setWorkingDirectory(workingDir)
+															.setEnvironmentFile(envFile)
 															.setTimeout(opDesc.getTimeout());
 		
 		FStream.of(inputVars)

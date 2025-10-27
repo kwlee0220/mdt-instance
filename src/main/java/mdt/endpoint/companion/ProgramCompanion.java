@@ -3,7 +3,7 @@ package mdt.endpoint.companion;
 import utils.async.command.ProgramService;
 import utils.async.command.ServiceShutdownHook;
 
-import mdt.config.MDTServiceContext;
+import mdt.config.MDTService;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
@@ -25,7 +25,7 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 		m_service = ProgramService.create(m_config.getProgramConfig());
 
 		String companionName = "Companion";
-		if ( serviceContext instanceof MDTServiceContext mdtCtxt ) {
+		if ( serviceContext instanceof MDTService mdtCtxt ) {
 			companionName = mdtCtxt.getInstanceConfig().getId() + companionName;	
 		}
 		ServiceShutdownHook.register(companionName, m_service);

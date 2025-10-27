@@ -23,6 +23,7 @@ import utils.stream.FStream;
 import mdt.aas.DataTypes;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.assetconnection.operation.OperationProvider;
+import mdt.config.MDTService;
 import mdt.model.ModelGenerationException;
 import mdt.model.timeseries.DefaultLinkedSegment;
 import mdt.model.timeseries.DefaultMetadata;
@@ -30,7 +31,6 @@ import mdt.model.timeseries.DefaultRecord;
 import mdt.model.timeseries.DefaultRecords;
 import mdt.model.timeseries.RecordMetadata;
 
-import de.fraunhofer.iosb.ilt.faaast.service.Service;
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
@@ -54,7 +54,7 @@ public class ReadRecordsOperation implements OperationProvider {
 		m_opRef = operationRef;
 		m_config = config;
 		
-		m_persist = ((Service)serviceContext).getPersistence();
+		m_persist = ((MDTService)serviceContext).getPersistence();
 	}
 	
 	@Override

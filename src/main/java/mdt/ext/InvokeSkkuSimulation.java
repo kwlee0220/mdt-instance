@@ -27,7 +27,7 @@ import mdt.client.operation.HttpSimulationClient;
 import mdt.client.operation.OperationStatus;
 import mdt.client.operation.OperationStatusResponse;
 import mdt.config.MDTInstanceConfig;
-import mdt.config.MDTServiceContext;
+import mdt.config.MDTService;
 import mdt.model.ResourceNotFoundException;
 import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.simulation.Simulation;
@@ -97,7 +97,7 @@ public class InvokeSkkuSimulation implements OperationProvider {
 		client.setLogger(s_logger);
 
 		Instant started = Instant.now();
-		MDTInstanceConfig instConfig = ((MDTServiceContext)m_svcContext).getInstanceConfig();
+		MDTInstanceConfig instConfig = ((MDTService)m_svcContext).getInstanceConfig();
 		String simulationSubmodelEndpoint = instConfig.getSubmodelEndpoint(simulation.getId());
 		OperationStatusResponse<Void> resp = client.startSimulationWithEndpoint(simulationSubmodelEndpoint);
 		
