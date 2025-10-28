@@ -37,9 +37,9 @@ ext {
 dependencies {
 	implementation project(":utils")
 	implementation project(":mdt-client")
-	implementation project(":faaast-lib")
-	implementation project(":faaast-starter")
-//	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
+	// implementation project(":faaast-lib")
+	// implementation project(":faaast-starter")
+	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
 	
 	implementation "ch.qos.logback:logback-classic:${logback_version}"
 
@@ -66,13 +66,7 @@ dependencies {
 	}
 		
 	// picocli command line parser
-	implementation "info.picocli:picocli:${picocli_version}"
-
-	// Fa3st
-//	implementation "de.fraunhofer.iosb.ilt.faaast.service:persistence-memory:${faaast_version}"
-//	implementation "de.fraunhofer.iosb.ilt.faaast.service:assetconnection-common:${faaast_version}"
-//	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
-//	implementation fileTree(dir: '../faaast/faaast-jars', include: ['**/*.jar'])
+	// implementation "info.picocli:picocli:${picocli_version}"
 		
 	// HTTP Client
 	implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: "${okhttp_version}"
