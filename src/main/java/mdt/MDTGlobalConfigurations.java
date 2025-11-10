@@ -11,8 +11,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 
-import lombok.Getter;
-import lombok.experimental.Accessors;
 import lombok.experimental.UtilityClass;
 
 import utils.KeyValue;
@@ -44,10 +42,6 @@ public class MDTGlobalConfigurations {
 	public static final String CONFIG_GROUP_ROS_BRIDGE = "rosBridges";
 	
 	private static File s_globalConfigFile;
-	
-	@Accessors(prefix="s_")
-	@Getter(lazy=true)
-	private final static Set<Map.Entry<String, JsonNode>> s_properties = loadProperties();
 	
 	public static void setGlobalConfigFile(File globalConfigFile) {
 		s_globalConfigFile = globalConfigFile;
@@ -124,7 +118,7 @@ public class MDTGlobalConfigurations {
 											+ s_globalConfigFile.getAbsolutePath());
 		}
 		
-		return FStream.from(getProperties())
+		return FStream.from(loadProperties())
 						.findFirst(ent -> ent.getKey().equals(configKey))
 						.map(ent -> ent.getValue())
 						.getOrThrow(() -> new ResourceNotFoundException("GlobalConfiguration", "key=" + configKey));
