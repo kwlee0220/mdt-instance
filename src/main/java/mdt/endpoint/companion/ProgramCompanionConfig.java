@@ -21,4 +21,9 @@ public class ProgramCompanionConfig extends EndpointConfig<ProgramCompanion> {
 	public void setProgramConfig(ProgramServiceConfig programConfig) {
 		m_programConfig = programConfig;
 	}
+	
+	@Override
+	public String toString() {
+		return m_programConfig.toString();
+	}
 }
