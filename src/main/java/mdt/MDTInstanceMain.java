@@ -44,8 +44,8 @@ import mdt.config.AASOperationConfig.HttpOperationConfig;
 import mdt.config.AASOperationConfig.JavaOperationConfig;
 import mdt.config.AASOperationConfig.ProgramOperationConfig;
 import mdt.config.MDTInstanceConfig;
-import mdt.config.MDTServiceConfig;
 import mdt.config.MDTService;
+import mdt.config.MDTServiceConfig;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
@@ -135,9 +135,6 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	
 	@Option(names={"--instanceEndpoint"}, paramLabel="endpoint", description="endpoint to this MDTInstance")
 	private String m_instanceEndpoint;
-	
-	@Option(names={"--managerEndpoint"}, paramLabel="endpoint", description="MDTManager endpoint")
-	private String m_managerEndpoint;
 
     @Option(names = "--globalConfig", paramLabel="path", description = "global configuration file path")
     private File m_globalConfigFile;
@@ -172,7 +169,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	
 	@Option(names={"--verbose", "-v"},
 			description={"Enables verbose logging (INFO for FA³ST packages and all other packages)."})
-	private boolean verbose;
+	private boolean m_verbose;
 	
 	private MDTInstanceConfig m_mdtInstanceConfig;
 	private Map<String,String> m_instanceVariables;
@@ -211,6 +208,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 
 	@Override
 	protected void run(Path homeDir) throws Exception {
+		configureLogging();
+		
 		if ( m_logbackConfFile != null ) {
 			LogbackConfigLoader.loadLogbackConfigFromFile(m_logbackConfFile);
 		}
@@ -238,8 +237,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		Preconditions.checkArgument(mdtInstanceConfig.getId() != null, "MDTInstance id not specified");
 		
-		 // command-line 인자로 port가 지정된 경우 설정 파일의 port 설정을 override한다.
-		
+
 		if ( m_instanceEndpoint != null ) {
 			mdtInstanceConfig.setInstanceEndpoint(m_instanceEndpoint);
 		}
@@ -259,14 +257,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		Preconditions.checkArgument(mdtInstanceConfig.getInstanceEndpoint() != null,
 									"MDTInstance instanceEndpoint not specified");
 		
-		if ( m_managerEndpoint != null ) {
-			mdtInstanceConfig.setManagerEndpoint(m_managerEndpoint);
-		}
-		else if ( System.getenv(ENV_MDT_MANAGER_ENDPOINT) != null ) {
-			mdtInstanceConfig.setManagerEndpoint(System.getenv(ENV_MDT_MANAGER_ENDPOINT));
-		}
-		Preconditions.checkArgument(mdtInstanceConfig.getManagerEndpoint() != null,
-									"MDTInstance managerEndpoint not specified");
+		String managerEndpoint = System.getenv(ENV_MDT_MANAGER_ENDPOINT);
+		Preconditions.checkState(managerEndpoint != null, "MDTInstance managerEndpoint not specified");
+		mdtInstanceConfig.setManagerEndpoint(managerEndpoint);
 		
 		if ( mdtInstanceConfig.getPort() == null ) {
 			Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
@@ -591,7 +584,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		FaaastFilter.setLevelFaaast(Level.WARN);
 		FaaastFilter.setLevelExternal(Level.WARN);
 		
-		if ( verbose ) {
+		if ( m_verbose ) {
 			FaaastFilter.setLevelFaaast(Level.INFO);
 			FaaastFilter.setLevelExternal(Level.INFO);
 		}
