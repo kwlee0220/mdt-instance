@@ -1,9 +1,7 @@
 package mdt.persistence.asset.opcua;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Nullable;
 
@@ -16,8 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-import utils.async.AbstractLoopExecution;
+import utils.async.AbstractStatePoller;
 import utils.func.FOption;
+
 
 /**
  * A class to connect to an MQTT broker with automatic reconnection.
@@ -28,49 +27,36 @@ import utils.func.FOption;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class OpcUaServerReconnect extends AbstractLoopExecution<UaClient> {
+public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
 	private static final Logger s_logger = LoggerFactory.getLogger(OpcUaServerReconnect.class);
 	
 	private final String m_endpointUrl;
-	private final Duration m_reconnectTrialInterval;
 	private final @Nullable SessionActivityListener m_listener;
 	
-	@Override protected void initializeLoop() throws Exception { }
-	@Override protected void finalizeLoop() throws Exception { }
-	
 	private OpcUaServerReconnect(Builder builder) {
+		super(builder.m_reconnectTryInterval);
+		
 		Preconditions.checkNotNull(builder.m_opcUaServerEndpoint);
-		Preconditions.checkNotNull(builder.m_reconnectTryInterval);
 		
 		m_endpointUrl = builder.m_opcUaServerEndpoint;
 		m_listener = builder.m_activityListener;
-		m_reconnectTrialInterval = builder.m_reconnectTryInterval;
 		
 		setLogger(s_logger);
 	}
 
 	@Override
-	protected FOption<UaClient> iterate(long loopIndex) throws Exception {
-		if ( getLogger().isDebugEnabled() ) {
-			getLogger().debug("retrying {}-th connection to {}", loopIndex+1, m_endpointUrl);
-		}
-		
-		Instant started = Instant.now();
+	protected FOption<UaClient> pollState() throws Exception {
+		getLogger().debug("trying connection to {}", m_endpointUrl);
+
 		try {
 			// MQTT Broker에 연결을 시도한다.
 			UaClient opcUaClient = connectToOpcUaServer();
-			System.out.println("connected to OpcUaServer: endpoint=" + m_endpointUrl);
+			getLogger().info("connected to OpcUaServer: endpoint={}", m_endpointUrl);
 			
 			// MQTT Broker에 연결된 경우 {@link MqttClient} 객체를 반환하고 loop를 종료시킨다
 			return FOption.of(opcUaClient);
 		}
 		catch ( UaException e ) {
-			Duration elapsed = Duration.between(started, Instant.now());
-			long remains = m_reconnectTrialInterval.minus(elapsed).toMillis();
-			if ( remains > 10 ) {
-				TimeUnit.MILLISECONDS.sleep(remains);
-			}
-			
 			// MQTT Broker에 연결되지 않은 경우 {@link FOption#empty()}를 반환하여
 			// loop를 계속 수행하도록 한다.
 			return FOption.empty();
@@ -80,13 +66,7 @@ public class OpcUaServerReconnect extends AbstractLoopExecution<UaClient> {
 	private UaClient connectToOpcUaServer() throws UaException, InterruptedException, ExecutionException {
 		OpcUaClient client = OpcUaClient.create(m_endpointUrl);
 		client.addSessionActivityListener(m_listener);
-		UaClient uac = client.connect().get();
-		
-		if ( getLogger().isInfoEnabled() ) {
-			getLogger().info("connected to OpcUaServer: endpoint={}", m_endpointUrl);
-		}
-		
-		return uac;
+		return client.connect().get();
 	}
 	
 	public static Builder builder() {
