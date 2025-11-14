@@ -16,7 +16,7 @@ import lombok.experimental.UtilityClass;
 import utils.KeyValue;
 import utils.StrSubstitutor;
 import utils.func.FOption;
-import utils.io.IOUtils;
+import utils.func.Funcs;
 import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
 
@@ -100,13 +100,17 @@ public class MDTGlobalConfigurations {
 		
 		JsonNode configNode = configs.get(configKey);
 		if ( configNode != null ) {
-			return configNode;
+			return replaceVariables(configNode);
 		}
 		else if ( configKey.equalsIgnoreCase("default") ) {
-			return configs.values().iterator().next();
+			return Funcs.getFirst(configs.values())
+						.map(jnode -> replaceVariables(jnode))
+						.getOrThrow(() -> new ResourceNotFoundException("Global configuration",
+																String.format("key=%s.%s", configGroup, configKey)));
 		}
 		else {
-			throw new ResourceNotFoundException("Global configuration", String.format("key=%s.%s", configGroup, configKey));
+			throw new ResourceNotFoundException("Global configuration",
+												String.format("key=%s.%s", configGroup, configKey));
 		}
 	}
 	
@@ -133,13 +137,9 @@ public class MDTGlobalConfigurations {
 		}
 		
 		try {
-			// 설정 파일을 미리 읽어서 variable substitution을 수행한다.
-			String confJson = IOUtils.toString(s_globalConfigFile);
-			confJson = new StrSubstitutor().replace(confJson);
-			
 			// 설정 파일을 tree 형태로 읽어 모든 속성 정보를 반환한다.
 			JsonMapper mapper = MDTModelSerDe.getJsonMapper();
-			return mapper.readTree(confJson).properties();
+			return mapper.readTree(s_globalConfigFile).properties();
 		}
 		catch ( JsonMappingException e ) {
 			String msg = String.format("Failed to parse global_configuration: file=%s, cause=%s",
@@ -150,6 +150,20 @@ public class MDTGlobalConfigurations {
 			String msg = String.format("Failed to read global_configuration: file=%s, cause=%s",
 										s_globalConfigFile.getAbsolutePath(), e);
 			throw new InitializationException(msg);
+		}
+	}
+	
+	private static JsonNode replaceVariables(JsonNode jnode) {
+		try {
+			JsonMapper mapper = MDTModelSerDe.getJsonMapper();
+			String jsonStr = mapper.writeValueAsString(jnode);
+			
+			String replaced = new StrSubstitutor().replace(jsonStr);
+			
+			return mapper.readTree(replaced);
+		}
+		catch ( IOException e ) {
+			throw new InitializationException("Failed to perform variable substitution", e);
 		}
 	}
 }
