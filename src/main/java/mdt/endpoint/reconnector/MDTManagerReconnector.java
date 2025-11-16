@@ -68,9 +68,7 @@ public class MDTManagerReconnector extends AbstractScheduledService
     @Override
     public void start() throws EndpointException {
     	if ( m_config.isEnabled() ) {
-    		if ( s_logger.isInfoEnabled() ) {
-    			s_logger.info("Starting service: {}[{}]", getClass().getSimpleName(), this);
-    		}
+			s_logger.info("Starting service: {}[{}]", getClass().getSimpleName(), this);
     		
     		startAsync();
     	}
@@ -79,9 +77,7 @@ public class MDTManagerReconnector extends AbstractScheduledService
     @Override
     public void stop() {
     	if ( m_config.isEnabled() ) {
-    		if ( s_logger.isInfoEnabled() ) {
-    			s_logger.info("Stopping service: {}[{}]", getClass().getSimpleName(), this);
-    		}
+			s_logger.info("Stopping service: {}[{}]", getClass().getSimpleName(), this);
     		
     		stopAsync();
     		Unchecked.runOrIgnore(() -> m_restfulClient.delete(m_registerUrl));
@@ -91,9 +87,7 @@ public class MDTManagerReconnector extends AbstractScheduledService
 	@Override
 	protected void runOneIteration() throws Exception {
 		try {
-			if ( s_logger.isDebugEnabled() ) {
-				s_logger.debug("try to connect to MDTManager: url={}", m_registerUrl);
-			}
+			s_logger.debug("try to connect to MDTManager: url={}", m_registerUrl);
 
 			m_restfulClient.post(m_registerUrl, m_reqBody, HttpRESTfulClient.STRING_DESER);
 		}
