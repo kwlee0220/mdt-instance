@@ -56,14 +56,12 @@ public class FaaastRuntime {
 	}
 	
 	public Submodel getSubmodelById(String submodelId) {
-		return Funcs.findFirst(m_service.getAASEnvironment().getSubmodels(),
-								sm -> submodelId.equals(sm.getId()))
+		return Funcs.findFirst(loadSubmodels(), sm -> submodelId.equals(sm.getId()))
 					.getOrThrow(() -> new ResourceNotFoundException("Submodel", "id=" + submodelId));
 	}
 	
-	public Submodel getSubmodelByIdShort(String submodeIdShort) {
-		return Funcs.findFirst(m_service.getAASEnvironment().getSubmodels(),
-								sm -> submodeIdShort.equals(sm.getIdShort()))
+	public Submodel getSubmodelByIdShort(String submodeIdShort) throws ResourceNotFoundException {
+		return Funcs.findFirst(loadSubmodels(), sm -> submodeIdShort.equals(sm.getIdShort()))
 					.getOrThrow(() -> new ResourceNotFoundException("Submodel", "idShort=" + submodeIdShort));
 	}
 	
