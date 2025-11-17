@@ -5,10 +5,12 @@ import javax.annotation.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProviderConfig;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AbstractAssetOperationProviderConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProviderConfig;
 
 
 /**
@@ -18,7 +20,8 @@ import lombok.Setter;
 @Getter @Setter
 @NoArgsConstructor
 @JsonInclude(Include.NON_NULL)
-public class MDTOperationProviderConfig implements AssetOperationProviderConfig {
+public class MDTOperationProviderConfig extends AbstractAssetOperationProviderConfig
+										implements AssetOperationProviderConfig {
 	private @Nullable JavaOperationProviderConfig java;
 	private @Nullable ProgramOperationProviderConfig program;
 	private @Nullable HttpOperationProviderConfig http;

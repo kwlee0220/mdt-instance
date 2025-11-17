@@ -34,7 +34,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class MDTOperationProvider implements AssetOperationProvider {
+public class MDTOperationProvider implements AssetOperationProvider<MDTOperationProviderConfig> {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTOperationProvider.class);
 	
 	private final ServiceContext m_serviceContext;
@@ -81,6 +81,11 @@ public class MDTOperationProvider implements AssetOperationProvider {
         catch ( IOException e ) {
         	throw new AssetConnectionException(e);
         }
+	}
+
+	@Override
+	public MDTOperationProviderConfig getConfig() {
+		return m_config;
 	}
 	
     @Override

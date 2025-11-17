@@ -2,17 +2,24 @@ package mdt.assetconnection;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AbstractAssetOperationProviderConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvider;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProviderConfig;
 
 
 /**
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class UnsupportedOperationProvider implements AssetOperationProvider {
+public class UnsupportedOperationProvider implements AssetOperationProvider<AssetOperationProviderConfig> {
 	public OperationVariable[] invoke(OperationVariable[] input, OperationVariable[] inoutput)
 			throws AssetConnectionException {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public AssetOperationProviderConfig getConfig() {
+		return new AbstractAssetOperationProviderConfig() {  };
 	}
 }
