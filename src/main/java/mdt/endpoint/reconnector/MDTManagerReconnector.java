@@ -8,6 +8,14 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.util.concurrent.AbstractScheduledService;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+
+import okhttp3.RequestBody;
+
 import utils.Throwables;
 import utils.func.Unchecked;
 import utils.http.HttpRESTfulClient;
@@ -16,13 +24,6 @@ import utils.http.RESTfulIOException;
 
 import mdt.model.MDTModelSerDe;
 import mdt.model.instance.MDTInstanceManagerException;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
-import okhttp3.RequestBody;
 
 
 /**

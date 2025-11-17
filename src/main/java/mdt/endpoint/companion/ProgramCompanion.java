@@ -1,14 +1,14 @@
 package mdt.endpoint.companion;
 
-import utils.async.command.ProgramService;
-import utils.async.command.ServiceShutdownHook;
-
-import mdt.config.MDTService;
-
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+
+import utils.async.command.ProgramService;
+import utils.async.command.ServiceShutdownHook;
+
+import mdt.config.MDTService;
 
 
 /**

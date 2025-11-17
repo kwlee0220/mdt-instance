@@ -6,15 +6,6 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import utils.InternalException;
-import utils.Throwables;
-
-import mdt.ElementLocation;
-import mdt.FaaastRuntime;
-import mdt.client.support.MqttBrokerConfig;
-import mdt.client.support.MqttService;
-import mdt.persistence.MDTModelLookup;
-
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.dataformat.DeserializationException;
@@ -28,6 +19,17 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValueParser;
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.typing.TypeInfo;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
+
+import jakarta.persistence.PersistenceException;
+
+import utils.InternalException;
+import utils.Throwables;
+
+import mdt.ElementLocation;
+import mdt.FaaastRuntime;
+import mdt.client.support.MqttBrokerConfig;
+import mdt.client.support.MqttService;
+import mdt.persistence.MDTModelLookup;
 
 /**
  *
@@ -163,7 +165,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
                     }
                 };
 			}
-			catch ( ResourceNotFoundException neverHappens ) {
+			catch ( ResourceNotFoundException | PersistenceException neverHappens ) {
 				throw new InternalException(neverHappens);
 			}
 		}
