@@ -28,6 +28,28 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+import de.fraunhofer.iosb.ilt.faaast.service.Service;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.config.CertificateConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.HttpEndpointConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.InvalidConfigurationException;
+import de.fraunhofer.iosb.ilt.faaast.service.filestorage.memory.FileStorageInMemoryConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.messagebus.internal.MessageBusInternalConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.memory.PersistenceInMemoryConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.cli.LogLevelTypeConverter;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.logging.FaaastFilter;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.model.EndpointType;
+import de.fraunhofer.iosb.ilt.faaast.service.starter.util.ServiceConfigHelper;
+import de.fraunhofer.iosb.ilt.faaast.service.util.ImplementationManager;
+import de.fraunhofer.iosb.ilt.faaast.service.util.LambdaExceptionHelper;
+
 import utils.HomeDirPicocliCommand;
 import utils.LogbackConfigLoader;
 import utils.Throwables;
@@ -59,27 +81,6 @@ import mdt.persistence.asset.AssertVariableBasedPersistenceConfig;
 import mdt.persistence.timeseries.TimeSeriesPersistenceStackConfig;
 
 import ch.qos.logback.classic.Level;
-import de.fraunhofer.iosb.ilt.faaast.service.Service;
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.config.CertificateConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.HttpEndpointConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.InvalidConfigurationException;
-import de.fraunhofer.iosb.ilt.faaast.service.filestorage.memory.FileStorageInMemoryConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.messagebus.internal.MessageBusInternalConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.persistence.memory.PersistenceInMemoryConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.starter.cli.LogLevelTypeConverter;
-import de.fraunhofer.iosb.ilt.faaast.service.starter.logging.FaaastFilter;
-import de.fraunhofer.iosb.ilt.faaast.service.starter.model.EndpointType;
-import de.fraunhofer.iosb.ilt.faaast.service.starter.util.ServiceConfigHelper;
-import de.fraunhofer.iosb.ilt.faaast.service.util.ImplementationManager;
-import de.fraunhofer.iosb.ilt.faaast.service.util.LambdaExceptionHelper;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Help.Ansi;
@@ -378,7 +379,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		try {
 			config = toServiceConfig(mdtInstanceConfig);
 		}
-		catch ( IOException e ) {
+		catch ( Throwable e ) {
 			getLogger().error("Failed to load ServiceConfig, file={}, cause={}", m_confFile, ""+e);
 			throw new InitializationException("Error loading config file", e);
 		}
@@ -389,6 +390,12 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 //        validate(config);
 
 //		config = ServiceConfigAugmentor.augment(config, mdtInstanceConfig);
+		
+		// FAAAST 서비스 설정 정보를 파일에 저장한다 (디버깅 목적).
+		String faaastServiceConfig = MDTModelSerDe.getPrettyJsonMapper().writeValueAsString(config);
+		IOUtils.toFile(faaastServiceConfig, new File("config_faaast.json"));
+		
+		// FAAAST 서비스 실행
 		runService(config, mdtInstanceConfig);
 		
 //		Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
@@ -407,7 +414,13 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 	}
 
-    private ServiceConfig toServiceConfig(MDTInstanceConfig instConf) throws IOException {
+	/**
+	 * MDTInstanceConfig로부터 FAAAST ServiceConfig 객체를 생성한다.
+	 *
+	 * @param instConf	MDTInstanceConfig 객체.
+	 * @return	FAAAST ServiceConfig 객체.
+	 */
+    private ServiceConfig toServiceConfig(MDTInstanceConfig instConf) {
 		CoreConfig coreConfig = CoreConfig.builder()
 											.requestHandlerThreadPoolSize(2)
 											.build();
