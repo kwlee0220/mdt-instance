@@ -47,9 +47,9 @@ public class UpdateDefectList implements OperationProvider {
 																.tagKey(SubmodelElement::getIdShort)
 																.toMap();
 		Map<String, SubmodelElement> outputVarList = FStream.of(outputVars)
-																.map(OperationVariable::getValue)
-																.tagKey(SubmodelElement::getIdShort)
-																.toMap();
+															.map(OperationVariable::getValue)
+															.tagKey(SubmodelElement::getIdShort)
+															.toMap();
 		
 		SubmodelElement defectProp = inputVarList.get("Defect");
 		Preconditions.checkArgument(defectProp != null, "Input argument is missing: 'Defect'");
