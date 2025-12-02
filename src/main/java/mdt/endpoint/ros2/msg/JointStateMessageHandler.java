@@ -20,8 +20,6 @@ import mdt.FaaastRuntime;
 import mdt.aas.DataTypes;
 import mdt.model.MDTModelSerDe;
 import mdt.model.sm.SubmodelUtils;
-import mdt.model.sm.value.ElementValue;
-import mdt.model.sm.value.ElementValues;
 import mdt.persistence.MDTModelLookup;
 
 /**
@@ -52,8 +50,8 @@ public class JointStateMessageHandler implements Ros2MessageHandler<JointStatesM
 		return m_topic;
 	}
 	
-	public ElementLocation getElement() {
-		return m_elementLoc;
+	public String getElement() {
+		return m_elementLoc.toStringExpr();
 	}
 	
 	public List<Mapping> getMappings() {
@@ -90,7 +88,7 @@ public class JointStateMessageHandler implements Ros2MessageHandler<JointStatesM
 						}
 					}
 				});
-		ElementValue ev = ElementValues.getValue(m_buffer);
+//		ElementValue ev = ElementValues.getValue(m_buffer);
 		m_faaast.updateSubmodelElementValue(m_elementLoc.getSubmodelId(), m_elementLoc.getElementPath(), m_buffer);
 	}
 	

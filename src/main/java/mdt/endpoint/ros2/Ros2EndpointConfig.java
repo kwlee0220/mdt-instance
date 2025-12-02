@@ -10,11 +10,11 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import lombok.experimental.Delegate;
 
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
+
 import utils.stream.FStream;
 
 import mdt.endpoint.ros2.msg.Ros2MessageHandler;
-
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 
 
 /**
@@ -31,6 +31,18 @@ public class Ros2EndpointConfig extends EndpointConfig<Ros2Endpoint> {
 	
 	public Ros2EndpointConfig(MDTConfig conf) {
 		m_conf = conf;
+	}
+	
+	public String getConnectionConfig() {
+		return m_conf.getConnectionConfig();
+	}
+	
+	public Duration getReconnectInterval() {
+		return m_conf.getReconnectInterval();
+	}
+	
+	public List<Ros2MessageHandler<?>> getMessages() {
+		return m_conf.getMessages();
 	}
 	
 	@Override
