@@ -2,6 +2,7 @@ package mdt.endpoint.audit;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
@@ -15,7 +16,6 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
 
 import utils.async.PeriodicLoopExecution;
-import utils.func.FOption;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.jdbc.JdbcUtils;
@@ -79,9 +79,9 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
     	
     	m_periodicAudit = new PeriodicLoopExecution<Void>(m_config.getIntervalDuration()) {
 			@Override
-			protected FOption<Void> performPeriodicAction(long loopIndex) throws Exception {
+			protected Optional<Void> performPeriodicAction(long loopIndex) throws Exception {
 				audit(loopIndex);
-				return FOption.empty();
+				return Optional.empty();
 			}
 		};
 		m_periodicAudit.setLogger(s_logger);

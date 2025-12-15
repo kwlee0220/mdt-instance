@@ -20,7 +20,6 @@ import com.google.common.util.concurrent.AbstractService;
 
 import utils.LoggerSettable;
 import utils.async.Guard;
-import utils.func.FOption;
 import utils.func.Unchecked;
 
 
@@ -127,12 +126,12 @@ public class AutoReconnectingWebSocketClient extends AbstractService implements 
 	
 	@Override
 	public Logger getLogger() {
-		return m_logger;
+		return (m_logger != null) ? m_logger : s_logger;
 	}
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = FOption.getOrElse(logger, s_logger);
+		m_logger = logger;
 	}
 	
 	private class Ros2MessageConsumer extends WebSocketClient {

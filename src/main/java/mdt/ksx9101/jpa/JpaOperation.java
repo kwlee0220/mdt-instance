@@ -114,7 +114,7 @@ public class JpaOperation extends SubmodelElementCollectionEntity implements Ope
 //		catch ( NumberFormatException e ) {
 //			pvalue = Try.get(() -> getParameterValue(seg1)).getOrNull();
 //		}
-//		FOption.accept(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
+//		Funcs.runIfNotNull(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
 //	}
 	
 	public static JpaOperation load(EntityManager em, Object key) {

@@ -75,7 +75,7 @@ public class KSX9101Persistence implements Persistence<KSX9101PersistencerConfig
 		m_basePersistence.init(coreConfig, m_basePersistenceConfig, serviceContext);
 		
 		if ( m_persistConfig.getJpaConfig() == null ) {
-			m_persistConfig.setJpaConfig(MDTGlobalConfigurations.loadJpaConfiguration().getOrNull());
+			m_persistConfig.setJpaConfig(MDTGlobalConfigurations.loadJpaConfiguration().orElse(null));
 		}
 		if ( m_persistConfig.getJpaConfig() == null ) {
 			if ( s_logger.isInfoEnabled() ) {

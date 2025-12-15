@@ -10,10 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-import utils.LoggerSettable;
-import utils.Utilities;
-import utils.func.FOption;
-
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
@@ -31,6 +27,10 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCriteria;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
+
+import utils.LoggerSettable;
+import utils.Utilities;
+import utils.func.Optionals;
 
 
 /**
@@ -185,6 +185,6 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = FOption.getOrElse(logger, s_logger);
+		m_logger = Optionals.getOrElse(logger, s_logger);
 	}
 }

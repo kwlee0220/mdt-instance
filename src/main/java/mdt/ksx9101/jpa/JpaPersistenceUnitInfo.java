@@ -11,14 +11,14 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-import utils.func.FOption;
-import utils.jdbc.JdbcConfiguration;
-
 import jakarta.persistence.SharedCacheMode;
 import jakarta.persistence.ValidationMode;
 import jakarta.persistence.spi.ClassTransformer;
 import jakarta.persistence.spi.PersistenceUnitInfo;
 import jakarta.persistence.spi.PersistenceUnitTransactionType;
+
+import utils.func.Optionals;
+import utils.jdbc.JdbcConfiguration;
 
 /**
  *
@@ -90,7 +90,7 @@ public class JpaPersistenceUnitInfo implements PersistenceUnitInfo {
 		else {
 			DriverManagerDataSource dataSrc = new DriverManagerDataSource();
 			
-			FOption.accept(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
+			Optionals.accept(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
 			dataSrc.setUrl(m_jdbcConf.getJdbcUrl());
 			dataSrc.setUsername(m_jdbcConf.getUser());
 			dataSrc.setPassword(m_jdbcConf.getPassword());

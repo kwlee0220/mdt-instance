@@ -3,6 +3,7 @@ package mdt.persistence.asset.jdbc;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 
 import javax.annotation.Nullable;
 
@@ -10,7 +11,7 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.KeyValue;
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
@@ -69,7 +70,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		super.serializeFields(gen);
 
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		FOption.acceptOrThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
+		Optionals.acceptThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
 		
 		gen.writeArrayFieldStart(FIELD_ROWS);
 		KeyValueFStream.from(this.m_mapping).forEachOrThrow(kv -> {
@@ -85,10 +86,10 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		MultiRowAssetVariableConfig config = new MultiRowAssetVariableConfig();
 		config.loadFields(jnode);
 		
-		config.m_readQuery = FOption.ofNullable(jnode.get(FIELD_READ_QUERY))
-									.map(JsonNode::asText)
-									.getOrThrow(() -> new IllegalArgumentException("missing '" + FIELD_READ_QUERY + "' field"));
-		config.m_updateQuery = FOption.map(jnode.get(FIELD_UPDATE_QUERY), JsonNode::asText);
+		config.m_readQuery = Optional.ofNullable(jnode.get(FIELD_READ_QUERY))
+										.map(JsonNode::asText)
+										.orElseThrow(() -> new IllegalArgumentException("missing '" + FIELD_READ_QUERY + "' field"));
+		config.m_updateQuery = Optionals.map(jnode.get(FIELD_UPDATE_QUERY), JsonNode::asText);
 		config.m_mapping = FStream.from(jnode.get("rows").elements())
 									.mapToKeyValue(rowNode -> {
 										String key = JacksonUtils.getStringField(rowNode, FIELD_KEY);

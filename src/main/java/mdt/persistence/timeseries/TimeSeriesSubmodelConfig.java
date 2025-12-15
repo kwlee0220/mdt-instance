@@ -12,8 +12,8 @@ import lombok.Getter;
 import lombok.experimental.Accessors;
 
 import utils.UnitUtils;
-import utils.func.FOption;
 import utils.func.Funcs;
+import utils.func.Optionals;
 
 
 /**
@@ -130,7 +130,7 @@ public class TimeSeriesSubmodelConfig {
 		
 		@JsonProperty("duration")
 		public String getDurationForJackson() {
-			return FOption.map(m_duration, Duration::toString);
+			return Optionals.map(m_duration, Duration::toString);
 		}
 		
 		public Duration getDuration() {

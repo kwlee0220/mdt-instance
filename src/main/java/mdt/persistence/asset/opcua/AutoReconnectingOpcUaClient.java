@@ -17,7 +17,7 @@ import com.google.common.util.concurrent.AbstractService;
 import utils.LoggerSettable;
 import utils.UnitUtils;
 import utils.async.Guard;
-import utils.func.FOption;
+import utils.func.Optionals;
 
 
 /**
@@ -106,12 +106,12 @@ public class AutoReconnectingOpcUaClient extends AbstractService
 	
 	@Override
 	public Logger getLogger() {
-		return m_logger;
+		return Optionals.getOrElse(m_logger, s_logger);
 	}
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = FOption.getOrElse(logger, s_logger);
+		m_logger = s_logger;
 	}
 
 	@Override

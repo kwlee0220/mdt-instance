@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 
 import utils.UnitUtils;
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.json.JacksonUtils;
 
 import mdt.ElementLocation;
@@ -39,17 +39,17 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 	}
 	
 	public Duration getValidPeriod() {
-		return FOption.getOrElse(m_validPeriod, Duration.ZERO);
+		return Optionals.getOrElse(m_validPeriod, Duration.ZERO);
 	}
 	
 	public String getValidPeriodString() {
-		return FOption.map(m_validPeriod, Duration::toString);
+		return Optionals.map(m_validPeriod, Duration::toString);
 	}
 
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
-		FOption.acceptOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
 	}
 	
 	/**
@@ -64,13 +64,13 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
-		m_validPeriod = FOption.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"),
-											UnitUtils::parseDuration);
+		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"),
+										UnitUtils::parseDuration);
 	}
 	
 	@Override
 	public String toString() {
-		String validStr = FOption.getOrElse(m_validPeriod, Duration.ZERO).toString();
+		String validStr = Optionals.getOrElse(m_validPeriod, Duration.ZERO).toString();
 		return String.format("%s, valid=%s", m_elementLoc, validStr);
 	}
 }

@@ -54,6 +54,7 @@ import utils.HomeDirPicocliCommand;
 import utils.LogbackConfigLoader;
 import utils.Throwables;
 import utils.func.FOption;
+import utils.func.Optionals;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
 
@@ -103,6 +104,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
     private static final String DEFAULT_GLOBAL_CONFIG_FILE = "mdt_global_config.json";
     private static final String DEFAULT_CERT_FILE = "mdt_cert.p12";
     private static final String ENV_MDT_INSTANCE_ENDPOINT = "MDT_INSTANCE_ENDPOINT";
+    private static final String ENV_MDT_INSTANCE_ID = "MDT_INSTANCE_ID";
     private static final String ENV_MDT_MANAGER_ENDPOINT = "MDT_ENDPOINT";
     private static final String ENV_MDT_GLOBAL_CONFIG_FILE = "MDT_GLOBAL_CONFIG_FILE";
     private static final String ENV_MDT_KEY_STORE_FILE = "MDT_KEY_STORE_FILE";
@@ -236,6 +238,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		if ( m_id != null ) {
 			mdtInstanceConfig.setId(m_id);
 		}
+		else if ( System.getenv(ENV_MDT_INSTANCE_ID) != null ) {
+			mdtInstanceConfig.setId(System.getenv(ENV_MDT_INSTANCE_ID));
+		}
 		Preconditions.checkArgument(mdtInstanceConfig.getId() != null, "MDTInstance id not specified");
 		
 
@@ -247,8 +252,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		if ( mdtInstanceConfig.getInstanceEndpoint() == null ) {
 			if ( m_port != null || mdtInstanceConfig.getPort() != null ) {
-				String host = FOption.getOrElse(System.getenv("LOCAL_HOST"), "localhost");
-				int port = FOption.getOrElse(m_port, mdtInstanceConfig.getPort());
+				String host = Optionals.getOrElse(System.getenv("LOCAL_HOST"), "localhost");
+				int port = Optionals.getOrElse(m_port, mdtInstanceConfig.getPort());
 				mdtInstanceConfig.setPort(port);
 				
 				String endpoint = String.format("https://%s:%d/api/v3.0", host, port);

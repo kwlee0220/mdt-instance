@@ -3,6 +3,7 @@ package mdt;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -13,9 +14,10 @@ import com.google.common.collect.Maps;
 
 import lombok.experimental.UtilityClass;
 
+import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
+
 import utils.KeyValue;
 import utils.StrSubstitutor;
-import utils.func.FOption;
 import utils.func.Funcs;
 import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
@@ -27,8 +29,6 @@ import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;
 import mdt.model.ResourceNotFoundException;
 import mdt.persistence.asset.opcua.OpcUaConnectionConfig;
-
-import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
 /**
  *
@@ -65,18 +65,18 @@ public class MDTGlobalConfigurations {
 		return getConfig(CONFIG_GROUP_JDBC, configName, JdbcConfiguration.class);
 	}
 	
-	public static FOption<JpaConfiguration> loadJpaConfiguration() {
+	public static Optional<JpaConfiguration> loadJpaConfiguration() {
 		Preconditions.checkState(s_globalConfigFile != null, "GlobalConfigurationFile has not been set");
 		
 		if ( !s_globalConfigFile.exists() ) {
-			return FOption.empty();
+			return Optional.empty();
 		}
 		
 		try {
-			return FOption.of(getConfig("persistence", "default", GlobalPersistenceConfig.class).getJpaConfig());
+			return Optional.of(getConfig("persistence", "default", GlobalPersistenceConfig.class).getJpaConfig());
 		}
 		catch ( ResourceNotFoundException e ) {
-			return FOption.empty();
+			return Optional.empty();
 		}
 	}
 	
@@ -105,7 +105,7 @@ public class MDTGlobalConfigurations {
 		else if ( configKey.equalsIgnoreCase("default") ) {
 			return Funcs.getFirst(configs.values())
 						.map(jnode -> replaceVariables(jnode))
-						.getOrThrow(() -> new ResourceNotFoundException("Global configuration",
+						.orElseThrow(() -> new ResourceNotFoundException("Global configuration",
 																String.format("key=%s.%s", configGroup, configKey)));
 		}
 		else {

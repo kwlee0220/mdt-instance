@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.json.JacksonUtils;
 
 import mdt.ElementLocation;
@@ -54,7 +54,7 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	public void serializeFields(JsonGenerator gen) throws IOException {	
 		super.serializeFields(gen);
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		FOption.acceptOrThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
+		Optionals.acceptThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
 	}
 	
 	/**

@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 
 import utils.UnitUtils;
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.jdbc.JdbcConfiguration;
 import utils.json.JacksonUtils;
 
@@ -60,19 +60,19 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	}
 	
 	public Duration getValidPeriod() {
-		return FOption.getOrElse(m_validPeriod, Duration.ZERO);
+		return (m_validPeriod != null) ? m_validPeriod : Duration.ZERO;
 	}
 	
 	public String getValidPeriodString() {
-		return FOption.map(m_validPeriod, Duration::toString);
+		return Optionals.map(m_validPeriod, Duration::toString);
 	}
 
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
-		FOption.acceptOrThrow(m_jdbcConfigName, name -> gen.writeStringField(FIELD_JDBC_CONFIG_NAME, name));
-		FOption.acceptOrThrow(m_jdbcConfig, cfg -> gen.writeObjectField(FIELD_JDBC_CONFIG_NAME, cfg));
-		FOption.acceptOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Optionals.acceptThrow(m_jdbcConfigName, name -> gen.writeStringField(FIELD_JDBC_CONFIG_NAME, name));
+		Optionals.acceptThrow(m_jdbcConfig, cfg -> gen.writeObjectField(FIELD_JDBC_CONFIG_NAME, cfg));
+		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
 	}
 	
 	/**
@@ -88,17 +88,17 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
-		m_jdbcConfigName = FOption.getOrElse(JacksonUtils.getStringFieldOrNull(jnode, FIELD_JDBC_CONFIG_NAME),
+		m_jdbcConfigName = Optionals.getOrElse(JacksonUtils.getStringFieldOrNull(jnode, FIELD_JDBC_CONFIG_NAME),
 											DEFAULT_JDBC_CONFIG_KEY);
 		JsonNode configNode = JacksonUtils.getFieldOrNull(jnode, FIELD_JDBC_CONFIG);
 		m_jdbcConfig = MDTModelSerDe.readValue(configNode, JdbcConfiguration.class);
-		m_validPeriod = FOption.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
+		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
 	}
 	
 	@Override
 	public String toString() {
-		String jdbcKey = FOption.getOrElse(m_jdbcConfigName, "");
-		String validStr = FOption.getOrElse(m_validPeriod, Duration.ZERO).toString();
+		String jdbcKey = Optionals.getOrElse(m_jdbcConfigName, "");
+		String validStr = Optionals.getOrElse(m_validPeriod, Duration.ZERO).toString();
 		return String.format("%s, jdbc=%s, valid=%s", m_elementLoc, jdbcKey, validStr);
 	}
 }

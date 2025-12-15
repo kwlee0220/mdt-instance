@@ -1,6 +1,7 @@
 package mdt.persistence.asset.opcua;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 import javax.annotation.Nullable;
@@ -15,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 
 import utils.async.AbstractStatePoller;
-import utils.func.FOption;
 
 
 /**
@@ -45,7 +45,7 @@ public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
 	}
 
 	@Override
-	protected FOption<UaClient> pollState() throws Exception {
+	protected Optional<UaClient> pollState() throws Exception {
 		getLogger().debug("trying connection to {}", m_endpointUrl);
 
 		try {
@@ -54,12 +54,12 @@ public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
 			getLogger().info("connected to OpcUaServer: endpoint={}", m_endpointUrl);
 			
 			// MQTT Broker에 연결된 경우 {@link MqttClient} 객체를 반환하고 loop를 종료시킨다
-			return FOption.of(opcUaClient);
+			return Optional.of(opcUaClient);
 		}
 		catch ( UaException e ) {
-			// MQTT Broker에 연결되지 않은 경우 {@link FOption#empty()}를 반환하여
+			// MQTT Broker에 연결되지 않은 경우 {@link Optional#empty()}를 반환하여
 			// loop를 계속 수행하도록 한다.
-			return FOption.empty();
+			return Optional.empty();
 		}
 	}
 	

@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import utils.LoggerSettable;
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.stream.FStream;
 
 import mdt.ElementLocation;
@@ -85,7 +85,7 @@ public abstract class AbstractAssetVariable<T extends AssetVariableConfig> imple
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = FOption.getOrElse(logger, s_logger);
+		m_logger = Optionals.getOrElse(logger, s_logger);
 	}
 	
 	@Override

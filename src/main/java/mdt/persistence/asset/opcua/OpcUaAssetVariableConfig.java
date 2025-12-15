@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.func.FOption;
+import utils.func.Optionals;
 import utils.json.JacksonUtils;
 
 import mdt.ElementLocation;
@@ -52,7 +52,7 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		super.serializeFields(gen);
 //		gen.writeStringField("serverEndpoint", m_serverEndpoint);
 		gen.writeStringField("nodePath", m_nodePath);
-		FOption.acceptOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_NODE_PATH, f));
+		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_NODE_PATH, f));
 	}
 	
 	/**

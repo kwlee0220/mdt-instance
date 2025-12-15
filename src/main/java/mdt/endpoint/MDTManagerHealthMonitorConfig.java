@@ -8,10 +8,9 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 
-import utils.UnitUtils;
-import utils.func.FOption;
-
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
+
+import utils.UnitUtils;
 
 /**
  * {@link MDTManagerHealthMonitor}의 설정 정보를 표현하는 클래스.
@@ -41,7 +40,7 @@ public class MDTManagerHealthMonitorConfig extends EndpointConfig<MDTManagerHeal
 		
 		m_managerEndpoint = managerEndpoint;
 		m_checkInterval = UnitUtils.parseDuration(checkInterval);
-		m_enabled = FOption.getOrElse(enabled, true);
+		m_enabled = (enabled != null) ? enabled : true;
 	}
 	
 	/**
