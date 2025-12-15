@@ -1,6 +1,7 @@
 package mdt.endpoint.ros2;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 
 import utils.async.AbstractStatePoller;
-import utils.func.FOption;
 
 /**
  * A class to connect to an MQTT broker with automatic reconnection.
@@ -40,7 +40,7 @@ public class WebSocketReconnector extends AbstractStatePoller<WebSocketClient> {
 	}
 
 	@Override
-	protected FOption<WebSocketClient> pollState() throws Exception {
+	protected Optional<WebSocketClient> pollState() throws Exception {
 		WebSocketClient wsClient = m_wsClientFact.get();
 		getLogger().debug("retrying connection to {}", wsClient.getURI());
 		
@@ -50,10 +50,10 @@ public class WebSocketReconnector extends AbstractStatePoller<WebSocketClient> {
 			getLogger().info("connected to {}", wsClient.getURI());
 			
 			// WebSocket server에 연결된 경우 {@link WebSocketClient} 객체를 반환하고 loop를 종료시킨다
-			return FOption.of(wsClient);
+			return Optional.of(wsClient);
 		}
 		else {
-			return FOption.empty();
+			return Optional.empty();
 		}
 	}
 }
