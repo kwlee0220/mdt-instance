@@ -106,7 +106,6 @@ public class AutoReconnectingWebSocketClient extends AbstractService implements 
 	 * 만일 주어진 시간동안 연결되지 않으면 {@link TimeoutException}을 발생시킨다.
 	 *
 	 * @param timeout	제한 시간
-	 * @return	연결된 {@code MqttClient} 객체
 	 * @throws InterruptedException	연결 대기 중에 인터럽트가 발생한 경우
 	 * @throws TimeoutException	제한 시간 내에 연결되지 않은 경우
 	 */
@@ -117,7 +116,6 @@ public class AutoReconnectingWebSocketClient extends AbstractService implements 
 	/**
 	 * MQTT Broker에 연결될 때까지 무한히 대기한다.
 	 *
-	 * @return	연결된 {@code MqttClient} 객체
 	 * @throws InterruptedException	연결 대기 중에 인터럽트가 발생한 경우
 	 */
 	public void awaitConnected() throws InterruptedException {

@@ -10,6 +10,11 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
  * @author Kang-Woo Lee (ETRI)
  */
 public interface ElementLocation {
+	/**
+	 * 본 ElementLocation을 활성화한다.
+	 *
+	 * @param lookup
+	 */
 	public void activate(MDTModelLookup lookup);
 	
 	public String getSubmodelId();

@@ -11,6 +11,12 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.filestorage.FileStorage;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+
 import utils.InternalException;
 import utils.async.command.CommandExecution;
 import utils.async.command.CommandVariable;
@@ -18,7 +24,6 @@ import utils.async.command.CommandVariable.FileVariable;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
 import utils.stream.FStream;
-import utils.stream.KeyValueFStream;
 
 import mdt.config.MDTService;
 import mdt.model.MDTModelSerDe;
@@ -26,11 +31,6 @@ import mdt.model.sm.value.ElementValue;
 import mdt.model.sm.value.ElementValues;
 import mdt.task.TaskException;
 import mdt.task.builtin.ProgramOperationDescriptor;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.filestorage.FileStorage;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
-import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 
 
 /**
@@ -102,7 +102,7 @@ class ProgramOperationProvider implements OperationProvider {
 			FStream.of(inoutputVars)
 					.concatWith(FStream.of(outputVars))
 					.tagKey(v -> v.getValue().getIdShort())
-					.innerJoin(KeyValueFStream.from(m_cmdExec.getVariableMap()))
+					.match(m_cmdExec.getVariableMap())
 					.forEachOrThrow(match -> {
 						OperationVariable opv = match.value()._1;
 						CommandVariable var = match.value()._2;
@@ -110,7 +110,7 @@ class ProgramOperationProvider implements OperationProvider {
 						// CommandExecution에서 생성한 값은 ElementValue의 valueJson형태로 설정됨.
 						try {
 							SubmodelElement old = opv.getValue();
-							ElementValue newVal = ElementValues.parseValueJsonString(old, var.getValue());
+							ElementValue newVal = ElementValues.parseValueJsonString(var.getValue(), old);
 							ElementValues.update(old, newVal);
 						}
 						catch ( Exception e ) {
@@ -147,7 +147,7 @@ class ProgramOperationProvider implements OperationProvider {
 					
 					return new FileVariable(name, cvFile);
 				}
-				catch ( ResourceNotFoundException e ) {
+				catch ( ResourceNotFoundException | PersistenceException e ) {
 					throw new TaskException("Failed to read AASFile " + aasFile, e);
 				}
 			}

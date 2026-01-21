@@ -42,7 +42,7 @@ public class OperationVariables {
 	public String readString(String varName) {
 		ElementValue value = read(varName);
 		if ( value instanceof StringPropertyValue strVal ) {
-			return strVal.get();
+			return strVal.toValueObject();
 		}
 		else {
 			throw new IllegalArgumentException("OperationVariable '" + varName + "' is not Property(string) type");
@@ -56,7 +56,7 @@ public class OperationVariables {
 	public Integer readInt(String varName) {
 		ElementValue value = read(varName);
 		if ( value instanceof IntegerPropertyValue intVal ) {
-			return intVal.get();
+			return intVal.toValueObject();
 		}
 		else {
 			throw new IllegalArgumentException("OperationVariable '" + varName + "' is not Property(int) type");

@@ -26,7 +26,7 @@ public class UnsupportedSubscriptionProvider extends MultiFormatSubscriptionProv
 	}
 
 	@Override
-	protected void unsubscribe() throws AssetConnectionException {
+	public void unsubscribe() throws AssetConnectionException {
         throw new UnsupportedOperationException("SubscriptionProvider.unsubscribe");
 	}
 }

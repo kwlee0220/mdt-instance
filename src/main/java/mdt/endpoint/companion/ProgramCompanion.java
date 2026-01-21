@@ -1,9 +1,12 @@
 package mdt.endpoint.companion;
 
+import java.util.List;
+
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
 
 import utils.async.command.ProgramService;
 import utils.async.command.ServiceShutdownHook;
@@ -34,6 +37,11 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	@Override
 	public ProgramCompanionConfig asConfig() {
 		return m_config;
+	}
+
+	@Override
+	public List<ServiceSpecificationProfile> getProfiles() {
+		return m_config.getProfiles();
 	}
 
 	@Override

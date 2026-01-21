@@ -59,7 +59,7 @@ public class LeafObjectNodeCollector {
 				FStream.from(equipList)
 				.mapToKeyValue(equip -> KeyValue.of(equip.get("Name").asText(),
 													equip.get("Utilization").asInt()))
-				.mapKey(k -> Funcs.findFirst(equipTypes, t -> k.startsWith(t)).getOrElse(""))
+				.mapKey(k -> Funcs.findFirst(equipTypes, t -> k.startsWith(t)).orElse(""))
 				.groupByKey()
 				.fstream()
 				.mapValue(values -> values.stream().mapToInt(Integer::intValue).average().orElse(0.0))

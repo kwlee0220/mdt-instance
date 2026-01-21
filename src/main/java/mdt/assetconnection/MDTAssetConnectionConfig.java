@@ -1,6 +1,7 @@
 package mdt.assetconnection;
 
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionConfig;
+
 import mdt.assetconnection.operation.MDTOperationProviderConfig;
 
 
@@ -12,4 +13,10 @@ public class MDTAssetConnectionConfig extends AssetConnectionConfig<MDTAssetConn
 																	UnsupportedValueProviderConfig,
 																	MDTOperationProviderConfig,
 																	UnsupportedSubscriptionProviderConfig> {
+
+
+    @Override
+	public boolean equalsIgnoringProviders(Object obj) {
+    	return false;
+    }
 }

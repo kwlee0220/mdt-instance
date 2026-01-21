@@ -20,8 +20,7 @@ public interface WebSocketClientListener {
 	 * WebSocket 서버로부터 메시지를 수신했을 때 호출되는 메소드.
 	 * 
 	 * @param wsClient WebSocket 클라이언트 인스턴스
-	 * @param topic 수신한 메시지의 토픽
-	 * @param msg   수신한 메시지
+	 * @param message   수신한 메시지
 	 */
 	public void onMessage(WebSocketClient wsClient, String message) throws Exception;
 	

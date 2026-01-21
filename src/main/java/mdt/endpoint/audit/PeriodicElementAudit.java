@@ -14,7 +14,9 @@ import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
 
+import utils.Throwables;
 import utils.async.PeriodicLoopExecution;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
@@ -48,27 +50,38 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 	@Override
 	public void init(CoreConfig coreConfig, PeriodicElementAuditConfig config, ServiceContext serviceContext)
 		throws ConfigurationInitializationException {
-		m_config = config;
-		if ( !m_config.isEnabled() ) {
-			return;
+		try {
+			m_config = config;
+			if ( !m_config.isEnabled() ) {
+				return;
+			}
+			
+			m_faaast = FaaastRuntime.getOrCreate(serviceContext);
+			m_columns = config.getColumns();
+			
+			String colCsv = FStream.from(m_columns).map(ElementColumnConfig::getName).join(',');
+			String paramCsv = FStream.range(0, m_columns.size()).map(idx -> "?").join(',');
+			m_lastValues = FStream.from(m_columns).map(c -> new Object()).toList();
+			m_insertSql = String.format("insert into %s(%s,%s) values (?, %s)",
+										config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
+			
+			JdbcConfiguration jdbcConfig = m_config.getJdbcConfig();
+			m_jdbc = JdbcProcessor.create(jdbcConfig);
 		}
-		
-		m_faaast = new FaaastRuntime(serviceContext);
-		m_columns = config.getColumns();
-		
-		String colCsv = FStream.from(m_columns).map(ElementColumnConfig::getName).join(',');
-		String paramCsv = FStream.range(0, m_columns.size()).map(idx -> "?").join(',');
-		m_lastValues = FStream.from(m_columns).map(c -> new Object()).toList();
-		m_insertSql = String.format("insert into %s(%s,%s) values (?, %s)",
-									config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
-		
-		JdbcConfiguration jdbcConfig = m_config.getJdbcConfig();
-		m_jdbc = JdbcProcessor.create(jdbcConfig);
+		catch ( Throwable e ) {
+			Throwable cause = Throwables.unwrapThrowable(e);
+			throw new ConfigurationInitializationException("failed to initialize PeriodicElementAudit endpoint", cause);
+		}
 	}
 
 	@Override
 	public PeriodicElementAuditConfig asConfig() {
 		return m_config;
+	}
+
+	@Override
+	public List<ServiceSpecificationProfile> getProfiles() {
+		return m_config.getProfiles();
 	}
 	
     @Override

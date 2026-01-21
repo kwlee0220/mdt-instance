@@ -26,8 +26,6 @@ public interface AssetVariableConfig {
 	
 	/**
 	 * SubmodelElement의 값의 최대 유효기간을 반환한다.
-	 * <p>
-	 * 이 기간이 지나지 않은 상태의 {@link #load} 호출은 이전에 로드된 값이 반환된다.
 	 * 
 	 * @return 최대 유효 기간.
 	 */

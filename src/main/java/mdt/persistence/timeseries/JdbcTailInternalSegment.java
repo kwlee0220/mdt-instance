@@ -128,6 +128,10 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 									.map(pc -> pc.getColumn())
 									.join(", ");
 		
+		// length의 자릿수를 알아내기
+		int width = String.valueOf(length).length();
+		String zeroPaddingFormat = "rec%0" + width + "d";
+		
 		String sql = Utilities.substributeString(SQL_GET_TAIL_SEGMENT_BY_COUNT,
 												Map.of("tableName", m_tsConfig.getTableName(),
 														"columns", colsExpr));
@@ -137,7 +141,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setInt(1, length);
 			
-			return readRecords(pstmt.executeQuery());
+			return readRecords(zeroPaddingFormat, pstmt.executeQuery());
 		}
 		catch ( SQLException e ) {
 			String msg = String.format("Failed to load Segment: %s.Tail (length=%d), cause=%s",
@@ -146,7 +150,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 		}
 	}
 	
-	private List<DefaultRecord> readRecords(ResultSet rset) throws SQLException {
+	private List<DefaultRecord> readRecords(String zpFormat, ResultSet rset) throws SQLException {
 		var rows
 			= JdbcUtils.fstream(rset, JdbcUtils::toColumnObjectList)
 						.map(rs -> {
@@ -166,7 +170,8 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 				.forEach(idxed -> {
 					List<Object> colValues = idxed.value();
 					int idx = length - idxed.index() - 1;
-					DefaultRecord record = new DefaultRecord("" + idx, m_metadata, colValues);
+					String idShort = String.format(zpFormat, idx);
+					DefaultRecord record = new DefaultRecord(idShort, m_metadata, colValues);
 					records[idx] = record;
 				});
 		

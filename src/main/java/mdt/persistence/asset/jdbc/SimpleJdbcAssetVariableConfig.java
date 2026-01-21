@@ -3,10 +3,10 @@ package mdt.persistence.asset.jdbc;
 import java.io.IOException;
 import java.time.Duration;
 
-import javax.annotation.Nullable;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import javax.annotation.Nullable;
 
 import utils.func.Optionals;
 import utils.json.JacksonUtils;
@@ -59,8 +59,6 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	
 	/**
 	 * JSON 노드로부터 {@link SimpleJdbcAssetVariableConfig} 객체를 생성한다.
-	 * <p>
-	 * 본 메소드는 {@link AssetVariableConfig.Deserializer}에서 호출된다.
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link SimpleJdbcAssetVariableConfig} 객체.

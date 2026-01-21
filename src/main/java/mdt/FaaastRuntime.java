@@ -1,33 +1,28 @@
 package mdt;
 
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
-import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
-
-import utils.func.Funcs;
-import utils.func.Lazy;
-
-import mdt.model.ReferenceUtils;
-import mdt.model.ResourceNotFoundException;
-import mdt.model.sm.value.ElementValues;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.dataformat.DeserializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.serialization.HttpJsonApiDeserializer;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.SetSubmodelElementValueByPathRequest;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.PatchSubmodelElementValueByPathRequest;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.submodel.GetSubmodelElementByPathRequest;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.submodel.PutSubmodelElementByPathRequest;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ValueMappingException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValue;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValueParser;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.mapper.ElementValueMapper;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
+
+import mdt.model.ReferenceUtils;
+import mdt.model.sm.value.ElementValues;
 
 
 /**
@@ -36,11 +31,20 @@ import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
  */
 public class FaaastRuntime {
 	private final ServiceContext m_service;
-	private final Lazy<List<Submodel>> m_submodels = Lazy.of(() -> loadSubmodels());
-	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4);
 	
-	public FaaastRuntime(ServiceContext service) {
+	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4);
+	private static FaaastRuntime s_runtime;
+	
+	private FaaastRuntime(ServiceContext service) {
 		m_service = service;
+	}
+	
+	public static FaaastRuntime getOrCreate(ServiceContext service) {
+		if ( s_runtime == null ) {
+			s_runtime = new FaaastRuntime(service);
+		}
+
+		return s_runtime;
 	}
 	
 	public static ExecutorService getExecutor() {
@@ -49,20 +53,6 @@ public class FaaastRuntime {
 	
 	public ServiceContext getServiceContext() {
 		return m_service;
-	}
-	
-	public List<Submodel> getSubmodels() {
-		return m_submodels.get();
-	}
-	
-	public Submodel getSubmodelById(String submodelId) {
-		return Funcs.findFirst(loadSubmodels(), sm -> submodelId.equals(sm.getId()))
-					.getOrThrow(() -> new ResourceNotFoundException("Submodel", "id=" + submodelId));
-	}
-	
-	public Submodel getSubmodelByIdShort(String submodeIdShort) throws ResourceNotFoundException {
-		return Funcs.findFirst(loadSubmodels(), sm -> submodeIdShort.equals(sm.getIdShort()))
-					.getOrThrow(() -> new ResourceNotFoundException("Submodel", "idShort=" + submodeIdShort));
 	}
 	
 	public SubmodelElement getSubmodelElementOfLocation(ElementLocation loc) {
@@ -100,12 +90,12 @@ public class FaaastRuntime {
 	
 	public void setSubmodelElementValueByPath(String submodelId, String path, String valueString,
 												ElementValueParser<Object> valueParser) {
-		SetSubmodelElementValueByPathRequest<Object> req = SetSubmodelElementValueByPathRequest.builder()
-																		                .path(path)
-																		                .submodelId(submodelId)
-																		                .value(valueString)
-																		                .valueParser(valueParser)
-																		                .build();
+		PatchSubmodelElementValueByPathRequest<Object> req = PatchSubmodelElementValueByPathRequest.builder()
+																						.path(path)
+																						.submodelId(submodelId)
+																						.value(valueString)
+																						.valueParser(valueParser)
+																						.build();
 		m_service.execute(req);
 	}
 	
@@ -116,10 +106,6 @@ public class FaaastRuntime {
 	public void updateSubmodelElementValue(String submodelId, String elementPath, SubmodelElement element) {
 		mdt.model.sm.value.ElementValue smev = ElementValues.getValue(element);
 		setSubmodelElementValueByPath(submodelId, elementPath, smev.toValueJsonString());
-	}
-	
-	private List<Submodel> loadSubmodels() {
-		return m_service.getAASEnvironment().getSubmodels();
 	}
 
 	private static HttpJsonApiDeserializer API_DESERIALIZER = new HttpJsonApiDeserializer();
@@ -145,6 +131,9 @@ public class FaaastRuntime {
 					catch ( de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException e ) {
 	                    throw new DeserializationException("unable to obtain type information "
 	                    									+ "as resource does not exist", e);
+					}
+					catch ( PersistenceException e ) {
+	                    throw new DeserializationException("unable to read value: " + rawString, e);
 					}
 	            }
 				else if ( SubmodelElement.class.isAssignableFrom(type) ) {

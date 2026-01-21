@@ -4,6 +4,7 @@ import java.util.Set;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.AssetAdministrationShell;
 import org.eclipse.digitaltwin.aas4j.v3.model.ConceptDescription;
+import org.eclipse.digitaltwin.aas4j.v3.model.OperationResult;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
@@ -15,15 +16,17 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 
+import jakarta.persistence.EntityManagerFactory;
+
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.operation.OperationHandle;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.operation.OperationResult;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotAContainerElementException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.AssetAdministrationShellSearchCriteria;
@@ -33,8 +36,6 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCr
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.memory.PersistenceInMemory;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.memory.PersistenceInMemoryConfig;
-
-import jakarta.persistence.EntityManagerFactory;
 
 import utils.stream.FStream;
 
@@ -342,5 +343,20 @@ public class KSX9101Persistence implements Persistence<KSX9101PersistencerConfig
 	
 	private boolean isKSX9101Submodel(String submodelId) {
 		return m_ksx9101SubmodelIds.contains(submodelId);
+	}
+
+	@Override
+	public void start() throws PersistenceException {
+		m_basePersistence.start();
+	}
+
+	@Override
+	public void stop() {
+		m_basePersistence.stop();
+	}
+
+	@Override
+	public void deleteAll() throws PersistenceException {
+		m_basePersistence.deleteAll();
 	}
 }

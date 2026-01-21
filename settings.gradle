@@ -5,3 +5,6 @@ project(':utils').projectDir = file('../../common/utils')
 
 include ':mdt-client'
 project(':mdt-client').projectDir = file('../mdt-client')
+
+include ':faaast-starter-3'
+project(':faaast-starter-3').projectDir = file('../faaast/faaast-starter-3')

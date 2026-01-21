@@ -5,7 +5,6 @@ import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvider;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProviderConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetProviderConfig;
 
 
 /**
@@ -20,11 +19,6 @@ public class UnsupportedOperationProvider implements AssetOperationProvider<Asse
 
 	@Override
 	public AssetOperationProviderConfig getConfig() {
-		return null;
-	}
-
-	@Override
-	public AssetProviderConfig asConfig() {
-		return null;
+		return new AbstractAssetOperationProviderConfig() {  };
 	}
 }

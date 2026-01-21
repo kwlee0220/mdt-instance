@@ -1,13 +1,13 @@
 package mdt.persistence.asset.opcua;
 
-import javax.annotation.Nullable;
-
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 
 import lombok.Getter;
 import lombok.experimental.Accessors;
+
+import javax.annotation.Nullable;
 
 
 /**

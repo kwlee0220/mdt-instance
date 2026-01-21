@@ -1,7 +1,8 @@
 plugins {
 	id 'java'
 	id 'application'
-	id 'com.github.johnrengelman.shadow' version '8.1.1'
+	// id 'com.github.johnrengelman.shadow' version '8.1.1'
+	id("com.gradleup.shadow") version "9.3.0"
 }
 
 group = 'etri'
@@ -12,8 +13,8 @@ application {
 }
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
@@ -37,15 +38,15 @@ ext {
 dependencies {
 	implementation project(":utils")
 	implementation project(":mdt-client")
-	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
+	implementation project(":faaast-starter-3")
+	
+	// @Nullable, @GuardedBy
+	compileOnly "com.google.code.findbugs:jsr305:${findbugs_version}"
 	
 	implementation "ch.qos.logback:logback-classic:${logback_version}"
 
 	// Guava (from the project :utils)
 	implementation "com.google.guava:guava:${guava_version}"
-	
-	// Checker framework
-	implementation("org.checkerframework:checker:${checker_version}")
 
 	// Lombok (from the project :utils)
 	compileOnly "org.projectlombok:lombok:${lombok_version}"
@@ -64,7 +65,7 @@ dependencies {
 	}
 		
 	// picocli command line parser
-	// implementation "info.picocli:picocli:${picocli_version}"
+	implementation "info.picocli:picocli:${picocli_version}"
 		
 	// HTTP Client
 	implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: "${okhttp_version}"
@@ -106,7 +107,7 @@ test {
 }
 
 shadowJar {
-	zip64 true
+	zip64 = true
 	mergeServiceFiles()
 
 	exclude 'META-INF/*.SF'

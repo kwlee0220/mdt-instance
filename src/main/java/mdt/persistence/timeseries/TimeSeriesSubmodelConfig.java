@@ -3,13 +3,13 @@ package mdt.persistence.timeseries;
 import java.time.Duration;
 import java.util.List;
 
-import javax.annotation.Nullable;
-
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.Getter;
 import lombok.experimental.Accessors;
+
+import javax.annotation.Nullable;
 
 import utils.UnitUtils;
 import utils.func.Funcs;

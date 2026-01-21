@@ -10,10 +10,8 @@ import org.slf4j.LoggerFactory;
 
 import utils.LoggerSettable;
 import utils.func.Optionals;
-import utils.stream.FStream;
 
 import mdt.ElementLocation;
-import mdt.model.ResourceNotFoundException;
 import mdt.model.sm.SubmodelUtils;
 import mdt.persistence.MDTModelLookup;
 
@@ -58,10 +56,7 @@ public abstract class AbstractAssetVariable<T extends AssetVariableConfig> imple
 		loc.activate(lookup);
 
 		// 검색된 Submodel 내에서 본 element에 해당하는 SubmodelElement를 찾는다.
-		Submodel submodel
-			= FStream.from(lookup.getSubmodelAll())
-					.findFirst(sm -> sm.getIdShort().equals(loc.getSubmodelIdShort()))
-					.getOrThrow(() -> new ResourceNotFoundException("Submodel", "idShort=" + loc.getSubmodelIdShort()));
+		Submodel submodel = lookup.getSubmodelByIdShort(loc.getSubmodelIdShort());
 		m_prototype = SubmodelUtils.traverse(submodel, getElementLocation().getElementPath());
 	}
 	

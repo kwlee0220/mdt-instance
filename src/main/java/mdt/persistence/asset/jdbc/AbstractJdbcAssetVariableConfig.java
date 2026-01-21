@@ -77,11 +77,8 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	
 	/**
 	 * JSON 노드로부터 {@link AbstractJdbcAssetVariableConfig} 객체를 생성한다.
-	 * <p>
-	 * 본 메소드는 {@link AssetVariableConfig.Deserializer}에서 호출된다.
 	 * 
 	 * @param jnode	JSON 노드
-	 * @return	생성된 {@link AbstractJdbcAssetVariableConfig} 객체.
 	 * @throws IOException 
 	 */
 	protected void loadFields(JsonNode jnode) throws IOException {

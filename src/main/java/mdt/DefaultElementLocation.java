@@ -6,8 +6,6 @@ import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 
 import com.google.common.base.Preconditions;
 
-import utils.stream.FStream;
-
 import mdt.persistence.MDTModelLookup;
 
 /**
@@ -36,13 +34,8 @@ public final class DefaultElementLocation implements ElementLocation {
 
 	@Override
 	public void activate(MDTModelLookup lookup) {
-		Submodel opSubmodel
-					= FStream.from(lookup.getSubmodelAll())
-//							.peek(sm -> System.out.printf("%s <-> %s = %s%n", sm.getIdShort(), m_submodelIdShort, m_submodelIdShort.equals(sm.getIdShort())))
-							.findFirst(sm -> m_submodelIdShort.equals(sm.getIdShort()))
-							.getOrThrow(() -> new IllegalArgumentException("Submodel not found: "
-																			+ m_submodelIdShort));
-		m_submodelId = opSubmodel.getId();
+		Submodel sm = lookup.getSubmodelByIdShort(m_submodelIdShort);
+		m_submodelId = sm.getId();
 	}
 
 	@Override

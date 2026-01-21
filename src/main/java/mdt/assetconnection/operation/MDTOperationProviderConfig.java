@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AbstractAssetOperationProviderConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProviderConfig;
 
 
 /**
@@ -20,8 +19,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvi
 @Getter @Setter
 @NoArgsConstructor
 @JsonInclude(Include.NON_NULL)
-public class MDTOperationProviderConfig extends AbstractAssetOperationProviderConfig
-										implements AssetOperationProviderConfig {
+public class MDTOperationProviderConfig extends AbstractAssetOperationProviderConfig {
 	private @Nullable JavaOperationProviderConfig java;
 	private @Nullable ProgramOperationProviderConfig program;
 	private @Nullable HttpOperationProviderConfig http;

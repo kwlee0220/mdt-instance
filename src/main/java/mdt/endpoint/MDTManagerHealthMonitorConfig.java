@@ -18,9 +18,9 @@ import utils.UnitUtils;
  * JSON 형식:
  * <pre><code>
  * {
- *    "managerEndpoint": <확인 대상 MDTManager의 접속 endpoint> (예: "http://localhost:8080/mdt"),
- *    "checkInterval": <접속 확인 주기> (예: "10s", "1m", "100ms"),
- *    "enabled": <접속 확인 활성화 여부> (예: true, false)
+ *    "managerEndpoint": &lt;확인 대상 MDTManager의 접속 endpoint> (예: "http://localhost:8080/mdt"),
+ *    "checkInterval": &lt;접속 확인 주기> (예: "10s", "1m", "100ms"),
+ *    "enabled": &lt;접속 확인 활성화 여부> (예: true, false)
  * }</code></pre>
  * 
  * @author Kang-Woo Lee (ETRI)

@@ -480,7 +480,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		configs.add(httpEpConfig);
 		
 		if ( m_type == InstanceType.EXTERNAL ) { 
-			String heartbeatInterval = FOption.getOrElse(instConf.getHeartbeatInterval(),
+			String heartbeatInterval = Optionals.getOrElse(instConf.getHeartbeatInterval(),
 															DEFAULT_HEARTBEAT_INTERVAL);
 			Preconditions.checkArgument(instConf.getId() != null,
 											"MDTInstance's id is not specified in the configuration");
@@ -491,7 +491,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			configs.add(reconnectConfig);
 		}
 		else if ( m_type == InstanceType.JAR ) {
-			String mgrHealthCheckInterval = FOption.getOrElse(instConf.getManagerCheckInterval(),
+			String mgrHealthCheckInterval = Optionals.getOrElse(instConf.getManagerCheckInterval(),
 																DEFAULT_MANAGER_CHECK_INTERVAL);
 			MDTManagerHealthMonitorConfig mgrHealthMonitorConfig
 												= new MDTManagerHealthMonitorConfig(instConf.getManagerEndpoint(),

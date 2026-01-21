@@ -3,11 +3,11 @@ package mdt.persistence.asset;
 import java.io.IOException;
 import java.time.Duration;
 
-import javax.annotation.Nullable;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
+
+import javax.annotation.Nullable;
 
 import utils.UnitUtils;
 import utils.func.Optionals;
@@ -54,11 +54,8 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 	
 	/**
 	 * JSON 노드로부터 {@link AbstractAssetVariableConfig} 객체를 생성한다.
-	 * <p>
-	 * 본 메소드는 {@link AssetVariableConfig.Deserializer}에서 호출된다.
 	 * 
 	 * @param jnode	JSON 노드
-	 * @return	생성된 {@link AbstractAssetVariableConfig} 객체.
 	 */
 	protected void loadFields(JsonNode jnode) {
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");

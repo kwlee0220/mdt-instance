@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import utils.func.Try;
+import utils.func.Unchecked;
 import utils.io.IOUtils;
 import utils.statechart.AbstractState;
 import utils.statechart.Signal;
@@ -329,19 +331,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			IOUtils.closeQuietly(m_fos);
 			
 			if ( m_remains == 0 ) {
-				if ( m_mdtConnected ) {
-					s_logger.info("update Simulation Output SimulationVideo");
-	
-					HttpMDTManager mdt = HttpMDTManager.connectWithDefault();
-					HttpMDTInstanceManager manager = mdt.getInstanceManager();
-					String instId = System.getenv("MDT_INSTANCE_ID");
-					if ( instId == null ) {
-						throw new IllegalStateException("MDT_INSTANCE_ID environment variable is not set");
-					}
-					
+				if ( m_videoRef != null ) {
 					try {
-						MDTArgumentReference videoRef = getArgumentReference(manager, instId, "SimulationVideo");
-						videoRef.updateAttachment(m_videoFile);
+						m_videoRef.updateAttachment(m_videoFile);
+						s_logger.info("update Simulation Output SimulationVideo");
 					}
 					catch ( Exception e ) {
 						s_logger.error("Failed to update SimulationVideo output: cause=" + e, e);
@@ -445,9 +438,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			m_utilizationUpdater.update(RCKSimulationResult.empty());
 
 			m_stateRef = getArgumentReference(m_manager, m_instanceId, "State");
-			
-			m_videoRef = getArgumentReference(m_manager, m_instanceId, "SimulationVideo");
-			m_videoRef.removeAttachment();
+			m_videoRef = Try.get(() -> getArgumentReference(m_manager, m_instanceId, "SimulationVideo"))
+							.ifSuccessful(ref -> Unchecked.runOrIgnore(ref::removeAttachment))
+							.getOrNull();
 			
 			m_mdtConnected = true;
 		}
@@ -477,8 +470,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 	
 	public static final void main(String... args) throws Exception {
-//        String serverUrl = "ws://59.10.5.215:4000";
-        String serverUrl = "ws://localhost:4000/rck/simulator";
+        String serverUrl = "ws://59.10.5.215:4000";
+//        String serverUrl = "ws://localhost:4000/rck/simulator";
         String processName = "press";
 		String layoutName = "프레스 공정_사람+설비추가_NOCON.vcmx";
 //		String layoutName = "프레스 공정_AMR_NOCON.vcmx";
@@ -503,6 +496,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
         File videoFile = new File(ctxt.getSimulationVideo().getFileName());
         System.out.println("video-file: " + videoFile.getAbsolutePath());
         
-        videoFile.delete();
+//        videoFile.delete();
 	}
 }

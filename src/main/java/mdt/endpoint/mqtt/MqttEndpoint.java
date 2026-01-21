@@ -1,6 +1,7 @@
 package mdt.endpoint.mqtt;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
@@ -13,14 +14,14 @@ import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.serialization.HttpJsonApiDeserializer;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValue;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValueParser;
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.typing.TypeInfo;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
-
-import jakarta.persistence.PersistenceException;
 
 import utils.InternalException;
 import utils.Throwables;
@@ -50,7 +51,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		throws ConfigurationInitializationException {
 		m_config = config;
 		
-		m_faaast = new FaaastRuntime(serviceContext);
+		m_faaast = FaaastRuntime.getOrCreate(serviceContext);
 		
 		try {
 			m_brokerConfig = m_config.getMqttBrokerConfig();
@@ -74,17 +75,17 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 	public MqttEndpointConfig asConfig() {
 		return m_config;
 	}
+
+	@Override
+	public List<ServiceSpecificationProfile> getProfiles() {
+		return m_config.getProfiles();
+	}
 	
     @Override
     public void start() throws EndpointException {
-    	try {
-			MDTModelLookup lookup = MDTModelLookup.getInstanceOrCreate(m_faaast.getSubmodels());
-			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
-				sub.getElementLocation().activate(lookup);
-			}
-		}
-		catch ( ConfigurationInitializationException e ) {
-			throw new EndpointException("Failed to activate element location, cause=" + e);
+		MDTModelLookup lookup = MDTModelLookup.getInstance();
+		for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
+			sub.getElementLocation().activate(lookup);
 		}
 
 		s_logger.info("Starting service: {}", this);

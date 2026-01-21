@@ -2,6 +2,7 @@ package mdt.endpoint.ros2;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 import org.java_websocket.client.WebSocketClient;
@@ -13,6 +14,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.google.common.collect.Maps;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
+
 import utils.stream.FStream;
 
 import mdt.FaaastRuntime;
@@ -20,12 +28,6 @@ import mdt.MDTGlobalConfigurations;
 import mdt.endpoint.ros2.msg.Ros2Message;
 import mdt.endpoint.ros2.msg.Ros2MessageHandler;
 import mdt.model.MDTModelSerDe;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
 
 /**
  *
@@ -80,7 +82,7 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 		throws ConfigurationInitializationException {
 		m_config = config;
 		
-		m_faaast = new FaaastRuntime(serviceContext);
+		m_faaast = FaaastRuntime.getOrCreate(serviceContext);
 		for ( Ros2MessageHandler<?> handler: config.getMessages() ) {
 			m_handlers.put(handler.getTopic(), handler);
 		}
@@ -100,6 +102,11 @@ public class Ros2Endpoint implements Endpoint<Ros2EndpointConfig> {
 	@Override
 	public Ros2EndpointConfig asConfig() {
 		return m_config;
+	}
+
+	@Override
+	public List<ServiceSpecificationProfile> getProfiles() {
+		return m_config.getProfiles();
 	}
 	
     @Override

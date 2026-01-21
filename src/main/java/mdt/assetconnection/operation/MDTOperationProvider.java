@@ -16,18 +16,20 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvider;
+import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetProviderConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
+
 import utils.InternalException;
 import utils.Throwables;
 import utils.stream.FStream;
 
 import mdt.model.MDTModelSerDe;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
-import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvider;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
-import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
-import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
 
 
 /**
@@ -63,6 +65,9 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
             							ReferenceHelper.toString(m_opRef));
             throw new IllegalStateException(msg, e);
         }
+		catch ( PersistenceException e ) {
+			throw new AssetConnectionException(e);
+		}
 		
         try {
 	    	if ( m_config.getJava() != null ) {
@@ -85,6 +90,11 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 
 	@Override
 	public MDTOperationProviderConfig getConfig() {
+		return m_config;
+	}
+
+	@Override
+	public AssetProviderConfig asConfig() {
 		return m_config;
 	}
 	

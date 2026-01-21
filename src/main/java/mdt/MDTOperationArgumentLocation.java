@@ -6,10 +6,11 @@ import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 
 import com.google.common.base.Preconditions;
 
-import utils.Utilities;
-import utils.stream.FStream;
+import javax.annotation.Nullable;
 
-import mdt.model.ReferenceUtils;
+import utils.Utilities;
+
+import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.ai.AI;
 import mdt.model.sm.ref.MDTArgumentKind;
 import mdt.model.sm.simulation.Simulation;
@@ -25,8 +26,8 @@ public class MDTOperationArgumentLocation implements ElementLocation {
 	private final MDTArgumentKind m_kind;
 	private final String m_argName;
 
-	private String m_submodelId;
-	private String m_elementPath;
+	@Nullable private Submodel m_submodel;	// 활성화되기 이전까지는 null
+	@Nullable private String m_elementPath;	// 활성화되기 이전까지는 null
 
 	public MDTOperationArgumentLocation(String submodelIdShort, MDTArgumentKind kind, String argName) {
 		m_submodelIdShort = submodelIdShort;
@@ -36,20 +37,15 @@ public class MDTOperationArgumentLocation implements ElementLocation {
 
 	@Override
 	public void activate(MDTModelLookup lookup) {
-		Submodel opSubmodel = FStream.from(lookup.getSubmodelAll())
-									.findFirst(sm -> m_submodelIdShort.equals(sm.getIdShort()))
-									.getOrThrow(() -> new IllegalArgumentException("Submodel not found: "
-																					+ m_submodelIdShort));
-		m_submodelId = opSubmodel.getId();
-		String semanticId = ReferenceUtils.getSemanticIdStringOrNull(opSubmodel.getSemanticId());
-
+		m_submodel = lookup.getSubmodelByIdShort(m_submodelIdShort);
+		
+		String semanticId = SubmodelUtils.getSemanticIdStringOrNull(m_submodel.getSemanticId());
 		String kindStr = switch ( m_kind ) {
 			case INPUT -> "Input";
 			case OUTPUT -> "Output";
 			default -> throw new IllegalArgumentException("Invalid OperationArgument's kind: " + m_kind);
 		};
 		
-		String pathPrefix;
 		if ( AI.SEMANTIC_ID.equals(semanticId) ) {
 			m_elementPath = Utilities.substributeString("AIInfo.${kind}s.${kind}Value", Map.of("kind", kindStr));
 		}
@@ -63,9 +59,9 @@ public class MDTOperationArgumentLocation implements ElementLocation {
 
 	@Override
 	public String getSubmodelId() {
-		Preconditions.checkState(m_submodelId != null, "not activated");
+		Preconditions.checkState(m_submodel != null, "not activated");
 		
-		return m_submodelId;
+		return m_submodel.getId();
 	}
 
 	@Override

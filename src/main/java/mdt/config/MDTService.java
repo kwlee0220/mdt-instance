@@ -1,15 +1,17 @@
 package mdt.config;
 
-import utils.InternalException;
-import utils.ReflectionUtils;
-import utils.Throwables;
-
 import de.fraunhofer.iosb.ilt.faaast.service.Service;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionException;
 import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationException;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.MessageBusException;
 import de.fraunhofer.iosb.ilt.faaast.service.filestorage.FileStorage;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
+
+import utils.InternalException;
+import utils.ReflectionUtils;
+import utils.Throwables;
 
 /**
  *
@@ -20,7 +22,8 @@ public class MDTService extends Service {
 	private Persistence m_persistence;
 	private FileStorage m_fileStorage;
 	
-	public MDTService(ServiceConfig svc) throws ConfigurationException, AssetConnectionException {
+	public MDTService(ServiceConfig svc) throws ConfigurationException, AssetConnectionException,
+												PersistenceException, MessageBusException {
 		super(svc);
 		
 		m_config = svc;

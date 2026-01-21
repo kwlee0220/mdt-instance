@@ -15,6 +15,15 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
 import com.google.common.base.Preconditions;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
+
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.jdbc.JdbcUtils;
@@ -30,14 +39,6 @@ import mdt.model.timeseries.DefaultMetadata;
 import mdt.model.timeseries.DefaultRecord;
 import mdt.model.timeseries.DefaultRecords;
 import mdt.model.timeseries.RecordMetadata;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
-import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
-import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
-import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
 
 
 /**
@@ -114,9 +115,10 @@ public class ReadRecordsOperation implements OperationProvider {
 		}
 	}
 	
-	private DefaultRecords readRecords(ResultSet rset) throws SQLException {
+	private DefaultRecords readRecords(ResultSet rset)
+									throws SQLException, mdt.model.ResourceNotFoundException, PersistenceException {
 		DefaultMetadata metadata = getMetadata();
-		RecordMetadata recordMetadata = metadata.getRecordMetadata();
+		RecordMetadata recordMetadata = metadata.getRecord();
 
 		List<DefaultRecord> recList
 					= JdbcUtils.fstream(rset, recordMetadata::read)
@@ -129,7 +131,7 @@ public class ReadRecordsOperation implements OperationProvider {
 		return records;
 	}
 	
-	private DefaultLinkedSegment getTargetSegment() throws mdt.model.ResourceNotFoundException {
+	private DefaultLinkedSegment getTargetSegment() throws mdt.model.ResourceNotFoundException, PersistenceException {
 		SubmodelElementIdentifier opId = SubmodelElementIdentifier.fromReference(m_opRef);
 		SubmodelElementIdentifier fullRangeId
 				= SubmodelElementIdentifier.builder()
@@ -148,7 +150,7 @@ public class ReadRecordsOperation implements OperationProvider {
 		}
 	}
 	
-	private DefaultMetadata getMetadata() throws mdt.model.ResourceNotFoundException {
+	private DefaultMetadata getMetadata() throws mdt.model.ResourceNotFoundException, PersistenceException {
 		SubmodelElementIdentifier opId = SubmodelElementIdentifier.fromReference(m_opRef);
 		SubmodelElementIdentifier fullRangeId
 				= SubmodelElementIdentifier.builder()

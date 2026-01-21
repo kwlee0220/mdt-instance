@@ -2,20 +2,12 @@ package mdt.persistence.asset;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import utils.Throwables;
-import utils.stream.FStream;
-
-import mdt.ElementLocation;
-import mdt.model.sm.SubmodelUtils;
-import mdt.model.sm.value.ElementValues;
-import mdt.persistence.MDTModelLookup;
-import mdt.persistence.PersistenceStack;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
@@ -26,8 +18,20 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.OutputModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
+
+import utils.KeyValue;
+import utils.Throwables;
+import utils.stream.FStream;
+
+import mdt.ElementLocation;
+import mdt.model.sm.SubmodelUtils;
+import mdt.model.sm.value.ElementValue;
+import mdt.model.sm.value.ElementValues;
+import mdt.persistence.MDTModelLookup;
+import mdt.persistence.PersistenceStack;
 
 
 /**
@@ -39,7 +43,7 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 
 	private AssertVariableBasedPersistenceConfig m_config;
 	private MDTModelLookup m_lookup;
-	private List<AssetVariable> m_assetVariables;
+	private Map<String,List<AssetVariable>> m_assetVariables;	// smIdShort -> AssetVariable
 
 	public AssertVariableBasedPersistence() {
 		setLogger(s_logger);
@@ -51,17 +55,24 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		super.init(coreConfig, config, serviceContext);
 		
 		m_config = config;
-		
-		// 등록된 모든 AssetVariable들을 생성하고 활성화시킨다.
-		m_lookup = MDTModelLookup.getInstance();
-		m_assetVariables = FStream.from(m_config.getAssetVariableConfigs())
-						 			.map(c -> createAssetVariable(c, m_lookup))
-						 			.toList();
+		getLogger().info("initialized {}, config={}", this, config);
 	}
 
 	@Override
 	public AssertVariableBasedPersistenceConfig asConfig() {
 		return m_config;
+	}
+
+	@Override
+	public void start() throws PersistenceException {
+		super.start();
+		
+		// 등록된 모든 AssetVariable들을 생성하고 활성화시킨다.
+		m_lookup = MDTModelLookup.getInstance();
+		m_assetVariables = FStream.from(m_config.getAssetVariableConfigs())
+						 			.map(c -> createAssetVariable(c, m_lookup))
+						 			.mapToKeyValue(var -> KeyValue.of(var.getElementLocation().getSubmodelIdShort(), var))
+						 			.toListMap();
 	}
 	
 	private boolean isNormalModifier(QueryModifier modifier) {
@@ -70,7 +81,7 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	
 	@Override
 	public SubmodelElement getSubmodelElement(SubmodelElementIdentifier identifier, QueryModifier modifier)
-		throws ResourceNotFoundException {
+		throws ResourceNotFoundException, PersistenceException {
 		if ( modifier instanceof OutputModifier om ) {
 			switch ( om.getContent() ) {
 				case METADATA:
@@ -85,29 +96,23 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		// 주어진 identifier에 해당하는 AssetVariable을 찾는다.
 		// 검색되면 해당 AssetVariable을 통해 외부 asset에서 SubmodelElement를 읽어오고,
 		// 검색되지 않으면 m_basePersistence를 통해 SubmodelElement를 읽어온다.
-		String submodelId = identifier.getSubmodelId();
-		String submodelIdShort = m_lookup.getSubmodelIdShortFromSubmodelId(submodelId);
+		Submodel sm = m_lookup.getSubmodelById(identifier.getSubmodelId());
 		String elementPath = identifier.getIdShortPath().toString();
 		
 		SubmodelElement baseSme = null;
-		for ( AssetVariable var : m_assetVariables ) {
+		for ( AssetVariable var : m_assetVariables.getOrDefault(sm.getIdShort(), List.of()) ) {
 			if ( !var.isReadable() ) {
 				continue;
 			}
 			
 			ElementLocation varLoc = var.getElementLocation();
 			
-			// SubmodelIdShort이 다른 경우는 제외시킨다.
-			if ( !submodelIdShort.equals(varLoc.getSubmodelIdShort()) ) {
-				continue;
-			}
-			
 			String varElmPath = varLoc.getElementPath();
 			if ( elementPath.equals(varElmPath) ) {
 				getLogger().debug("read AssetVariable: {}", var);
 				return SubmodelUtils.duplicate(var.read());
 			}
-			else if ( elementPath.startsWith(varElmPath) ) {	// element < var
+			else if ( elementPath.startsWith(varElmPath) ) {
 				// 요청한 elementPath가 AssetVariable의 elementPath의 일부인 경우
 				// AssetVariable의 elementPath에서 요청한 부분만 추출한다.
 				String relPath = SubmodelUtils.toRelativeIdShortPath(varElmPath, elementPath);
@@ -139,25 +144,19 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 
 	@Override
 	public void update(SubmodelElementIdentifier identifier, SubmodelElement update)
-		throws ResourceNotFoundException {
+		throws ResourceNotFoundException, PersistenceException {
 		// 주어진 identifier에 해당하는 AssetVariable을 찾는다.
 		// 검색되면 해당 AssetVariable을 통해 외부 asset을 갱신하고,
 		// 검색되지 않으면 m_basePersistence를 통해 SubmodelElement를 갱신한다.
-		String submodelId = identifier.getSubmodelId();
-		String submodelIdShort = m_lookup.getSubmodelIdShortFromSubmodelId(submodelId);
+		Submodel sm = m_lookup.getSubmodelById(identifier.getSubmodelId());
 		String elementPath = identifier.getIdShortPath().toString();
-		
-		for ( AssetVariable var : m_assetVariables ) {
+
+		for ( AssetVariable var : m_assetVariables.getOrDefault(sm.getIdShort(), List.of()) ) {
 			if ( !var.isUpdatable() ) {
 				continue;
 			}
 			
 			ElementLocation varLoc = var.getElementLocation();
-			
-			// SubmodelIdShort이 다른 경우는 제외시킨다.
-			if ( !submodelIdShort.equals(varLoc.getSubmodelIdShort()) ) {
-				continue;
-			}
 			
 			String varElmPath = varLoc.getElementPath();
 			if ( elementPath.equals(varElmPath) ) {
@@ -192,20 +191,30 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	}
 
 	@Override
-	public Submodel getSubmodel(String id, QueryModifier modifier) throws ResourceNotFoundException {
+	public Submodel getSubmodel(String id, QueryModifier modifier)
+														throws ResourceNotFoundException, PersistenceException {
+		// Base Submodel을 읽어온 후, 등록된 AssetVariable들을 통해
+		// 해당 SubmodelElement들을 갱신한 후 반환한다.
 		Submodel submodel = getBasePersistence().getSubmodel(id, modifier);
-		FStream.from(m_assetVariables)
-                .filter(var -> var.isReadable() && id.equals(var.getElementLocation().getSubmodelId()))
-                .forEach(var -> {
-                	String elementPath = var.getElementLocation().getElementPath();
-                	SubmodelElement buffer = SubmodelUtils.traverse(submodel, elementPath);
-                	ElementValues.update(buffer, ElementValues.getValue(var.read()));
-                });
+		for ( AssetVariable var : m_assetVariables.getOrDefault(submodel.getIdShort(), List.of()) ) {
+			if ( var.isReadable() ) {
+				String elementPath = var.getElementLocation().getElementPath();
+				SubmodelElement buffer = SubmodelUtils.traverse(submodel, elementPath);
+				
+				ElementValue varValue = ElementValues.getValue(var.read());
+				ElementValues.update(buffer, varValue);
+				if ( getLogger().isDebugEnabled() ) {
+					getLogger().debug("update Submodel {} from AssetVariable {}: value={}",
+										submodel.getIdShort(), var.getElementLocation(), varValue);
+				}
+			}
+		}
 		return submodel;
 	}
 
 	@Override
-	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging) {
+	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging)
+																						throws PersistenceException {
 		Page<Submodel> page = getBasePersistence().findSubmodels(criteria, QueryModifier.DEFAULT, paging);
 		List<Submodel> submodels = FStream.from(page.getContent())
 											.mapOrIgnore(sm -> getSubmodel(sm.getId(), modifier))
@@ -221,17 +230,21 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	}
 
 	@Override
-	public void save(Submodel submodel) {
+	public void save(Submodel submodel) throws PersistenceException {
 		getBasePersistence().save(submodel);
 
-		String smId = submodel.getId();
-		FStream.from(m_assetVariables)
-                .filter(var -> smId.equals(var.getElementLocation().getSubmodelId()))
-				.forEach(var -> {
-					String elementPath = var.getElementLocation().getElementPath();
-					SubmodelElement newSme = SubmodelUtils.traverse(submodel, elementPath);
-					var.update(newSme);
-				});
+		// 갱신된 Submodel 정보를 해당 AssetVariable들을 통해 외부 asset에 갱신한다.
+		for ( AssetVariable var : m_assetVariables.getOrDefault(submodel.getIdShort(), List.of()) ) {
+			if ( var.isUpdatable() ) {
+				String elementPath = var.getElementLocation().getElementPath();
+				SubmodelElement newSme = SubmodelUtils.traverse(submodel, elementPath);
+				var.update(newSme);
+				if ( getLogger().isDebugEnabled() ) {
+					getLogger().debug("update AssetVariable {} from saved Submodel {}: value={}",
+							var.getElementLocation(), submodel.getIdShort(), ElementValues.getValue(newSme));
+				}
+			}
+		}
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -252,5 +265,10 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 			Throwable cause = Throwables.unwrapThrowable(e);
 			throw new AssetVariableException("Failed to create an AssetVariable", cause);
 		}
+	}
+
+	@Override
+	public void deleteAll() throws PersistenceException {
+		getBasePersistence().deleteAll();
 	}
 }

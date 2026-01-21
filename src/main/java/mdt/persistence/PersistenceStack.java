@@ -2,6 +2,7 @@ package mdt.persistence;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.AssetAdministrationShell;
 import org.eclipse.digitaltwin.aas4j.v3.model.ConceptDescription;
+import org.eclipse.digitaltwin.aas4j.v3.model.OperationResult;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
@@ -16,9 +17,10 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
 import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.operation.OperationHandle;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.operation.OperationResult;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceAlreadyExistsException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotAContainerElementException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.AssetAdministrationShellSearchCriteria;
@@ -57,10 +59,16 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 		int idx = name.lastIndexOf('C');
 		m_basePersistence = Utilities.newInstance(name.substring(0, idx), Persistence.class);
 		m_basePersistence.init(coreConfig, baseConfig, serviceContext);
-		
-		if ( !(m_basePersistence instanceof PersistenceStack) ) {
-			MDTModelLookup.getInstanceOrCreate(m_basePersistence);
-		}
+	}
+
+	@Override
+	public void start() throws PersistenceException {
+		m_basePersistence.start();
+	}
+
+	@Override
+	public void stop() {
+		getBasePersistence().stop();
 	}
 	
 	public Persistence<?> getBasePersistence() {
@@ -73,108 +81,118 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 
 	@Override
 	public AssetAdministrationShell getAssetAdministrationShell(String id, QueryModifier modifier)
-																					throws ResourceNotFoundException {
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getAssetAdministrationShell(id, modifier);
 	}
 
 	@Override
-	public Page<Reference> getSubmodelRefs(String aasId, PagingInfo paging) throws ResourceNotFoundException {
+	public Page<Reference> getSubmodelRefs(String aasId, PagingInfo paging)
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getSubmodelRefs(aasId, paging);
 	}
 
 	@Override
-	public Submodel getSubmodel(String id, QueryModifier modifier) throws ResourceNotFoundException {
+	public Submodel getSubmodel(String id, QueryModifier modifier)
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getSubmodel(id, modifier);
 	}
 
 	@Override
-	public ConceptDescription getConceptDescription(String id, QueryModifier modifier) throws ResourceNotFoundException {
+	public ConceptDescription getConceptDescription(String id, QueryModifier modifier)
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getConceptDescription(id, modifier);
 	}
 
 	@Override
 	public SubmodelElement getSubmodelElement(SubmodelElementIdentifier identifier, QueryModifier modifier)
-																				throws ResourceNotFoundException {
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getSubmodelElement(identifier, modifier);
 	}
 
 	@Override
-	public OperationResult getOperationResult(OperationHandle handle) throws ResourceNotFoundException {
+	public OperationResult getOperationResult(OperationHandle handle)
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.getOperationResult(handle);
 	}
 
 	@Override
 	public Page<AssetAdministrationShell> findAssetAdministrationShells(AssetAdministrationShellSearchCriteria criteria,
-																		QueryModifier modifier, PagingInfo paging) {
+																		QueryModifier modifier, PagingInfo paging)
+																					throws PersistenceException {
 		return m_basePersistence.findAssetAdministrationShells(criteria, modifier, paging);
 	}
 
 	@Override
-	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging) {
+	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging)
+																						throws PersistenceException {
 		return m_basePersistence.findSubmodels(criteria, modifier, paging);
 	}
 
 	@Override
 	public Page<SubmodelElement> findSubmodelElements(SubmodelElementSearchCriteria criteria, QueryModifier modifier,
-														PagingInfo paging) throws ResourceNotFoundException {
+														PagingInfo paging)
+															throws ResourceNotFoundException, PersistenceException {
 		return m_basePersistence.findSubmodelElements(criteria, modifier, paging);
 	}
 
 	@Override
 	public Page<ConceptDescription> findConceptDescriptions(ConceptDescriptionSearchCriteria criteria,
-															QueryModifier modifier, PagingInfo paging) {
+															QueryModifier modifier, PagingInfo paging)
+																						throws PersistenceException {
 		return m_basePersistence.findConceptDescriptions(criteria, modifier, paging);
 	}
 
 	@Override
-	public void save(AssetAdministrationShell assetAdministrationShell) {
+	public void save(AssetAdministrationShell assetAdministrationShell) throws PersistenceException {
 		m_basePersistence.save(assetAdministrationShell);
 	}
 
 	@Override
-	public void save(ConceptDescription conceptDescription) {
+	public void save(ConceptDescription conceptDescription) throws PersistenceException {
 		m_basePersistence.save(conceptDescription);
 	}
 
 	@Override
-	public void save(Submodel submodel) {
+	public void save(Submodel submodel) throws PersistenceException {
 		m_basePersistence.save(submodel);
 	}
 
 	@Override
 	public void insert(SubmodelElementIdentifier parentIdentifier, SubmodelElement submodelElement)
-											throws ResourceNotFoundException, ResourceNotAContainerElementException {
+											throws ResourceNotFoundException, ResourceNotAContainerElementException,
+													ResourceAlreadyExistsException, PersistenceException {
 		m_basePersistence.insert(parentIdentifier, submodelElement);
 	}
 
 	@Override
 	public void update(SubmodelElementIdentifier identifier, SubmodelElement submodelElement)
-																				throws ResourceNotFoundException {
+															throws ResourceNotFoundException, PersistenceException {
 		m_basePersistence.update(identifier, submodelElement);
 	}
 
 	@Override
-	public void save(OperationHandle handle, OperationResult result) {
+	public void save(OperationHandle handle, OperationResult result) throws PersistenceException {
 		m_basePersistence.save(handle, result);
 	}
 
 	@Override
-	public void deleteAssetAdministrationShell(String id) throws ResourceNotFoundException {
+	public void deleteAssetAdministrationShell(String id) throws ResourceNotFoundException, PersistenceException {
 		m_basePersistence.deleteAssetAdministrationShell(id);
 	}
 
 	@Override
-	public void deleteSubmodel(String id) throws ResourceNotFoundException {
+	public void deleteSubmodel(String id) throws ResourceNotFoundException, PersistenceException {
 		m_basePersistence.deleteSubmodel(id);
 	}
 
 	@Override
-	public void deleteConceptDescription(String id) throws ResourceNotFoundException {
+	public void deleteConceptDescription(String id) throws ResourceNotFoundException, PersistenceException {
 		m_basePersistence.deleteConceptDescription(id);
 	}
 
 	@Override
-	public void deleteSubmodelElement(SubmodelElementIdentifier identifier) throws ResourceNotFoundException {
+	public void deleteSubmodelElement(SubmodelElementIdentifier identifier)
+													throws ResourceNotFoundException, PersistenceException {
 		m_basePersistence.deleteSubmodelElement(identifier);
 	}
 

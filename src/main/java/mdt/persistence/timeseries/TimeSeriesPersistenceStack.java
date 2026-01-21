@@ -10,8 +10,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
-import utils.KeyValue;
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceAlreadyExistsException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotAContainerElementException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCriteria;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
+
+import utils.Throwables;
 import utils.stream.FStream;
 
 import mdt.model.sm.SubmodelUtils;
@@ -22,19 +38,6 @@ import mdt.persistence.MDTModelLookup;
 import mdt.persistence.PersistenceStack;
 import mdt.persistence.timeseries.TimeSeriesSubmodelConfig.TailConfig;
 
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
-import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
-import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.Page;
-import de.fraunhofer.iosb.ilt.faaast.service.model.api.paging.PagingInfo;
-import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotAContainerElementException;
-import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
-import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCriteria;
-import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
-
 /**
  *
  * @author Kang-Woo Lee (ETRI)
@@ -44,7 +47,6 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	
 	private TimeSeriesPersistenceStackConfig m_config;
 	private Map<String,TimeSeriesSubmodelConfig> m_tsSubmodelConfigs;
-	private Map<String,Submodel> m_rawTimeSeriesSubmodels;
 	
 	public TimeSeriesPersistenceStack() {
 		setLogger(s_logger);
@@ -56,13 +58,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 		super.init(coreConfig, config, serviceContext);
 		
 		m_config = config;
-		if ( getLogger().isInfoEnabled() ) {
-			getLogger().info("initialized {}, config={}", this, config);
-		}
-		
-		// 시계열 Submodel과 관련된 설정 정보를 찾는다.
-		MDTModelLookup modelLookup = MDTModelLookup.getInstance();
-		m_tsSubmodelConfigs = loadTimeSeriesSubmodelConfigs(modelLookup.getSubmodelAll());
+		getLogger().info("initialized {}, config={}", this, config);
 	}
 
 	@Override
@@ -71,7 +67,17 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	}
 
 	@Override
-	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging) {
+	public void start() throws PersistenceException {
+		super.start();
+		
+		// 시계열 Submodel과 관련된 시계열 설정 정보를 매핑시킨다.
+		MDTModelLookup modelLookup = MDTModelLookup.getInstance();
+		m_tsSubmodelConfigs = loadTimeSeriesSubmodelConfigs(modelLookup.getSubmodelAll());
+	}
+
+	@Override
+	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging)
+																						throws PersistenceException {
 		Page<Submodel> paged = getBasePersistence().findSubmodels(criteria, modifier, paging);
 		List<Submodel> newContent
 						= FStream.from(paged.getContent())
@@ -85,6 +91,10 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 										catch ( ResourceNotFoundException e ) {
 											return null;
 										}
+										catch ( PersistenceException e ) {
+											Throwables.sneakyThrow(e);
+											return null;
+										}
 									}
 									else {
 										return submodel;
@@ -95,7 +105,8 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	}
 
 	@Override
-	public Submodel getSubmodel(String id, QueryModifier modifier) throws ResourceNotFoundException {
+	public Submodel getSubmodel(String id, QueryModifier modifier)
+															throws ResourceNotFoundException, PersistenceException {
 		Submodel baseModel = getBasePersistence().getSubmodel(id, modifier);
 		
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(id);
@@ -103,20 +114,14 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 			return baseModel;
 		}
 		else {
-			// Base Submodel에 포함된 Metadata를 읽어 RecordMetadata를 생성한다.
-			SubmodelElementCollection metaSmc = SubmodelUtils.traverse(baseModel, "Metadata",
-																		SubmodelElementCollection.class);
-			DefaultMetadata metadata = new DefaultMetadata();
-			metadata.updateFromAasModel(metaSmc);
-			
-			JdbcTimeSeries timeSeries = new JdbcTimeSeries(metadata, tsConfig);
-			timeSeries.loadAASModel();
+			JdbcTimeSeries timeSeries = new JdbcTimeSeries(tsConfig);
+			timeSeries.updateFromAasModel(baseModel);
 			return timeSeries.newSubmodel();
 		}
 	}
 
 	@Override
-	public void deleteSubmodel(String id) throws ResourceNotFoundException {
+	public void deleteSubmodel(String id) throws ResourceNotFoundException, PersistenceException {
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(id);
 		if ( tsConfig == null ) {
 			getBasePersistence().deleteSubmodel(id);
@@ -128,17 +133,19 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 
 	@Override
 	public Page<SubmodelElement> findSubmodelElements(SubmodelElementSearchCriteria criteria, QueryModifier modifier,
-														PagingInfo paging) throws ResourceNotFoundException {
+														PagingInfo paging)
+															throws ResourceNotFoundException, PersistenceException {
 		return getBasePersistence().findSubmodelElements(criteria, modifier, paging);
 	}
 
 	@Override
 	public SubmodelElement getSubmodelElement(SubmodelElementIdentifier identifier, QueryModifier modifier)
-																				throws ResourceNotFoundException {
+															throws ResourceNotFoundException, PersistenceException {
 		String submodelId = identifier.getSubmodelId();
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(submodelId);
 		if ( tsConfig == null ) {
-			return getBasePersistence().getSubmodelElement(identifier, modifier);
+			SubmodelElement sme = getBasePersistence().getSubmodelElement(identifier, modifier);
+			return sme;
 		}
 		
 		IdShortPath idShortPath = identifier.getIdShortPath();
@@ -154,7 +161,8 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	}
 	
 	private SubmodelElement traverseSegments(String submodelId, IdShortPath idShortPath,
-											TimeSeriesSubmodelConfig tsConfig) throws ResourceNotFoundException {
+											TimeSeriesSubmodelConfig tsConfig)
+															throws ResourceNotFoundException, PersistenceException {
 		// Metadata를 읽어 RecordSchema를 생성한다.
 		DefaultMetadata metadata = loadMetadataFromTimeSeries(submodelId);
 		
@@ -169,7 +177,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 			if ( tailConfig == null ) {
 				throw new mdt.model.ResourceNotFoundException("TailConfig", "path=" + idShortPath);
 			}
-			JdbcTailInternalSegment segment = new JdbcTailInternalSegment(metadata.getRecordMetadata(), tsConfig);
+			JdbcTailInternalSegment segment = new JdbcTailInternalSegment(metadata.getRecord(), tsConfig);
 			segment.loadAASModel();
 			if ( getLogger().isDebugEnabled() ) {
 				getLogger().info("loaded: {}", segment);
@@ -188,7 +196,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 			segmentList.add(segment);
 		}
 		if ( segmentId == null || segmentId.equals("FullRange") ) {
-			JdbcFullRangeLinkedSegment segment = new JdbcFullRangeLinkedSegment(metadata.getRecordMetadata(), tsConfig);
+			JdbcFullRangeLinkedSegment segment = new JdbcFullRangeLinkedSegment(metadata.getRecord(), tsConfig);
 			segment.load();
 			if ( getLogger().isDebugEnabled() ) {
 				getLogger().info("loaded: {}", segment);
@@ -224,7 +232,8 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 
 	@Override
 	public void insert(SubmodelElementIdentifier parentIdentifier, SubmodelElement submodelElement)
-											throws ResourceNotFoundException, ResourceNotAContainerElementException {
+											throws ResourceNotFoundException, ResourceNotAContainerElementException,
+													ResourceAlreadyExistsException, PersistenceException {
 		String submodelId = parentIdentifier.getSubmodelId();
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(submodelId);
 		if ( tsConfig == null ) {
@@ -237,7 +246,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 
 	@Override
 	public void update(SubmodelElementIdentifier identifier, SubmodelElement submodelElement)
-																				throws ResourceNotFoundException {
+															throws ResourceNotFoundException, PersistenceException {
 		String submodelId = identifier.getSubmodelId();
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(submodelId);
 		if ( tsConfig == null ) {
@@ -249,7 +258,8 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	}
 
 	@Override
-	public void deleteSubmodelElement(SubmodelElementIdentifier identifier) throws ResourceNotFoundException {
+	public void deleteSubmodelElement(SubmodelElementIdentifier identifier)
+															throws ResourceNotFoundException, PersistenceException {
 		String submodelId = identifier.getSubmodelId();
 		TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(submodelId);
 		if ( tsConfig == null ) {
@@ -264,16 +274,36 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 		return m_tsSubmodelConfigs.get(submodelId);
 	}
 	
-	private Map<String,TimeSeriesSubmodelConfig> loadTimeSeriesSubmodelConfigs(Iterable<Submodel> submodels) {
-		return FStream.from(submodels)
-					    .tagKey(Submodel::getIdShort)
-					    .innerJoin(FStream.from(m_config.getTimeSeriesSubmodelConfigs())
-					    								.tagKey(TimeSeriesSubmodelConfig::getIdShort))
-					    .mapKeyValue((idShort, tup) -> KeyValue.of(tup._1.getId(), tup._2))
-					    .toMap();
+	private Map<String,TimeSeriesSubmodelConfig> loadTimeSeriesSubmodelConfigs(Iterable<Submodel> submodels)
+		throws PersistenceException {
+		Map<String, TimeSeriesSubmodelConfig> tsConfigs = FStream.from(m_config.getTimeSeriesSubmodelConfigs())
+																.tagKey(TimeSeriesSubmodelConfig::getIdShort)
+																.toMap();
+		Map<String,TimeSeriesSubmodelConfig> result = Maps.newHashMap();
+		for ( Submodel sm : submodels ) {
+			if ( !SubmodelUtils.isTimeSeriesSubmodel(sm) ) {
+				continue;
+			}
+			
+			TimeSeriesSubmodelConfig tsConfig = tsConfigs.remove(sm.getIdShort());
+			if ( tsConfig == null ) {
+				String msg = String.format("No TimeSeriesSubmodelConfig for TimeSeries submodel: idShort=%s",
+											sm.getIdShort());
+				throw new PersistenceException(msg);
+			}
+			result.put(sm.getId(), tsConfig);
+		}
+		for ( TimeSeriesSubmodelConfig unmatched : tsConfigs.values() ) {
+			String msg = String.format("No TimeSeries submodel for TimeSeriesSubmodelConfig: idShort=%s",
+										unmatched.getIdShort());
+			throw new PersistenceException(msg);
+		}
+		
+		return result;
 	}
 	
-	private DefaultMetadata loadMetadataFromTimeSeries(String submodelId) throws ResourceNotFoundException {
+	private DefaultMetadata loadMetadataFromTimeSeries(String submodelId)
+															throws ResourceNotFoundException, PersistenceException {
 		// Metadata를 읽어 RecordSchema를 생성한다.
 		SubmodelElementIdentifier metaId = new SubmodelElementIdentifier();
 		metaId.setSubmodelId(submodelId);
@@ -284,5 +314,10 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 		metadata.updateFromAasModel(metaSme);
 		
 		return metadata;
+	}
+
+	@Override
+	public void deleteAll() throws PersistenceException {
+		getBasePersistence().deleteAll();
 	}
 }

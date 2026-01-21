@@ -1,24 +1,23 @@
 package mdt.assetconnection.operation;
 
+import java.util.Map;
+
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
+import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
+
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+
 import utils.stream.FStream;
-import utils.stream.KeyValueFStream;
 
 import mdt.client.operation.HttpOperationClient;
 import mdt.client.operation.OperationRequest;
 import mdt.client.operation.OperationResponse;
-import mdt.client.operation.OperationUtils;
-import mdt.model.sm.value.ElementValues;
-import mdt.model.sm.variable.AbstractVariable.ElementVariable;
-import mdt.model.sm.variable.AbstractVariable.ValueVariable;
-import mdt.model.sm.variable.Variable;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
 
 /**
@@ -46,12 +45,12 @@ class HttpOperationProvider implements OperationProvider {
 	@Override
 	public void invokeSync(OperationVariable[] inputVars, OperationVariable[] inoutputVars,
 							OperationVariable[] outputVars) throws Exception {
+		Preconditions.checkArgument(inoutputVars == null || inoutputVars.length == 0,
+									"inoutput parameters are not supported in HttpOperation");
 		OperationRequest req = new OperationRequest();
 		req.setOperation(m_config.getOpId());
-		FStream.of(inputVars).map(OperationUtils::toTaskPort).forEach(req.getInputVariables()::add);
-		FStream.of(inoutputVars).map(OperationUtils::toTaskPort).forEach(req.getInputVariables()::add);
-		FStream.of(outputVars).map(OperationUtils::toTaskPort).forEach(req.getOutputVariables()::add);
-		FStream.of(inoutputVars).map(OperationUtils::toTaskPort).forEach(req.getOutputVariables()::add);
+		req.setInputArguments(toArgumentMap(inputVars));
+		req.setInputArguments(toArgumentMap(outputVars));
 		req.setAsync(false);
 		
 		HttpOperationClient client = HttpOperationClient.builder()
@@ -114,25 +113,22 @@ class HttpOperationProvider implements OperationProvider {
 //		task.start();
 //	}
 	
+	private Map<String, SubmodelElement> toArgumentMap(OperationVariable[] vars) {
+		return FStream.of(vars)
+						.map(var -> var.getValue())
+						.tagKey(SubmodelElement::getIdShort)
+						.toMap();
+	}
+	
 	private void updateOutputVariables(OperationResponse resp, OperationVariable[] inoutputVars,
 										OperationVariable[] outputVars) {
-		FStream.of(inoutputVars)
-				.concatWith(FStream.of(outputVars))
+		FStream.of(outputVars)
 				.tagKey(v -> v.getValue().getIdShort())
-				.innerJoin(KeyValueFStream.from(FStream.from(resp.getResult()).tagKey(Variable::getName)))
+				.match(resp.getOutputArguments())
 				.forEach(match -> {
 					OperationVariable outOpVar = match.value()._1;
-					Variable outVar = match.value()._2;
-					
-					if ( outVar instanceof ValueVariable vvar ) {
-						ElementValues.update(outOpVar.getValue(), vvar.readValue());
-					}
-					else if ( outVar instanceof ElementVariable elmVar ) {
-						outOpVar.setValue(elmVar.read());
-					}
-					else {
-						throw new IllegalArgumentException("Unsupported output variable: " + outVar);
-					}
+					SubmodelElement out = match.value()._2;
+					outOpVar.setValue(out);
 				});
 	}
 }

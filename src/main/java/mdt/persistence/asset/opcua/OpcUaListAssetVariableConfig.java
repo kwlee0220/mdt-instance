@@ -4,10 +4,10 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 
-import javax.annotation.Nullable;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import javax.annotation.Nullable;
 
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
@@ -63,8 +63,6 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 	
 	/**
 	 * JSON 노드로부터 {@link OpcUaListAssetVariableConfig} 객체를 생성한다.
-	 * <p>
-	 * 본 메소드는 {@link AssetVariableConfig.Deserializer}에서 호출된다.
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link OpcUaListAssetVariableConfig} 객체.
