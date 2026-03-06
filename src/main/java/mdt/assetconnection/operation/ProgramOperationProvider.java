@@ -78,9 +78,9 @@ class ProgramOperationProvider implements OperationProvider {
 		File envFile = new File(workingDir, "env.file");
 		CommandExecution.Builder builder = CommandExecution.builder()
 															.addCommand(opDesc.getCommandLine())
-															.setWorkingDirectory(workingDir)
-															.setEnvironmentFile(envFile)
-															.setTimeout(opDesc.getTimeout());
+															.workingDirectory(workingDir)
+															.environmentFile(envFile)
+															.timeout(opDesc.getTimeout());
 		
 		FStream.of(inputVars)
 				.concatWith(FStream.of(inoutputVars))
