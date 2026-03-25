@@ -18,7 +18,7 @@ import utils.UnitUtils;
  * JSON 형식:
  * <pre><code>
  * {
- *    "managerEndpoint": &lt;확인 대상 MDTManager의 접속 endpoint> (예: "http://localhost:8080/mdt"),
+ *    "mdtUrl": &lt;확인 대상 MDTManager의 접속 URL> (예: "http://localhost:8080/mdt"),
  *    "checkInterval": &lt;접속 확인 주기> (예: "10s", "1m", "100ms"),
  *    "enabled": &lt;접속 확인 활성화 여부> (예: true, false)
  * }</code></pre>
@@ -27,18 +27,18 @@ import utils.UnitUtils;
  */
 @JsonInclude(Include.NON_NULL)
 public class MDTManagerHealthMonitorConfig extends EndpointConfig<MDTManagerHealthMonitor> {
-	private final String m_managerEndpoint;
+	private final String m_mdtUrl;
 	private final Duration m_checkInterval;
 	private final boolean m_enabled; 
 	
 	@JsonCreator
-	public MDTManagerHealthMonitorConfig(@JsonProperty("managerEndpoint") String managerEndpoint,
+	public MDTManagerHealthMonitorConfig(@JsonProperty("mdtUrl") String mdtUrl,
 										@JsonProperty("checkInterval") String checkInterval,
 										@JsonProperty("enabled") Boolean enabled) {
-		Preconditions.checkArgument(managerEndpoint != null, "'managerEndpoint' is missing");
+		Preconditions.checkArgument(mdtUrl != null, "'mdtUrl' is missing");
 		Preconditions.checkArgument(checkInterval != null, "'checkInterval' is missing");
 		
-		m_managerEndpoint = managerEndpoint;
+		m_mdtUrl = mdtUrl;
 		m_checkInterval = UnitUtils.parseDuration(checkInterval);
 		m_enabled = (enabled != null) ? enabled : true;
 	}
@@ -48,9 +48,9 @@ public class MDTManagerHealthMonitorConfig extends EndpointConfig<MDTManagerHeal
 	 * 
 	 * @return	Health monitoring 대상 MDT Manager의 endpoint.
 	 */
-	@JsonProperty("managerEndpoint")
-	public String getManagerEndpoint() {
-		return m_managerEndpoint;
+	@JsonProperty("mdtUrl")
+	public String getMdtUrl() {
+		return m_mdtUrl;
 	}
 	
 	/**

@@ -43,9 +43,9 @@ public class MDTManagerHealthMonitor extends AbstractEndpoint<MDTManagerHealthMo
 				m_restfulClient.get(m_url);
 			}
 			catch ( Exception e ) {
-				if ( s_logger.isInfoEnabled() ) {
-					s_logger.info("Failed to connect MDTManager: {} -> shutting-down MDTInstance", this);
-				}
+				s_logger.error("Failed to monitor MDTManager ({}): cause={}", m_url, ""+e);
+				s_logger.info("Failed to connect MDTManager: {} -> shutting-down MDTInstance",
+								MDTManagerHealthMonitor.this);
 				System.exit(0);
 			}
 		}
@@ -61,7 +61,7 @@ public class MDTManagerHealthMonitor extends AbstractEndpoint<MDTManagerHealthMo
 	public void init(CoreConfig coreConfig, MDTManagerHealthMonitorConfig config, ServiceContext serviceContext) {
 		super.init(coreConfig, config, serviceContext);
 		
-		m_url = String.format("%s/health", config.getManagerEndpoint());
+		m_url = String.format("%s/health", config.getMdtUrl());
 		m_restfulClient = HttpRESTfulClient.newDefaultClient();
 	}
 	

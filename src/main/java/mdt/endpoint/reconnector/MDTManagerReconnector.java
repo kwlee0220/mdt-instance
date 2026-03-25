@@ -41,7 +41,7 @@ public class MDTManagerReconnector extends AbstractEndpoint<MDTManagerReconnecto
 	public void init(CoreConfig coreConfig, MDTManagerReconnectorConfig config, ServiceContext serviceContext) {
 		super.init(coreConfig, config, serviceContext);
 
-		m_registerUrl = String.format("%s/instance-manager/registry/%s", config.getMdtEndpoint(), config.getInstanceId());
+		m_registerUrl = String.format("%s/instance-manager/registry/%s", config.getMdtUrl(), config.getInstanceId());
 		
 		m_restfulClient = HttpRESTfulClient.builder()
 											.errorEntityDeserializer(new JacksonErrorEntityDeserializer(MDTModelSerDe.MAPPER))

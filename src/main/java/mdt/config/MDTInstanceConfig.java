@@ -26,7 +26,7 @@ public class MDTInstanceConfig {
 	private String m_id;					// MDT 인스턴스 아이디
 	private Integer m_port;					// MDT 인스턴스 포트
 	private String m_instanceEndpoint;		// MDT 인스턴스에 부여된 endpoint
-	private String m_managerEndpoint;		// MDTManager endpoint
+	private String m_mdtUrl;				// MDTManager URL
 	
 	private File m_globalConfigFile;		// 글로벌 설정 파일 경로명
 	private File m_keyStoreFile;			// Key Store 파일 경로명
@@ -48,6 +48,14 @@ public class MDTInstanceConfig {
 	private List<TimeSeriesSubmodelConfig> m_timeSeriesSubmodels = Lists.newArrayList();
 	// 본 MDTInstance에서 제공하는 AAS 연산 설정 목록
 	private OperationsConfig m_operations;
+	
+	public String getMdtUrl() {
+		return m_mdtUrl;
+	}
+	
+	public void setMdtUrl(String endpoint) {
+		m_mdtUrl = endpoint;
+	}
 	
 	public String getSubmodelEndpoint(String submodelId) {
 		String smIdEncoded = AASUtils.encodeBase64UrlSafe(submodelId);

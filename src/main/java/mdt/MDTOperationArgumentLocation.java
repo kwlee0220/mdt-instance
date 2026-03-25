@@ -2,15 +2,15 @@ package mdt;
 
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 
 import com.google.common.base.Preconditions;
 
-import javax.annotation.Nullable;
-
 import utils.Utilities;
 
-import mdt.model.sm.SubmodelUtils;
+import mdt.model.ReferenceUtils;
 import mdt.model.sm.ai.AI;
 import mdt.model.sm.ref.MDTArgumentKind;
 import mdt.model.sm.simulation.Simulation;
@@ -39,7 +39,7 @@ public class MDTOperationArgumentLocation implements ElementLocation {
 	public void activate(MDTModelLookup lookup) {
 		m_submodel = lookup.getSubmodelByIdShort(m_submodelIdShort);
 		
-		String semanticId = SubmodelUtils.getSemanticIdStringOrNull(m_submodel.getSemanticId());
+		String semanticId = ReferenceUtils.getSemanticIdStringOrNull(m_submodel.getSemanticId());
 		String kindStr = switch ( m_kind ) {
 			case INPUT -> "Input";
 			case OUTPUT -> "Output";

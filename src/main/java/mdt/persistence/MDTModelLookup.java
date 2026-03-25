@@ -197,9 +197,11 @@ public class MDTModelLookup {
         int paramIdx = 0;
 		for ( SubmodelElement member : parameterValues.getValue() ) {
             String path = String.format("%s[%d]", paramsPathFormat, paramIdx);
-            String paramId = SubmodelUtils.getPropertyFieldById(member, "ParameterID").getValue();
-            m_pathToParamIdMap.put(path, paramId);
-            ++paramIdx;
+			if ( member instanceof SubmodelElementCollection smc ) {
+	            String paramId = SubmodelUtils.getStringFieldById(smc, "ParameterID");
+	            m_pathToParamIdMap.put(path, paramId);
+	            ++paramIdx;
+			}
 		}
 	}
 }

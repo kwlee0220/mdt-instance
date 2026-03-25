@@ -57,6 +57,7 @@ import utils.func.FOption;
 import utils.func.Optionals;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
+import utils.stream.FStream;
 
 import mdt.assetconnection.MDTAssetConnectionConfig;
 import mdt.assetconnection.operation.HttpOperationProviderConfig;
@@ -99,13 +100,14 @@ import picocli.CommandLine.Option;
 )
 public class MDTInstanceMain extends HomeDirPicocliCommand {
     private static final Logger LOGGER = LoggerFactory.getLogger(MDTInstanceMain.class);
+    
     private static final String DEFAULT_HEARTBEAT_INTERVAL = "60s";
     private static final String DEFAULT_MANAGER_CHECK_INTERVAL = "10s";
     private static final String DEFAULT_GLOBAL_CONFIG_FILE = "mdt_global_config.json";
     private static final String DEFAULT_CERT_FILE = "mdt_cert.p12";
     private static final String ENV_MDT_INSTANCE_ENDPOINT = "MDT_INSTANCE_ENDPOINT";
     private static final String ENV_MDT_INSTANCE_ID = "MDT_INSTANCE_ID";
-    private static final String ENV_MDT_MANAGER_ENDPOINT = "MDT_ENDPOINT";
+    private static final String ENV_MDT_URL = "MDT_URL";
     private static final String ENV_MDT_GLOBAL_CONFIG_FILE = "MDT_GLOBAL_CONFIG_FILE";
     private static final String ENV_MDT_KEY_STORE_FILE = "MDT_KEY_STORE_FILE";
     private static final String ENV_MDT_KEY_STORE_PASSWORD = "MDT_KEY_STORE_PASSWORD";
@@ -175,19 +177,32 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	private boolean m_verbose;
 	
 	private MDTInstanceConfig m_mdtInstanceConfig;
-	private Map<String,String> m_instanceVariables;
+	private Map<String,String> m_instanceEnvVars;
 	
 	public MDTInstanceConfig getMdtInstanceConfig() {
 		Preconditions.checkState(m_mdtInstanceConfig != null, "MDTInstance configuration not initialized yet");
 		return m_mdtInstanceConfig;
 	}
 	
-	public Map<String,String> getInstanceVariables() {
-		Preconditions.checkState(m_instanceVariables != null, "MDTInstance variables not initialized yet");
-		return m_instanceVariables;
+	public Map<String,String> getInstanceEnvironmentVariables() {
+		Preconditions.checkState(m_instanceEnvVars != null, "MDTInstance EnvironmentVariable not initialized yet");
+		return m_instanceEnvVars;
 	}
 
 	public static final void main(String... args) throws Exception {
+		System.out.println("---------------------------------------------------------------");
+		String cmdLineStr = FStream.of(args).join(' ');
+		System.out.println("Starting MDTInstance with command-line arguments: " + cmdLineStr);
+		
+		System.out.println("------------------- [Environment Variables] -------------------");
+		System.out.printf("MDT_HOST=%s%n", System.getenv("MDT_HOST"));
+		System.out.printf("MDT_HOME=%s%n", System.getenv("MDT_HOME"));
+		System.out.printf("MDT_URL=%s%n", System.getenv("MDT_URL"));
+		System.out.printf("MDT_INSTANCE_ID=%s%n", System.getenv("MDT_INSTANCE_ID"));
+		System.out.printf("MDT_INSTANCE_HOME=%s%n", System.getenv("MDT_INSTANCE_HOME"));
+		System.out.printf("MQTT_BROKER_URL=%s%n", System.getenv("MQTT_BROKER_URL"));
+		System.out.println("---------------------------------------------------------------");
+		
 		MDTInstanceMain app = new MDTInstanceMain();
 		CommandLine commandLine = new CommandLine(app)
 									.registerConverter(Level.class, new LogLevelTypeConverter())
@@ -252,7 +267,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		if ( mdtInstanceConfig.getInstanceEndpoint() == null ) {
 			if ( m_port != null || mdtInstanceConfig.getPort() != null ) {
-				String host = Optionals.getOrElse(System.getenv("LOCAL_HOST"), "localhost");
+				String host = Optionals.getOrElse(System.getenv("MDT_HOST"), "localhost");
 				int port = Optionals.getOrElse(m_port, mdtInstanceConfig.getPort());
 				mdtInstanceConfig.setPort(port);
 				
@@ -263,9 +278,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		Preconditions.checkArgument(mdtInstanceConfig.getInstanceEndpoint() != null,
 									"MDTInstance instanceEndpoint not specified");
 		
-		String managerEndpoint = System.getenv(ENV_MDT_MANAGER_ENDPOINT);
-		Preconditions.checkState(managerEndpoint != null, "MDTInstance managerEndpoint not specified");
-		mdtInstanceConfig.setManagerEndpoint(managerEndpoint);
+		String mdtUrl = System.getenv(ENV_MDT_URL);
+		Preconditions.checkState(mdtUrl != null, "MDTPlatform URL is not specified");
+		mdtInstanceConfig.setMdtUrl(mdtUrl);
 		
 		if ( mdtInstanceConfig.getPort() == null ) {
 			Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
@@ -273,16 +288,16 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			mdtInstanceConfig.setPort(Integer.parseInt(parts.get("port")));
 		}
 		
-		m_instanceVariables = buildInstanceVariables(mdtInstanceConfig);
+		m_instanceEnvVars = buildInstanceEnvironmentVariables(mdtInstanceConfig);
 		
 		// 설정 파일을 variable substitution을 다시 수행한다.
-		confJson = createStringSubstitutor(m_instanceVariables).replace(confJson);
+		confJson = createStringSubstitutor(m_instanceEnvVars).replace(confJson);
 		MDTInstanceConfig reloaded = MDTModelSerDe.MAPPER
 												.readerFor(MDTInstanceConfig.class)
 												.readValue(confJson);
 		reloaded.setId(mdtInstanceConfig.getId());
 		reloaded.setInstanceEndpoint(mdtInstanceConfig.getInstanceEndpoint());
-		reloaded.setManagerEndpoint(mdtInstanceConfig.getManagerEndpoint());
+		reloaded.setMdtUrl(mdtInstanceConfig.getMdtUrl());
 		reloaded.setPort(mdtInstanceConfig.getPort());
 		mdtInstanceConfig = reloaded;
 		m_mdtInstanceConfig = mdtInstanceConfig;
@@ -369,7 +384,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			getLogger().info("\tInitial model: " + m_initModel);
 			getLogger().info("\tConfiguration file: " + m_confFile);
 			getLogger().info("\tMDTInstance endpoint: {}", mdtInstanceConfig.getInstanceEndpoint());
-			getLogger().info("\tMDTManager endpoint: {}", mdtInstanceConfig.getManagerEndpoint());
+			getLogger().info("\tMDTManager URL: {}", mdtInstanceConfig.getMdtUrl());
 			getLogger().info("\tMDTGlobalConfig file: {}", mdtInstanceConfig.getGlobalConfigFile());
 			getLogger().info("\tKeyStore: {}", mdtInstanceConfig.getKeyStoreFile());
 		}
@@ -446,8 +461,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	
 	@SuppressWarnings("rawtypes")
 	private List<EndpointConfig> loadEndpointConfigs(MDTInstanceConfig instConf) {
-		Preconditions.checkArgument(instConf.getManagerEndpoint() != null,
-										"MDTInstanceManager endpoint not specified in the configuration");
+		Preconditions.checkArgument(instConf.getMdtUrl() != null,
+										"MDTInstanceManager URL not specified in the configuration");
 		Preconditions.checkArgument(instConf.getInstanceEndpoint() != null,
 										"MDTInstance endpoint not specified in the configuration");
 		
@@ -485,7 +500,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			Preconditions.checkArgument(instConf.getId() != null,
 											"MDTInstance's id is not specified in the configuration");
 			MDTManagerReconnectorConfig reconnectConfig
-								= new MDTManagerReconnectorConfig(instConf.getId(), instConf.getManagerEndpoint(),
+								= new MDTManagerReconnectorConfig(instConf.getId(), instConf.getMdtUrl(),
 																	instConf.getInstanceEndpoint(), heartbeatInterval,
 																	true);
 			configs.add(reconnectConfig);
@@ -494,7 +509,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			String mgrHealthCheckInterval = Optionals.getOrElse(instConf.getManagerCheckInterval(),
 																DEFAULT_MANAGER_CHECK_INTERVAL);
 			MDTManagerHealthMonitorConfig mgrHealthMonitorConfig
-												= new MDTManagerHealthMonitorConfig(instConf.getManagerEndpoint(),
+												= new MDTManagerHealthMonitorConfig(instConf.getMdtUrl(),
 																					mgrHealthCheckInterval, true);
 			configs.add(mgrHealthMonitorConfig);
 		}
@@ -522,7 +537,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			});
 			
 			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
-				companionConfig.setEnvironments(m_instanceVariables);
+				companionConfig.setEnvironments(m_instanceEnvVars);
 				
 				ProgramCompanionConfig c = new ProgramCompanionConfig();
 				c.setProgramConfig(companionConfig);
@@ -724,11 +739,11 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
         }
     }
 	
-	private Map<String,String> buildInstanceVariables(MDTInstanceConfig config) {
+	private Map<String,String> buildInstanceEnvironmentVariables(MDTInstanceConfig config) {
 		return Map.of(
 			"MDT_INSTANCE_ID", config.getId(),
 			"MDT_INSTANCE_ENDPOINT", config.getInstanceEndpoint(),
-			"MDT_MANAGER_ENDPOINT", config.getManagerEndpoint(),
+			"MDT_URL", config.getMdtUrl(),
 			"MDT_INSTANCE_PORT", config.getPort() != null ? Integer.toString(config.getPort()) : "",
 			"MDT_INSTANCE_DIR", FileUtils.getCurrentWorkingDirectory().getAbsolutePath()
 		);
