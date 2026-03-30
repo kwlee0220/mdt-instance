@@ -17,6 +17,11 @@ public interface ElementLocation {
 	 */
 	public void activate(MDTModelLookup lookup);
 	
+	/**
+	 * 대상 Element가 포함된 Submodel의 id를 반환한다.
+	 *
+	 * @return Submodel의 id
+	 */
 	public String getSubmodelId();
 	
 	/**
