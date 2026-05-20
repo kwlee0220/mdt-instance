@@ -15,7 +15,7 @@ import utils.websocket.WebSocketContext;
  */
 @Getter @Setter
 @Accessors(prefix="m_")
-public class RCKSimulationContext extends WebSocketContext {
+public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext> {
 	private final String m_clientId;
 	private final String m_processName;
 	private final String m_layoutName;

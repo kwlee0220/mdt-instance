@@ -57,13 +57,16 @@ public class LeafObjectNodeCollector {
 		
 		Map<String, Double> utilsMap =
 				FStream.from(equipList)
-				.mapToKeyValue(equip -> KeyValue.of(equip.get("Name").asText(),
-													equip.get("Utilization").asInt()))
-				.mapKey(k -> Funcs.findFirst(equipTypes, t -> k.startsWith(t)).orElse(""))
-				.groupByKey()
-				.fstream()
-				.mapValue(values -> values.stream().mapToInt(Integer::intValue).average().orElse(0.0))
-				.toMap();
+						.mapToKeyValue(equip -> KeyValue.of(equip.get("Name").asText(),
+															equip.get("Utilization").asInt()))
+						.mapKey(k -> {
+							String type = Funcs.findFirst(equipTypes, t -> k.startsWith(t));
+							return (type != null) ? type : "";
+						})
+						.groupByKey()
+						.fstream()
+						.mapValue(values -> values.stream().mapToInt(Integer::intValue).average().orElse(0.0))
+						.toMap();
 		System.out.println(utilsMap);
 		
 //		for ( JsonNode jnode : new LeafObjectNodeCollector(root).collect() ) {

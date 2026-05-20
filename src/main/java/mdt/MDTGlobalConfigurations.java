@@ -12,8 +12,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 
-import lombok.experimental.UtilityClass;
-
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
 import utils.KeyValue;
@@ -34,8 +32,11 @@ import mdt.persistence.asset.opcua.OpcUaConnectionConfig;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-@UtilityClass
-public class MDTGlobalConfigurations {
+public final class MDTGlobalConfigurations {
+	private MDTGlobalConfigurations() {
+		throw new AssertionError("Should not be called: class=" + getClass().getName());
+	}
+	
 	public static final String CONFIG_GROUP_JDBC = "jdbcs";
 	public static final String CONFIG_GROUP_MQTT_BROKER = "mqttBrokers";
 	public static final String CONFIG_GROUP_OPC_UA = "opcuas";
@@ -103,10 +104,13 @@ public class MDTGlobalConfigurations {
 			return replaceVariables(configNode);
 		}
 		else if ( configKey.equalsIgnoreCase("default") ) {
-			return Funcs.getFirst(configs.values())
-						.map(jnode -> replaceVariables(jnode))
-						.orElseThrow(() -> new ResourceNotFoundException("Global configuration",
-																String.format("key=%s.%s", configGroup, configKey)));
+			JsonNode jnode = Funcs.getFirst(configs.values());
+			if ( jnode == null ) {
+				throw new ResourceNotFoundException("Global configuration", 
+													String.format("key=%s.%s", configGroup, configKey));
+			}
+			
+			return replaceVariables(jnode);
 		}
 		else {
 			throw new ResourceNotFoundException("Global configuration",

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import utils.UnitUtils;
 import utils.func.Optionals;

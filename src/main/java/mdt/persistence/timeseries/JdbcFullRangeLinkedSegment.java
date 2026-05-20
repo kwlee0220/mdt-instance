@@ -48,7 +48,7 @@ public class JdbcFullRangeLinkedSegment extends DefaultLinkedSegment implements 
 		setQuery(m_query);
 		
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 		
 		String cntSql = String.format("select count(*) from %s", m_tsConfig.getTableName());
 		try ( ResultSet rset = jdbc.executeQuery(cntSql, false) ) {

@@ -3,6 +3,7 @@ plugins {
 	id 'application'
 	// id 'com.github.johnrengelman.shadow' version '8.1.1'
 	id("com.gradleup.shadow") version "9.3.0"
+	id 'eclipse'
 }
 
 group = 'etri'
@@ -97,6 +98,9 @@ dependencies {
 	implementation "org.springframework.data:spring-data-jpa:${spring_data_version}"
 	
 	testImplementation "junit:junit:${junit_version}"
+	testImplementation "org.mockito:mockito-core:${mockito_version}"
+	testImplementation "org.junit.platform:junit-platform-launcher:${junit_jupiter_version}"
+	testRuntimeOnly "org.junit.vintage:junit-vintage-engine:${junit_jupiter_version}"
 }
 
 task sourceJar(type: Jar) {
@@ -114,4 +118,25 @@ shadowJar {
 	exclude 'META-INF/*.SF'
 	exclude 'META-INF/*.DSA'
 	exclude 'META-INF/*.RSA'
+}
+
+eclipse {
+	classpath {
+		defaultOutputDir = file('build/classes/java/main')
+		file {
+			whenMerged { cp ->
+				cp.entries.each { entry ->
+					if (entry.kind == 'src' && entry.path == 'src/main/java') {
+						entry.output = 'build/classes/java/main'
+					}
+					if (entry.kind == 'src' && entry.path == 'src/main/resources') {
+						entry.output = 'build/classes/java/main'
+					}
+					if (entry.kind == 'src' && entry.path == 'src/test/java') {
+						entry.output = 'build/classes/java/test'
+					}
+				}
+			}
+		}
+	}
 }

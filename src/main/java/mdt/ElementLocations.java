@@ -2,8 +2,6 @@ package mdt;
 
 import com.google.common.base.Preconditions;
 
-import lombok.experimental.UtilityClass;
-
 import mdt.model.sm.ref.MDTArgumentKind;
 
 
@@ -11,8 +9,11 @@ import mdt.model.sm.ref.MDTArgumentKind;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-@UtilityClass
-public class ElementLocations {
+public final class ElementLocations {
+	private ElementLocations() {
+		throw new AssertionError("Should not be called: class=" + getClass().getName());
+	}
+	
 	public static ElementLocation parseStringExpr(String expr) {
 		String[] parts = expr.split(":");
 		switch ( parts[0] ) {

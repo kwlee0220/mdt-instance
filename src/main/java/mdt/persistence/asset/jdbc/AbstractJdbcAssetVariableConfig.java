@@ -3,7 +3,7 @@ package mdt.persistence.asset.jdbc;
 import java.io.IOException;
 import java.time.Duration;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;

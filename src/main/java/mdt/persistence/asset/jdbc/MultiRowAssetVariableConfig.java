@@ -8,7 +8,7 @@ import java.util.Optional;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import utils.KeyValue;
 import utils.func.Optionals;

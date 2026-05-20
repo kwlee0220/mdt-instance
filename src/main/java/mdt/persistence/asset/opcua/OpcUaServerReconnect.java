@@ -1,21 +1,20 @@
 package mdt.persistence.asset.opcua;
 
 import java.time.Duration;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.SessionActivityListener;
 import org.eclipse.milo.opcua.sdk.client.api.UaClient;
 import org.eclipse.milo.opcua.stack.core.UaException;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-import javax.annotation.Nullable;
-
-import utils.async.AbstractStatePoller;
+import utils.async.AbstractPeriodicPoller;
+import utils.func.FOption;
 
 
 /**
@@ -27,7 +26,7 @@ import utils.async.AbstractStatePoller;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
+public class OpcUaServerReconnect extends AbstractPeriodicPoller<UaClient> {
 	private static final Logger s_logger = LoggerFactory.getLogger(OpcUaServerReconnect.class);
 	
 	private final String m_endpointUrl;
@@ -45,7 +44,7 @@ public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
 	}
 
 	@Override
-	protected Optional<UaClient> pollState() throws Exception {
+	protected FOption<UaClient> tryPoll() throws ExecutionException, InterruptedException {
 		getLogger().debug("trying connection to {}", m_endpointUrl);
 
 		try {
@@ -54,12 +53,12 @@ public class OpcUaServerReconnect extends AbstractStatePoller<UaClient> {
 			getLogger().info("connected to OpcUaServer: endpoint={}", m_endpointUrl);
 			
 			// MQTT Broker에 연결된 경우 {@link MqttClient} 객체를 반환하고 loop를 종료시킨다
-			return Optional.of(opcUaClient);
+			return FOption.of(opcUaClient);
 		}
 		catch ( UaException e ) {
 			// MQTT Broker에 연결되지 않은 경우 {@link Optional#empty()}를 반환하여
 			// loop를 계속 수행하도록 한다.
-			return Optional.empty();
+			return FOption.empty();
 		}
 	}
 	

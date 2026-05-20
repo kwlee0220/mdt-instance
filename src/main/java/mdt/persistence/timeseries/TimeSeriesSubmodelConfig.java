@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import utils.UnitUtils;
 import utils.func.Funcs;
@@ -72,8 +72,7 @@ public class TimeSeriesSubmodelConfig {
 	 * @return 타임스탬프 컬럼의 이름
 	 */
 	public String getTimestampColumn() {
-		return Funcs.findFirst(m_parameterColumns, pc -> pc.getParameter().equals("Time"))
-					.get().getColumn();
+		return Funcs.findFirst(m_parameterColumns, pc -> pc.getParameter().equals("Time")).getColumn();
 	}
 	
 	/**

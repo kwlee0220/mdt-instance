@@ -10,7 +10,7 @@ import java.util.Map;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Range;
 
-import utils.Utilities;
+import utils.StrSubstitutor;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.jdbc.JdbcUtils;
@@ -74,7 +74,7 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 	""";
 	private List<DefaultRecord> readRecordsInRange(Range range) {
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = prepare(conn, range)) {
@@ -99,25 +99,26 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 									.join(", ");
 		
 		if ( minTs != null && maxTs != null ) {
-			String sql = Utilities.substributeString(SQL_READ_RECORDS_IN_RANGE,
-													Map.of("tableName", m_tsConfig.getTableName(),
-															"columns", colsExpr));
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+                                        .failOnUndefinedVariable(false)
+                                        .replace(SQL_READ_RECORDS_IN_RANGE);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, minTs);
 			pstmt.setTimestamp(2, maxTs);
 			return pstmt;
 		}
 		else if ( minTs != null && maxTs == null ) {
-			String sql = Utilities.substributeString(SQL_READ_RECORDS_LATER_THAN,
-													Map.of("tableName", m_tsConfig.getTableName(),
-															"columns", colsExpr));
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+                                        .failOnUndefinedVariable(false)
+                                        .replace(SQL_READ_RECORDS_LATER_THAN);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, minTs);
 			return pstmt;
 		}
 		else if ( minTs == null && maxTs != null ) {
-			String sql = Utilities.substributeString(SQL_READ_RECORDS_EARLIER_THAN,
-													Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr));
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+										.failOnUndefinedVariable(false)
+										.replace(SQL_READ_RECORDS_EARLIER_THAN);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setTimestamp(1, maxTs);
 			return pstmt;

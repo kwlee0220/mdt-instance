@@ -1,8 +1,9 @@
 package mdt.endpoint.audit;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
@@ -18,6 +19,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
 
 import utils.Throwables;
 import utils.async.PeriodicLoopExecution;
+import utils.func.FOption;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.jdbc.JdbcUtils;
@@ -66,7 +68,7 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 										config.getTable(), config.getTimestampColumn(), colCsv, paramCsv);
 			
 			JdbcConfiguration jdbcConfig = m_config.getJdbcConfig();
-			m_jdbc = JdbcProcessor.create(jdbcConfig);
+			m_jdbc = JdbcProcessor.builder(jdbcConfig).build();
 		}
 		catch ( Throwable e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
@@ -92,9 +94,14 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
     	
     	m_periodicAudit = new PeriodicLoopExecution<Void>(m_config.getIntervalDuration()) {
 			@Override
-			protected Optional<Void> performPeriodicAction(long loopIndex) throws Exception {
-				audit(loopIndex);
-				return Optional.empty();
+			protected FOption<Void> performPeriodicAction(long loopIndex) throws ExecutionException {
+				try {
+					audit(loopIndex);
+					return FOption.empty();
+				}
+				catch ( SQLException e ) {
+					throw new ExecutionException(e);
+				}
 			}
 		};
 		m_periodicAudit.setLogger(s_logger);
@@ -120,7 +127,7 @@ public class PeriodicElementAudit implements Endpoint<PeriodicElementAuditConfig
 		}
     }
 
-	private void audit(long loopIndex) throws Exception {
+	private void audit(long loopIndex) throws SQLException, ExecutionException {
 		// Audit 대상의 element 위치를 이용해서 현재 SubmodelElement 값을 수집하고, Jdbc 객체로 변환한다.
 		List<Object> values = FStream.from(m_columns)
 									.map(col -> toJdbcObject(col.getElementLocation()))

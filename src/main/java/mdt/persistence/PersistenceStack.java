@@ -31,7 +31,8 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCr
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 
 import utils.LoggerSettable;
-import utils.Utilities;
+import utils.ReflectionUtils;
+import utils.Throwables;
 import utils.func.Optionals;
 
 
@@ -57,7 +58,14 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 		
 		String name = baseConfig.getClass().getName();
 		int idx = name.lastIndexOf('C');
-		m_basePersistence = Utilities.newInstance(name.substring(0, idx), Persistence.class);
+		try {
+			m_basePersistence = ReflectionUtils.newInstance(name.substring(0, idx), Persistence.class);
+		}
+		catch ( Exception e ) {
+			Throwable cause = Throwables.unwrapThrowable(e);
+			String message = String.format("Failed to create the base persistence: %s", name);
+			throw new ConfigurationInitializationException(message, cause);
+		}
 		m_basePersistence.init(coreConfig, baseConfig, serviceContext);
 	}
 

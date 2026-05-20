@@ -1,11 +1,9 @@
 package mdt.ksx9101;
 
-import java.util.Map;
-
 import org.eclipse.digitaltwin.aas4j.v3.model.KeyTypes;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 
-import utils.Utilities;
+import utils.StrSubstitutor;
 
 import mdt.model.ReferenceUtils;
 
@@ -21,7 +19,9 @@ public class ModelReferenceGenerator {
 	}
 	
 	public Reference newReference(KeyTypes type, String src) {
-		String modelId = Utilities.substributeString(m_refTemplate, Map.of("id", src));
+		String modelId = StrSubstitutor.with("id", src)
+										.failOnUndefinedVariable(false)
+										.replace(m_refTemplate);
 		switch ( type ) {
 			case ASSET_ADMINISTRATION_SHELL:
 				return ReferenceUtils.toAASReference(modelId);

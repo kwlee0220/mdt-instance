@@ -1,7 +1,6 @@
 package mdt.endpoint.ros2;
 
 import java.time.Duration;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -12,7 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-import utils.async.AbstractStatePoller;
+import utils.async.AbstractPeriodicPoller;
+import utils.func.FOption;
 
 /**
  * A class to connect to an MQTT broker with automatic reconnection.
@@ -23,7 +23,7 @@ import utils.async.AbstractStatePoller;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class WebSocketReconnector extends AbstractStatePoller<WebSocketClient> {
+public class WebSocketReconnector extends AbstractPeriodicPoller<WebSocketClient> {
 	private static final Logger s_logger = LoggerFactory.getLogger(WebSocketReconnector.class);
 	
 	private final Supplier<WebSocketClient> m_wsClientFact;
@@ -40,7 +40,7 @@ public class WebSocketReconnector extends AbstractStatePoller<WebSocketClient> {
 	}
 
 	@Override
-	protected Optional<WebSocketClient> pollState() throws Exception {
+	protected FOption<WebSocketClient> tryPoll() throws InterruptedException {
 		WebSocketClient wsClient = m_wsClientFact.get();
 		getLogger().debug("retrying connection to {}", wsClient.getURI());
 		
@@ -50,10 +50,10 @@ public class WebSocketReconnector extends AbstractStatePoller<WebSocketClient> {
 			getLogger().info("connected to {}", wsClient.getURI());
 			
 			// WebSocket server에 연결된 경우 {@link WebSocketClient} 객체를 반환하고 loop를 종료시킨다
-			return Optional.of(wsClient);
+			return FOption.of(wsClient);
 		}
 		else {
-			return Optional.empty();
+			return FOption.empty();
 		}
 	}
 }

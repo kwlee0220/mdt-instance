@@ -2,13 +2,12 @@ package mdt;
 
 import java.util.Map;
 
-import javax.annotation.Nullable;
-
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
+import org.jetbrains.annotations.Nullable;
 
 import com.google.common.base.Preconditions;
 
-import utils.Utilities;
+import utils.StrSubstitutor;
 
 import mdt.model.ReferenceUtils;
 import mdt.model.sm.ai.AI;
@@ -47,10 +46,14 @@ public class MDTOperationArgumentLocation implements ElementLocation {
 		};
 		
 		if ( AI.SEMANTIC_ID.equals(semanticId) ) {
-			m_elementPath = Utilities.substributeString("AIInfo.${kind}s.${kind}Value", Map.of("kind", kindStr));
+			m_elementPath = StrSubstitutor.with(Map.of("kind", kindStr))
+											.failOnUndefinedVariable(false)
+											.replace("AIInfo.${kind}s.${kind}Value");
 		}
 		else if ( Simulation.SEMANTIC_ID.equals(semanticId) ) {
-			m_elementPath = Utilities.substributeString("SimulationInfo.${kind}s.${kind}Value", Map.of("kind", kindStr));
+			m_elementPath = StrSubstitutor.with("kind", kindStr)
+											.failOnUndefinedVariable(false)
+											.replace("SimulationInfo.${kind}s.${kind}Value");
 		}
 		else {
 			throw new IllegalArgumentException("Invalid submodel semanticId: " + semanticId);

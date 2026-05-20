@@ -67,7 +67,10 @@ public class RCKSimulationResult {
 							int util = equip.get("Utilization").asInt();
 							return KeyValue.of(name, util);
 						})
-						.mapKey(k -> Funcs.findFirst(EQUIP_TYPES, t -> k.startsWith(t)).orElse(""))
+						.mapKey(k -> {
+							var type = Funcs.findFirst(EQUIP_TYPES, t -> k.startsWith(t));
+							return type != null ? type : "";
+						})
 						.filterKey(k -> !k.isEmpty())
 						.groupByKey()
 						.fstream()

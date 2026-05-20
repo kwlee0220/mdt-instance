@@ -13,7 +13,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import utils.Utilities;
+import utils.StrSubstitutor;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.jdbc.JdbcUtils;
@@ -95,12 +95,12 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 									.map(pc -> pc.getColumn())
 									.join(", ");
 		
-		String sql = Utilities.substributeString(SQL_GET_TAIL_SEGMENT_BY_TIME,
-												Map.of("tableName", m_tsConfig.getTableName(),
-														"columns", colsExpr));
+		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+									.failOnUndefinedVariable(false)
+									.replace(SQL_GET_TAIL_SEGMENT_BY_TIME);
 
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setString(1, JdbcUtils.toPostgresInterval(duration));
@@ -132,11 +132,11 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 		int width = String.valueOf(length).length();
 		String zeroPaddingFormat = "rec%0" + width + "d";
 		
-		String sql = Utilities.substributeString(SQL_GET_TAIL_SEGMENT_BY_COUNT,
-												Map.of("tableName", m_tsConfig.getTableName(),
-														"columns", colsExpr));
+		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+                                    .failOnUndefinedVariable(false)
+                                    .replace(SQL_GET_TAIL_SEGMENT_BY_COUNT);
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setInt(1, length);

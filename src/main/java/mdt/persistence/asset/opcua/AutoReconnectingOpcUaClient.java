@@ -16,7 +16,7 @@ import com.google.common.util.concurrent.AbstractService;
 
 import utils.LoggerSettable;
 import utils.UnitUtils;
-import utils.async.Guard;
+import utils.thread.Guard;
 import utils.func.Optionals;
 
 

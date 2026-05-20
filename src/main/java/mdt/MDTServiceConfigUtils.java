@@ -5,15 +5,17 @@ import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.HttpEndpointConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.filestorage.filesystem.FileStorageFilesystemConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.messagebus.internal.MessageBusInternalConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.memory.PersistenceInMemoryConfig;
-import lombok.experimental.UtilityClass;
 
 
 /**
  *
  * @author Kang-Woo Lee (ETRI)
  */
-@UtilityClass
-public class MDTServiceConfigUtils {
+public final class MDTServiceConfigUtils {
+	private MDTServiceConfigUtils() {
+		throw new AssertionError("Should not be called: class=" + getClass().getName());
+	}
+	
     public static ServiceConfig getDefaultServiceConfig() {
     	// Note: overriden by kwlee
     	FileStorageFilesystemConfig fsConfig = new FileStorageFilesystemConfig();

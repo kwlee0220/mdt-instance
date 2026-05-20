@@ -12,8 +12,6 @@ import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 
-import lombok.experimental.UtilityClass;
-
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 
@@ -30,8 +28,11 @@ import mdt.persistence.asset.opcua.OpcUaListAssetVariableConfig;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-@UtilityClass
-public class AssetVariableConfigs {
+public final class AssetVariableConfigs {
+	private AssetVariableConfigs() {
+		throw new AssertionError("Should not be called: class=" + getClass().getName());
+	}
+	
 	private static final String FIELD_TYPE = "@type";
 	
 	@SuppressWarnings("serial")

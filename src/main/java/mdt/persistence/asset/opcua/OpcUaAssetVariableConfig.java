@@ -6,7 +6,7 @@ import java.time.Duration;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import utils.func.Optionals;
 import utils.json.JacksonUtils;

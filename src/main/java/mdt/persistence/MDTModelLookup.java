@@ -168,7 +168,7 @@ public class MDTModelLookup {
             m_submodelsById.put(sm.getId(), sm);
         }
 		
-		m_dataSubmodel = Funcs.findFirst(submodels, SubmodelUtils::isDataSubmodel).orElse(null);
+		m_dataSubmodel = Funcs.findFirst(submodels, SubmodelUtils::isDataSubmodel);
 		if ( m_dataSubmodel != null ) {
 			loadDataSubmodel(m_dataSubmodel);
 		}

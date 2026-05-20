@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-import utils.async.Guard;
+import utils.thread.Guard;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 
@@ -43,7 +43,7 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 		setLogger(LoggerFactory.getLogger(getClass()));
 
 		JdbcConfiguration jdbcConf = config.getJdbcConfig();
-		m_jdbc = JdbcProcessor.create(jdbcConf);
+		m_jdbc = JdbcProcessor.builder(jdbcConf).build();
 	}
 
 	@Override

@@ -73,7 +73,7 @@ public class ReadRecordsOperation implements OperationProvider {
 		
 		DefaultLinkedSegment fullRangeSegment = getTargetSegment();
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(fullRangeSegment.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.create(jdbcConf);
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = prepareStatement(conn, fullRangeSegment.getQuery(), timespan);
 			ResultSet rset = pstmt.executeQuery() ) {

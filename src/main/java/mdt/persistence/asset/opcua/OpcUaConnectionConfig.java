@@ -7,7 +7,7 @@ import com.google.common.base.Preconditions;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 
 /**

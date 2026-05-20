@@ -19,7 +19,7 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.AbstractService;
 
 import utils.LoggerSettable;
-import utils.async.Guard;
+import utils.thread.Guard;
 import utils.func.Unchecked;
 
 
