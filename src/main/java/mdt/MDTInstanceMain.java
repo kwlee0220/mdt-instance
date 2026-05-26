@@ -28,6 +28,11 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Help.Ansi;
+import picocli.CommandLine.Option;
+
 import de.fraunhofer.iosb.ilt.faaast.service.Service;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CertificateConfig;
@@ -83,10 +88,6 @@ import mdt.persistence.asset.AssertVariableBasedPersistenceConfig;
 import mdt.persistence.timeseries.TimeSeriesPersistenceStackConfig;
 
 import ch.qos.logback.classic.Level;
-import picocli.CommandLine;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Help.Ansi;
-import picocli.CommandLine.Option;
 
 /**
  *
@@ -201,6 +202,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		System.out.printf("MDT_INSTANCE_ID=%s%n", System.getenv("MDT_INSTANCE_ID"));
 		System.out.printf("MDT_INSTANCE_HOME=%s%n", System.getenv("MDT_INSTANCE_HOME"));
 		System.out.printf("MQTT_BROKER_URL=%s%n", System.getenv("MQTT_BROKER_URL"));
+		System.out.printf("CurrentWorkingDir=%s%n", FileUtils.getCurrentWorkingDirectory());
 		System.out.println("---------------------------------------------------------------");
 		
 		MDTInstanceMain app = new MDTInstanceMain();

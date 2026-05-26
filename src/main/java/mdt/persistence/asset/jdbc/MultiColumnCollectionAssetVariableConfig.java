@@ -6,6 +6,7 @@ import java.util.List;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import utils.Split;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
 
@@ -47,25 +48,32 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	private String m_updateQuery;
 	
 	static class ColumnToSubPath {
-		private final String m_column;
+		private final String m_colExpr;		// 전체 컬럼 표현식 (예: "alias.column")
 		private final String m_subPath;
+		private final String m_colName;		// 컬럼 이름 (예: "column"), 컬럼 표현식에서 마지막 부분을 추출하여 저장
 
-		public ColumnToSubPath(String column, String subPath) {
-			m_column = column;
+		public ColumnToSubPath(String colExpr, String subPath) {
+			m_colExpr = colExpr;
 			m_subPath = subPath;
+			
+			m_colName = Split.split(colExpr, ".").tail().orElse(m_colExpr);
 		}
 
-		public String getColumn() {
-			return m_column;
+		public String getColumnExpr() {
+			return m_colExpr;
 		}
 
 		public String getSubPath() {
 			return m_subPath;
 		}
+		
+		public String getColumnName() {
+			return m_colName;
+		}
 
 		@Override
 		public String toString() {
-			return String.format("%s -> %s", m_column, m_subPath);
+			return String.format("%s -> %s", m_colExpr, m_subPath);
 		}
 	}
 	
@@ -85,7 +93,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	
 	public String getReadQuery() {
 		if ( m_readQuery == null ) {
-			var colCsv = FStream.from(m_columnToSubPathMappings).map(ColumnToSubPath::getColumn).join(", ");
+			var colCsv = FStream.from(m_columnToSubPathMappings).map(ColumnToSubPath::getColumnExpr).join(", ");
 			m_readQuery = String.format(READ_QUERY_FORMAT, colCsv, m_table, m_whereClause);
 		}
 		return m_readQuery;
@@ -98,13 +106,13 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		
 		if ( m_updateQuery == null ) {
 			if ( m_updateMode == UpdateMode.APPEND ) {
-				var colCsv = FStream.from(m_columnToSubPathMappings).map(ColumnToSubPath::getColumn).join(", ");
+				var colCsv = FStream.from(m_columnToSubPathMappings).map(ColumnToSubPath::getColumnExpr).join(", ");
 				var valueHolderCsv = FStream.range(0, m_columnToSubPathMappings.size()).map(i -> "?").join(", ");
 				m_updateQuery = String.format(INSERT_QUERY_FORMAT, m_table, colCsv, valueHolderCsv);
 			}
 			else {
 				String setClause = FStream.from(m_columnToSubPathMappings)
-											.map(mapping -> String.format("%s = ?", mapping.getColumn()))
+											.map(mapping -> String.format("%s = ?", mapping.getColumnExpr()))
 											.join(", ");
 				m_updateQuery = String.format(UPDATE_QUERY_FORMAT, m_table, setClause, m_whereClause);
 			}
@@ -131,7 +139,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		gen.writeArrayFieldStart(FIELD_COLUMNS);
 		for ( ColumnToSubPath mapping : m_columnToSubPathMappings ) {
 			gen.writeStartObject();
-			gen.writeStringField(FIELD_COLUMN, mapping.getColumn());
+			gen.writeStringField(FIELD_COLUMN, mapping.getColumnExpr());
 			gen.writeStringField(FIELD_SUBPATH, mapping.getSubPath());
 			gen.writeEndObject();
 		}

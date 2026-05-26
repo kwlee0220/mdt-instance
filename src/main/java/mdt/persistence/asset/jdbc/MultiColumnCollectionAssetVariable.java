@@ -43,7 +43,7 @@ public class MultiColumnCollectionAssetVariable
 										SubmodelElement member = SubmodelUtils.traverse(m_prototype,
 																					mapping.getSubPath());
 										SubmodelElementHandler handler = new SubmodelElementHandler(member);
-										return KeyValue.of(mapping.getColumn(), handler);
+										return KeyValue.of(mapping.getColumnExpr(), handler);
 									})
 									.toMap();
 	}
@@ -70,18 +70,18 @@ public class MultiColumnCollectionAssetVariable
 				// 다음번에 질의 결과가 없으면 다시 경고를 출력하도록 한다. 
 				m_noRecordWarningReported = false;
 				for ( ColumnToSubPath mapping : mappings ) {
-					String column = mapping.getColumn();
+					String colExpr = mapping.getColumnExpr();
 					String subPath = mapping.getSubPath();
 					
-					Object value = rs.getObject(column);
+					Object value = rs.getObject(mapping.getColumnName());
 					try {
-						SubmodelElementHandler handler = m_memberHandlers.get(column);
+						SubmodelElementHandler handler = m_memberHandlers.get(colExpr);
 						Property fieldSme = SubmodelUtils.traverse(m_prototype, subPath, Property.class);
 						handler.updateWithJdbcObject(fieldSme, value);
 					}
 					catch ( Exception e ) {
-						String msg = String.format("Failed to update field: subpath=%s, column=%s, value=%s, cause=%s",
-													subPath, column, value, ""+e);
+						String msg = String.format("Failed to update field: subpath=%s, columnExpr=%s, value=%s, cause=%s",
+													subPath, colExpr, value, ""+e);
 						throw new AssetVariableException(msg, e);
 					}
 				}
@@ -112,7 +112,7 @@ public class MultiColumnCollectionAssetVariable
 					.zipWithIndex(1)
 					.forEachOrThrow(idxed -> {
 						ColumnToSubPath mapping = idxed.value();
-						SubmodelElementHandler handler = m_memberHandlers.get(mapping.getColumn());
+						SubmodelElementHandler handler = m_memberHandlers.get(mapping.getColumnExpr());
 						SubmodelElement fieldSme = SubmodelUtils.traverse(smc, mapping.getSubPath());
 						Object colValue = handler.toJdbcObject(fieldSme);
 						pstmt.setObject(idxed.index(), colValue);

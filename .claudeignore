@@ -1,0 +1,29 @@
+# 빌드 산출물
+/build/
+/bin/
+/classes/
+.gradle/
+
+# IDE / 프로젝트 메타데이터
+.settings/
+.classpath
+.project
+.vscode/
+
+# 컴파일 / 패키지 파일
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# 로그
+*.log
+hs_err_pid*
+
+# 인증서 / 비밀 정보
+*.p12
+mdt_global_config*.json

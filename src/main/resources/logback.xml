@@ -22,6 +22,14 @@
         </encoder>
     </appender>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- FA³ST 패키지의 INFO 레벨은 STDOUT_STARTER가 단독 처리하므로 여기서는 제외. -->
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+            <evaluator>
+                <expression>logger.startsWith("${PACKAGE_FAAAST}") &amp;&amp; level == INFO</expression>
+            </evaluator>
+            <OnMatch>DENY</OnMatch>
+            <OnMismatch>NEUTRAL</OnMismatch>
+        </filter>
         <filter class="de.fraunhofer.iosb.ilt.faaast.service.starter.logging.FaaastFilter"/>
         <encoder>
             <pattern>${PATTERN_STDOUT}</pattern>
@@ -42,6 +50,10 @@
             <pattern>${PATTERN_LOG}</pattern>
         </encoder>
     </appender>
+
+    <!-- 특정 패키지의 레벨 지정 -->
+    <logger name="org.eclipse.jetty" level="WARN"/>
+
     <root level="TRACE">
         <appender-ref ref="STDOUT_STARTER"/>
         <appender-ref ref="STDOUT"/>
