@@ -112,7 +112,7 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 				getLogger().debug("read AssetVariable: {}", var);
 				return SubmodelUtils.duplicate(var.read());
 			}
-			else if ( elementPath.startsWith(varElmPath) ) {
+			else if ( AssetVariable.isPathPrefix(varElmPath, elementPath) ) {
 				// 요청한 elementPath가 AssetVariable의 elementPath의 일부인 경우
 				// AssetVariable의 elementPath에서 요청한 부분만 추출한다.
 				String relPath = SubmodelUtils.toRelativeIdShortPath(varElmPath, elementPath);
@@ -120,7 +120,7 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 				getLogger().debug("read AssetVariable: {}, sub-path={}", var, relPath);
 				return SubmodelUtils.duplicate(subPart);
 			}
-			else if ( varElmPath.startsWith(elementPath) ) {	// element > var
+			else if ( AssetVariable.isPathPrefix(elementPath, varElmPath) ) {	// element > var
 				// AssetVariable을 통해 읽은 SubmodelElement가 요청한 elementPath의 일부인 경우
 				// BasePersistence에서 대상 SubmodelElement을 읽어와서 AssetVariable 영역에
 				// 해당하는 부분만을 갱신한다.
@@ -129,7 +129,11 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 				}
 				String relPath = SubmodelUtils.toRelativeIdShortPath(elementPath, varElmPath);
 				SubmodelElement subPart = SubmodelUtils.traverse(baseSme, relPath);
-				ElementValues.update(subPart, ElementValues.getValue(var.read()));
+				
+				SubmodelElement newSme = var.read();
+				SubmodelUtils.updateValue(subPart, newSme);
+//				ElementValues.update(subPart, ElementValues.getValue(var.read()));
+				
 				getLogger().debug("read SAssetVariable {} and replace {}", var, elementPath);
 			}
 		}
@@ -163,19 +167,19 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 				var.update(update);
 				getLogger().debug("update AssetVariable: {}", var);
 			}
-			else if ( elementPath.startsWith(varElmPath) ) {	// element < var
+			else if ( AssetVariable.isPathPrefix(varElmPath, elementPath) ) {	// element < var
 				// 갱신 영역이 AssetVariable의 영역의 일부인 경우
 				// AssetVariable에서 SubmodelElement를 읽어와서 갱신된 부분을 갱신하고 다시 저장한다.
 				String relPath = SubmodelUtils.toRelativeIdShortPath(varElmPath, elementPath);
-				
+
 				SubmodelElement assetElm = var.read();
 				SubmodelElement subSme = SubmodelUtils.traverse(assetElm, relPath);
 				ElementValues.update(subSme, ElementValues.getValue(update));
 				var.update(assetElm);
-				
+
 				getLogger().debug("update AssetVariable: {}, sub-path={}", var, relPath);
 			}
-			else if ( varElmPath.startsWith(elementPath) ) {	// element > var
+			else if ( AssetVariable.isPathPrefix(elementPath, varElmPath) ) {	// element > var
 				// 갱신 영역이 AssetVariable의 영역을 포함하는 경우
 				// 갱신 영역을 base persistence를 통해 갱신하고,
 				// 또한 갱신 영역 중 AssetVariable에 해당하는 영역을 통해 AssetVariable을 갱신한다. 

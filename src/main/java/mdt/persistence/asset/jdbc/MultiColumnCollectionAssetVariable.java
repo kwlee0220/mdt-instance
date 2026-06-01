@@ -19,7 +19,6 @@ import utils.stream.FStream;
 import mdt.model.sm.SubmodelUtils;
 import mdt.persistence.MDTModelLookup;
 import mdt.persistence.asset.AssetVariableException;
-import mdt.persistence.asset.jdbc.MultiColumnCollectionAssetVariableConfig.ColumnToSubPath;
 
 
 /**
@@ -27,7 +26,7 @@ import mdt.persistence.asset.jdbc.MultiColumnCollectionAssetVariableConfig.Colum
  * @author Kang-Woo Lee (ETRI)
  */
 public class MultiColumnCollectionAssetVariable
-										extends AbstractJdbcAssetVariable<MultiColumnCollectionAssetVariableConfig> {
+								extends AbstractJdbcAssetVariable<MultiColumnCollectionAssetVariableConfig> {
 	private Map<String,SubmodelElementHandler> m_memberHandlers;
 	
 	public MultiColumnCollectionAssetVariable(MultiColumnCollectionAssetVariableConfig config) {
@@ -38,7 +37,7 @@ public class MultiColumnCollectionAssetVariable
 	public void initialize(MDTModelLookup lookup) {
 		super.initialize(lookup);
 
-		m_memberHandlers = FStream.from(getConfig().getColumnToSubpathMapping())
+		m_memberHandlers = FStream.from(getConfig().getColumnToSubPathMappings())
 									.mapToKeyValue(mapping -> {
 										SubmodelElement member = SubmodelUtils.traverse(m_prototype,
 																					mapping.getSubPath());
@@ -62,7 +61,7 @@ public class MultiColumnCollectionAssetVariable
 	private boolean m_noRecordWarningReported = false;
 	@Override
 	protected void loadOnBuffer(Connection conn) throws AssetVariableException {
-		List<ColumnToSubPath> mappings = getConfig().getColumnToSubpathMapping();
+		List<ColumnToSubPath> mappings = getConfig().getColumnToSubPathMappings();
 		
 		try ( Statement stmt = conn.createStatement(); ) {
 			ResultSet rs = stmt.executeQuery(getConfig().getReadQuery());
@@ -108,7 +107,7 @@ public class MultiColumnCollectionAssetVariable
 		SubmodelElementCollection smc = (SubmodelElementCollection)m_prototype;
 		
 		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()) ) {
-			FStream.from(getConfig().getColumnToSubpathMapping())
+			FStream.from(getConfig().getColumnToSubPathMappings())
 					.zipWithIndex(1)
 					.forEachOrThrow(idxed -> {
 						ColumnToSubPath mapping = idxed.value();

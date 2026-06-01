@@ -8,6 +8,8 @@ import com.google.common.collect.Lists;
 
 import utils.stream.FStream;
 
+import mdt.model.sm.SubmodelUtils;
+
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.PersistenceConfig;
 import lombok.Getter;
 import lombok.Setter;
@@ -31,13 +33,13 @@ public class KSX9101PersistencerConfig extends PersistenceConfig<KSX9101Persiste
 	
 	public List<EntityConfiguration> findSubEntityConfigurations(String pathStr) {
 		return FStream.from(entityConfigs)
-						.filter(conf -> conf.getRootPath().startsWith(pathStr))
+						.filter(conf -> SubmodelUtils.isIdShortPathPrefix(pathStr, conf.getRootPath()))
 						.toList();
 	}
-	
+
 	public EntityConfiguration findCoverEntityConfiguration(String pathStr) {
 		return FStream.from(this.entityConfigs)
-						.findFirst(conf -> pathStr.startsWith(conf.getRootPath()))
+						.findFirst(conf -> SubmodelUtils.isIdShortPathPrefix(conf.getRootPath(), pathStr))
 						.getOrNull();
 	}
 
