@@ -24,7 +24,6 @@ public class RCKSimulationResult {
 	private final int m_progress;
 	private final int m_production;
 	private final Map<String,Float> m_utilizations;
-	private JsonNode m_equipmentProperties;
 	
 	private RCKSimulationResult(int progress, int production, Map<String,Float> utilization) {
 		m_progress = progress;

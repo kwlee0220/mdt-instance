@@ -25,4 +25,9 @@ public class ProgramOperationProviderConfig {
 	public String getOperationDescriptorFile() {
 		return m_opDescFile;
 	}
+	
+	@Override
+	public String toString() {
+		return "ProgramOperationProviderConfig{operationDescriptorFile=" + m_opDescFile + "}";
+	}
 }

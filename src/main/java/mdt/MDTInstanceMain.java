@@ -595,7 +595,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			for ( JavaOperationConfig conf: instConf.getOperations().getJavaOperations() ) {
 				Reference opRef = conf.getOperationIdentifier().toReference();
 				MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-				opProviderConfig.setJava(new JavaOperationProviderConfig(conf.getClassName(), Map.of()));
+				opProviderConfig.setJava(new JavaOperationProviderConfig(conf.getClassName(), conf.getArguments()));
 				opProviders.put(opRef, opProviderConfig);
 			}
 			for ( HttpOperationConfig conf: instConf.getOperations().getHttpOperations() ) {

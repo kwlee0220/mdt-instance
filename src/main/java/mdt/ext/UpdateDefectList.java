@@ -12,13 +12,13 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+
 import utils.stream.FStream;
 
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.assetconnection.operation.OperationProvider;
-
-import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
-import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
 
 /**
@@ -28,7 +28,8 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 public class UpdateDefectList implements OperationProvider {
 	private static final Logger s_logger = LoggerFactory.getLogger(UpdateDefectList.class);
 	
-	public UpdateDefectList(ServiceContext serviceContext, Reference opRef, JavaOperationProviderConfig config) {
+	public UpdateDefectList(ServiceContext serviceContext, Reference opRef,
+							JavaOperationProviderConfig config) {
 		if ( s_logger.isInfoEnabled() ) {
 			IdShortPath idShortPath = IdShortPath.fromReference(opRef);
 			s_logger.info("AssetConnection (Operation) is ready: op-ref={}", idShortPath);

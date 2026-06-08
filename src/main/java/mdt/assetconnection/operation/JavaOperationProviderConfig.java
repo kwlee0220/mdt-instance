@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  *
@@ -16,11 +17,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(Include.NON_NULL)
 public class JavaOperationProviderConfig {
 	@JsonProperty("operationClassName") private final String m_operationClassName;
-	@JsonProperty("arguments") private final Map<String,Object> m_arguments;
+	@JsonProperty("arguments") private final Map<String,JsonNode> m_arguments;
 	
 	@JsonCreator
 	public JavaOperationProviderConfig(@JsonProperty("operationClassName") String className,
-										@Nullable @JsonProperty("arguments") Map<String,Object> arguments) {
+										@Nullable @JsonProperty("arguments") Map<String,JsonNode> arguments) {
 		m_operationClassName = className;
 		m_arguments = arguments;
 	}
@@ -29,7 +30,12 @@ public class JavaOperationProviderConfig {
 		return m_operationClassName;
 	}
 	
-	public Map<String, Object> getArguments() {
+	public Map<String, JsonNode> getArguments() {
 		return m_arguments;
+	}
+	
+	@Override
+	public String toString() {
+		return "[operationClassName=" + m_operationClassName + ", arguments=" + m_arguments + "]";
 	}
 }

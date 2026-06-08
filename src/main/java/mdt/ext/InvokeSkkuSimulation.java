@@ -56,7 +56,8 @@ public class InvokeSkkuSimulation implements OperationProvider {
 	private final Guard m_guard = Guard.create();
 	@GuardedBy("m_guard") private AsyncState m_status = AsyncState.NOT_STARTED;
 	
-	public InvokeSkkuSimulation(ServiceContext serviceContext, Reference opRef, JavaOperationProviderConfig config) {
+	public InvokeSkkuSimulation(ServiceContext serviceContext, Reference opRef,
+								JavaOperationProviderConfig config) {
 		if ( s_logger.isInfoEnabled() ) {
 			IdShortPath idShortPath = IdShortPath.fromReference(opRef);
 			s_logger.info("AssetConnection (RunSkkuSimulation Operation) is ready: op-ref={}", idShortPath);

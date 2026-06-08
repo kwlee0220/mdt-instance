@@ -13,7 +13,6 @@ import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
@@ -26,6 +25,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundExc
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
 
 import utils.InternalException;
+import utils.Preconditions;
 import utils.Throwables;
 import utils.stream.FStream;
 
@@ -149,7 +149,8 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 //	}
 	
 	private OperationProvider createJavaOperationProvider(ServiceContext serviceContext,
-                                            			Reference opRef, JavaOperationProviderConfig javaOpConfig) {
+                                            			Reference opRef,
+                                            			JavaOperationProviderConfig javaOpConfig) {
 		try {
 			// Java 연산 제공자 객체를 생성한다.
 			//
