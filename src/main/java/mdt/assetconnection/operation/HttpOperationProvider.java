@@ -50,7 +50,6 @@ class HttpOperationProvider implements OperationProvider {
 		OperationRequest req = new OperationRequest();
 		req.setOperation(m_config.getOpId());
 		req.setInputArguments(toArgumentMap(inputVars));
-		req.setInputArguments(toArgumentMap(outputVars));
 		req.setAsync(false);
 		
 		HttpOperationClient client = HttpOperationClient.builder()

@@ -20,7 +20,6 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundExc
 import utils.InternalException;
 import utils.async.command.CommandExecution;
 import utils.async.command.CommandVariable;
-import utils.async.command.CommandVariable.FileVariable;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
 import utils.stream.FStream;
@@ -110,8 +109,7 @@ class ProgramOperationProvider implements OperationProvider {
 						// CommandExecution에서 생성한 값은 ElementValue의 valueJson형태로 설정됨.
 						try {
 							SubmodelElement old = opv.getValue();
-							ElementValue newVal = ElementValues.parseValueJsonString(var.getValue(), old);
-							ElementValues.update(old, newVal);
+							ElementValues.updateWithValueJsonString(old, var.getValue());
 						}
 						catch ( Exception e ) {
 							s_logger.error("Failed to update OperationVariable: {}, cause={}",
@@ -124,7 +122,7 @@ class ProgramOperationProvider implements OperationProvider {
 		}
 	}
 	
-	private FileVariable newCommandVariable(File workingDir, OperationVariable opv) throws TaskException {
+	private CommandVariable newCommandVariable(File workingDir, OperationVariable opv) throws TaskException {
 		SubmodelElement data = opv.getValue();
 		String name = data.getIdShort();
 		
@@ -145,7 +143,7 @@ class ProgramOperationProvider implements OperationProvider {
 					byte[] content = fileStore.get(path);
 					IOUtils.toFile(content, cvFile);
 					
-					return new FileVariable(name, cvFile);
+					return new CommandVariable(name, cvFile);
 				}
 				catch ( ResourceNotFoundException | PersistenceException e ) {
 					throw new TaskException("Failed to read AASFile " + aasFile, e);
@@ -167,7 +165,7 @@ class ProgramOperationProvider implements OperationProvider {
 					IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
 				}
 					
-				return new FileVariable(name, cvFile);
+				return new CommandVariable(name, cvFile);
 			}
 		}
 		catch ( IOException e ) {

@@ -1,7 +1,7 @@
 package mdt.ext.rck;
 
 import java.time.Duration;
-import java.util.Map;
+import java.util.LinkedHashMap;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
@@ -88,9 +88,9 @@ public class RCKSimulationOperation implements OperationProvider {
 		vars.updateInt("Production", result.getProduction());
 		vars.updateString("State", sim.getCurrentState().getPath());
 		
-		Map<String,FloatPropertyValue> utilMap =  KeyValueFStream.from(result.getUtilizations())
-																.mapValue(FloatPropertyValue::new)
-																.toMap();
+		var utilMap =  KeyValueFStream.from(result.getUtilizations())
+												.mapValue(FloatPropertyValue::new)
+												.toMap(new LinkedHashMap<>());
 		vars.update("AverageUtilization", new ElementCollectionValue(utilMap));
 		
 		VideoInfo videoInfo = ctx.getSimulationVideo();

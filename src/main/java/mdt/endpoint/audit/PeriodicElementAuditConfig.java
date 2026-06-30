@@ -5,9 +5,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 
-import lombok.Getter;
-import lombok.Setter;
-import lombok.experimental.Accessors;
+import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 
 import utils.UnitUtils;
 import utils.jdbc.JdbcConfiguration;
@@ -15,8 +13,6 @@ import utils.stream.FStream;
 
 import mdt.ElementColumnConfig;
 import mdt.MDTGlobalConfigurations;
-
-import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 
 
 /**
@@ -72,8 +68,6 @@ public class PeriodicElementAuditConfig extends EndpointConfig<PeriodicElementAu
 	}
 
 	@JsonIncludeProperties({ "table", "jdbcConfig", "timestampColumn", "columns", "interval", "enabled" })
-	@Getter @Setter
-	@Accessors(prefix="m_")
 	public static class MDTConfig {
 		private String m_table;
 		private Object m_jdbcConfig = "default";
@@ -81,6 +75,54 @@ public class PeriodicElementAuditConfig extends EndpointConfig<PeriodicElementAu
 		private List<ElementColumnConfig> m_columns;
 		private String m_interval;
 		private boolean m_enabled = true;
+		
+		public String getTable() {
+			return m_table;
+		}
+		
+		void setTable(String table) {
+			m_table = table;
+		}
+		
+		public Object getJdbcConfig() {
+			return m_jdbcConfig;
+		}
+		
+		void setJdbcConfig(Object jdbcConfig) {
+			m_jdbcConfig = jdbcConfig;
+		}
+		
+		public String getTimestampColumn() {
+			return m_timestampColumn;
+		}
+		
+		void setTimestampColumn(String timestampColumn) {
+			m_timestampColumn = timestampColumn;
+		}
+		
+		public List<ElementColumnConfig> getColumns() {
+			return m_columns;
+		}
+		
+		void setColumns(List<ElementColumnConfig> columns) {
+			m_columns = columns;
+		}
+		
+		public String getInterval() {
+			return m_interval;
+		}
+		
+		void setInterval(String interval) {
+			m_interval = interval;
+		}
+		
+		public boolean isEnabled() {
+			return m_enabled;
+		}
+		
+		void setEnabled(boolean enabled) {
+			m_enabled = enabled;
+		}
 		
 		@Override
 		public String toString() {

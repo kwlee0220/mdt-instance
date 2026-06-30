@@ -3,13 +3,13 @@ package mdt.persistence.timeseries;
 import java.time.Duration;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.Getter;
 import lombok.experimental.Accessors;
-
-import org.jetbrains.annotations.Nullable;
 
 import utils.UnitUtils;
 import utils.func.Funcs;
@@ -21,22 +21,34 @@ import utils.func.Optionals;
  * @author Kang-Woo Lee (ETRI)
  */
 public class TimeSeriesSubmodelConfig {
+	private final String m_id;
 	private final String m_idShort;
 	private final String m_endpoint;
 	private final String m_tableName;
 	private final List<ParameterColumn> m_parameterColumns;
 	private final TailConfig m_tail;
 	
-	public TimeSeriesSubmodelConfig(@JsonProperty("idShort") String idShort,
+	public TimeSeriesSubmodelConfig(@JsonProperty("id") String id,
+									@JsonProperty("idShort") String idShort,
 		                            @JsonProperty("endpoint") String endpoint,
 		                            @JsonProperty("tableName") String tableName,
 		                            @JsonProperty("parameterColumns") List<ParameterColumn> paramColumns,
 		                            @JsonProperty("tail") TailConfig tailConfig) {
+		m_id = id;
 		m_idShort = idShort;
 		m_endpoint = endpoint;
 		m_tableName = tableName;
 		m_parameterColumns = paramColumns;
 		m_tail = tailConfig;
+	}
+	
+	/**
+	 * 대상 시계열 Submodel의 ID를 반환한다.
+	 *
+	 * @return 대상 시계열 Submodel의 ID
+	 */
+	public String getId() {
+		return m_id;
 	}
 	
 	/**

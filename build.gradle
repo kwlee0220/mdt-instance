@@ -14,8 +14,8 @@ application {
 }
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
@@ -128,6 +128,18 @@ eclipse {
 	classpath {
 		file {
 			whenMerged { cp ->
+				def linkedProjectBuildLibDirs = []
+				if (cp.entries.any { it.kind == 'src' && it.path == '/mdt-client' }) {
+					linkedProjectBuildLibDirs << project(':mdt-client').projectDir.toPath().resolve('build/libs').toUri().getPath().replaceAll('/+$', '')
+				}
+				if (cp.entries.any { it.kind == 'src' && it.path == '/utils' }) {
+					linkedProjectBuildLibDirs << project(':utils').projectDir.toPath().resolve('build/libs').toUri().getPath().replaceAll('/+$', '')
+				}
+				cp.entries.removeAll { entry ->
+					entry.kind == 'lib'
+						&& entry.path != null
+						&& linkedProjectBuildLibDirs.any { dir -> entry.path.startsWith(dir + '/') }
+				}
 				cp.entries.each { entry ->
 					if (entry.kind == 'src' && entry.path == 'src/main/resources') {
 						entry.excludes = []

@@ -89,9 +89,10 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 				m_handler.update(m_prototype, value);
 			}
 			else {
-				String msg = String.format("No data returned for %s with query: %s",
+				String msg = String.format("No record for %s with query: %s",
 											this, getConfig().getReadQuery());
-				throw new AssetVariableException(msg);
+				getLogger().warn(msg);
+//				throw new AssetVariableException(msg);
 			}
 		}
 		catch ( SQLException e ) {

@@ -1,11 +1,13 @@
 package mdt.persistence.timeseries;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementCollection;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultSubmodelElementCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +30,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCr
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 
 import utils.Throwables;
+import utils.func.Funcs;
 import utils.stream.FStream;
 
 import mdt.model.sm.SubmodelUtils;
@@ -114,6 +117,23 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 			return baseModel;
 		}
 		else {
+			// TODO: 'METADATA'를 요청한 경우에는 별도로 처리한다.
+			// 'modifier'에서 'METADATA'가 요청된 경우를 확인하는 방법을 몰라서,
+			// 일단 'baseModel.Metadata' SMC의 value 존재여부를 판단한다.
+			// 이 경우에는 baseModel을 empty Segments만 추가해서 바로 반환한다.
+			var metadata = (SubmodelElementCollection)Funcs.findFirst(baseModel.getSubmodelElements(),
+																		sme -> sme.getIdShort().equals("Metadata"));
+			if ( metadata.getValue().size() == 0 ) {
+				// 'METADATA'가 요청된 경우이므로, baseModel에 empty Segments만 추가해서 반환한다.
+				var emptySegments = new DefaultSubmodelElementCollection.Builder()
+											.idShort("Segments")
+											.semanticId(DefaultSegments.SEMANTIC_ID_REFERENCE)
+											.value(Collections.emptyList())
+											.build();
+				baseModel.getSubmodelElements().add(emptySegments);
+				return baseModel;
+			}
+			
 			JdbcTimeSeries timeSeries = new JdbcTimeSeries(tsConfig);
 			timeSeries.updateFromAasModel(baseModel);
 			return timeSeries.newSubmodel();

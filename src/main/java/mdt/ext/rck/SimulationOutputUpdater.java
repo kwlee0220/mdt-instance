@@ -1,6 +1,6 @@
 package mdt.ext.rck;
 
-import java.util.Map;
+import java.util.LinkedHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,9 +37,9 @@ public class SimulationOutputUpdater {
 			m_progressRef.updatePropertyValue(PropertyValue.INTEGER(result.getProgress()));
 			m_productionRef.updatePropertyValue(PropertyValue.INTEGER(result.getProduction()));
 			
-			Map<String, ElementValue> utilsMap = KeyValueFStream.from(result.getUtilizations())
-																.mapValue(v -> (ElementValue)PropertyValue.FLOAT(v))
-																.toMap();
+			var utilsMap = KeyValueFStream.from(result.getUtilizations())
+														.mapValue(v -> (ElementValue)PropertyValue.FLOAT(v))
+														.toMap(new LinkedHashMap<>());
 			m_utilizationRef.updateValue(new ElementCollectionValue(utilsMap));
 		}
 		catch ( Exception e ) {
