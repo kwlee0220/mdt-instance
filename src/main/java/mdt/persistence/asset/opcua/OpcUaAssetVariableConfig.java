@@ -3,10 +3,10 @@ package mdt.persistence.asset.opcua;
 import java.io.IOException;
 import java.time.Duration;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
-
-import org.jetbrains.annotations.Nullable;
 
 import utils.func.Optionals;
 import utils.json.JacksonUtils;
@@ -60,8 +60,9 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link OpcUaAssetVariableConfig} 객체.
+	 * @throws IOException 
 	 */
-	public static OpcUaAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static OpcUaAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		OpcUaAssetVariableConfig config = new OpcUaAssetVariableConfig();
 		config.loadFields(jnode);
 		

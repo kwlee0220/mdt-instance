@@ -19,8 +19,8 @@ import utils.Throwables;
  */
 public class MDTService extends Service {
 	private final ServiceConfig m_config;
-	private Persistence m_persistence;
-	private FileStorage m_fileStorage;
+	private Persistence<?> m_persistence;
+	private FileStorage<?> m_fileStorage;
 	
 	public MDTService(ServiceConfig svc) throws ConfigurationException, AssetConnectionException,
 												PersistenceException, MessageBusException {
@@ -29,8 +29,8 @@ public class MDTService extends Service {
 		m_config = svc;
 		
         try {
-			m_persistence = (Persistence)ReflectionUtils.getFieldValue(this, "persistence");
-			m_fileStorage = (FileStorage)ReflectionUtils.getFieldValue(this, "fileStorage");
+			m_persistence = (Persistence<?>)ReflectionUtils.getFieldValue(this, "persistence");
+			m_fileStorage = (FileStorage<?>)ReflectionUtils.getFieldValue(this, "fileStorage");
 		}
 		catch ( Throwable e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
@@ -42,11 +42,11 @@ public class MDTService extends Service {
 		return m_config;
 	}
 	
-	public Persistence getPersistence() {
+	public Persistence<?> getPersistence() {
 		return m_persistence;
 	}
 	
-	public FileStorage getFileStorage() {
+	public FileStorage<?> getFileStorage() {
 		return m_fileStorage;
 	}
 	

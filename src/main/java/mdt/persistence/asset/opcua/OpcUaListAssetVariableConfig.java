@@ -4,10 +4,10 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
-
-import org.jetbrains.annotations.Nullable;
 
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
@@ -66,8 +66,9 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link OpcUaListAssetVariableConfig} 객체.
+	 * @throws IOException	JSON 노드의 필드값을 읽어오는 과정에서 입출력 오류가 발생한 경우.
 	 */
-	public static OpcUaListAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static OpcUaListAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		OpcUaListAssetVariableConfig config = new OpcUaListAssetVariableConfig();
 		config.loadFields(jnode);
 

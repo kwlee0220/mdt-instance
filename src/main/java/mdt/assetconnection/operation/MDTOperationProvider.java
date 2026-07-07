@@ -50,6 +50,7 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 								MDTOperationProviderConfig config) throws AssetConnectionException {
 		Preconditions.checkArgument(config.getJava() != null
 									|| config.getProgram() != null
+									|| config.getScript() != null
 									|| config.getHttp() != null,
 									"No operation provider is specified");
 		
@@ -76,6 +77,9 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 	    	else if ( m_config.getProgram() != null ) {
 				m_opProvider = new ProgramOperationProvider(serviceContext, m_opRef, m_config.getProgram());
 	    	}
+	    	else if ( m_config.getScript() != null ) {
+	    		m_opProvider = new ScriptOperationProvider(serviceContext, m_opRef, m_config.getScript());
+	    	}
 	    	else if ( m_config.getHttp() != null ) {
 	    		m_opProvider = new HttpOperationProvider(serviceContext, m_opRef, m_config.getHttp());
 	    	}
@@ -94,7 +98,7 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 	}
 
 	@Override
-	public AssetProviderConfig asConfig() {
+	public AssetProviderConfig<?> asConfig() {
 		return m_config;
 	}
 	

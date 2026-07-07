@@ -5,12 +5,13 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import org.jetbrains.annotations.Nullable;
-
 import utils.KeyValue;
+import utils.Throwables;
 import utils.func.Optionals;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
@@ -92,9 +93,15 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		config.m_updateQuery = Optionals.map(jnode.get(FIELD_UPDATE_QUERY), JsonNode::asText);
 		config.m_mapping = FStream.from(jnode.get("rows").elements())
 									.mapToKeyValue(rowNode -> {
-										String key = JacksonUtils.getStringField(rowNode, FIELD_KEY);
-										String subPath = JacksonUtils.getStringField(rowNode, FIELD_SUBPATH);
-										return KeyValue.of(key, subPath);
+										try {
+											String key = JacksonUtils.getStringField(rowNode, FIELD_KEY);
+											String subPath = JacksonUtils.getStringField(rowNode, FIELD_SUBPATH);
+											return KeyValue.of(key, subPath);
+										}
+										catch ( IOException e ) {
+											Throwables.sneakyThrow(e);
+											throw new AssertionError("unreachable");
+										}
 									})
 									.toMap();
 		

@@ -213,7 +213,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		}
 		config.m_columnToSubPathMappings
 							= FStream.from(colNode.elements())
-									.map(fieldJnode -> {
+									.mapOrThrow(fieldJnode -> {
 										String column = JacksonUtils.getStringField(fieldJnode, FIELD_COLUMN);
 										String subPath = JacksonUtils.getStringField(fieldJnode, FIELD_SUBPATH);
 										return new ColumnToSubPath(column, subPath);

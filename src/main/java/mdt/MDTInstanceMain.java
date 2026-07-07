@@ -63,15 +63,14 @@ import utils.func.Optionals;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
 import utils.stream.FStream;
+import utils.stream.KeyValueFStream;
 
 import mdt.assetconnection.MDTAssetConnectionConfig;
 import mdt.assetconnection.operation.HttpOperationProviderConfig;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.assetconnection.operation.MDTOperationProviderConfig;
 import mdt.assetconnection.operation.ProgramOperationProviderConfig;
-import mdt.config.AASOperationConfig.HttpOperationConfig;
-import mdt.config.AASOperationConfig.JavaOperationConfig;
-import mdt.config.AASOperationConfig.ProgramOperationConfig;
+import mdt.assetconnection.operation.ScriptOperationProviderConfig;
 import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTService;
 import mdt.config.MDTServiceConfig;
@@ -586,27 +585,42 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		Map<Reference,MDTOperationProviderConfig> opProviders = Maps.newHashMap();
 		
 		if ( instConf.getOperations() != null ) {
-			for ( ProgramOperationConfig conf: instConf.getOperations().getProgramOperations() ) {
-				Reference opRef = conf.getOperationIdentifier().toReference();
-				MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-				opProviderConfig.setProgram(new ProgramOperationProviderConfig(conf.getDescriptorFile()));
-				opProviders.put(opRef, opProviderConfig);
-			}
-			for ( JavaOperationConfig conf: instConf.getOperations().getJavaOperations() ) {
-				Reference opRef = conf.getOperationIdentifier().toReference();
-				MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-				opProviderConfig.setJava(new JavaOperationProviderConfig(conf.getClassName(), conf.getArguments()));
-				opProviders.put(opRef, opProviderConfig);
-			}
-			for ( HttpOperationConfig conf: instConf.getOperations().getHttpOperations() ) {
-				Reference opRef = conf.getOperationIdentifier().toReference();
-				MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-				HttpOperationProviderConfig httpConf
-										= new HttpOperationProviderConfig(conf.getEndpoint(), conf.getOpId(),
-																		conf.getPollInterval(), conf.getTimeout());
-				opProviderConfig.setHttp(httpConf);
-				opProviders.put(opRef, opProviderConfig);
-			}
+			KeyValueFStream.from(instConf.getOperations().getPrograms())
+							.forEach((opType, conf) -> {
+								Reference opRef = conf.getOperationIdentifier(opType).toReference();
+								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
+								opProviderConfig.setProgram(new ProgramOperationProviderConfig(conf.getDescriptorFile()));
+								opProviders.put(opRef, opProviderConfig);
+							});
+
+			KeyValueFStream.from(instConf.getOperations().getJavas())
+							.forEach((opType, conf) -> {
+								Reference opRef = conf.getOperationIdentifier(opType).toReference();
+								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
+								opProviderConfig.setJava(new JavaOperationProviderConfig(conf.getClassName(),
+																						conf.getArguments()));
+								opProviders.put(opRef, opProviderConfig);
+							});
+
+			KeyValueFStream.from(instConf.getOperations().getScripts())
+							.forEach((opType, conf) -> {
+								Reference opRef = conf.getOperationIdentifier(opType).toReference();
+								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
+								opProviderConfig.setScript(new ScriptOperationProviderConfig(conf.getScriptFile(),
+																							conf.getTimeoutAsString()));
+								opProviders.put(opRef, opProviderConfig);
+							});
+
+			KeyValueFStream.from(instConf.getOperations().getHttps())
+							.forEach((opType, conf) -> {
+								Reference opRef = conf.getOperationIdentifier(opType).toReference();
+								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
+								opProviderConfig.setHttp(new HttpOperationProviderConfig(conf.getEndpoint(),
+																						conf.getOpId(),
+																						conf.getPollInterval(),
+																						conf.getTimeout()));
+								opProviders.put(opRef, opProviderConfig);
+							});
 		}
 		
 		MDTAssetConnectionConfig assetConConfig = new MDTAssetConnectionConfig();

@@ -73,8 +73,9 @@ public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableCon
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link OpcUaCollectionAssetVariableConfig} 객체.
+	 * @throws IOException	JSON 노드의 필드값이 잘못된 경우 발생.
 	 */
-	public static OpcUaCollectionAssetVariableConfig deserializeFields(JsonNode jnode) {
+	public static OpcUaCollectionAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		OpcUaCollectionAssetVariableConfig config = new OpcUaCollectionAssetVariableConfig();
 		config.loadFields(jnode);
 

@@ -56,8 +56,9 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 	 * JSON 노드로부터 {@link AbstractAssetVariableConfig} 객체를 생성한다.
 	 * 
 	 * @param jnode	JSON 노드
+	 * @throws IOException	JSON 노드의 필드 값이 잘못된 경우 발생.
 	 */
-	protected void loadFields(JsonNode jnode) {
+	protected void loadFields(JsonNode jnode) throws IOException {
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
