@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 
+import mdt.persistence.asset.http.HttpAssetVariableConfig;
 import mdt.persistence.asset.jdbc.MultiColumnCollectionAssetVariableConfig;
 import mdt.persistence.asset.jdbc.MultiColumnCollectionListAssetVariableConfig;
 import mdt.persistence.asset.jdbc.MultiRowAssetVariableConfig;
@@ -23,6 +24,7 @@ import mdt.persistence.asset.mqtt.MqttAssetVariableConfig;
 import mdt.persistence.asset.opcua.OpcUaAssetVariableConfig;
 import mdt.persistence.asset.opcua.OpcUaCollectionAssetVariableConfig;
 import mdt.persistence.asset.opcua.OpcUaListAssetVariableConfig;
+import mdt.persistence.asset.robot.RobotStateVariableConfig;
 
 
 /**
@@ -98,6 +100,10 @@ public final class AssetVariableConfigs {
 				return OpcUaListAssetVariableConfig.deserializeFields(jnode);
 			case OpcUaCollectionAssetVariableConfig.SERIALIZATION_TYPE:
 				return OpcUaCollectionAssetVariableConfig.deserializeFields(jnode);
+			case RobotStateVariableConfig.SERIALIZATION_TYPE:
+				return RobotStateVariableConfig.deserializeFields(jnode);
+			case HttpAssetVariableConfig.SERIALIZATION_TYPE:
+				return HttpAssetVariableConfig.deserializeFields(jnode);
 			default:
 				throw new JacksonDeserializationException("Unregistered AssetVariableConfig type: " + type);
 		}

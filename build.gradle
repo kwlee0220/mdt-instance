@@ -39,6 +39,7 @@ ext {
 dependencies {
 	implementation project(":utils")
 	implementation project(":mdt-client")
+	implementation project(":mdt-robot-client")
 	// implementation project(":faaast-starter-3")
 	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
 	
@@ -98,6 +99,7 @@ dependencies {
 	implementation "org.springframework.data:spring-data-jpa:${spring_data_version}"
 	
 	testImplementation "junit:junit:${junit_version}"
+	testImplementation "com.squareup.okhttp3:mockwebserver:${okhttp_version}"
 	testImplementation "org.mockito:mockito-core:${mockito_version}"
 	testImplementation "org.junit.platform:junit-platform-launcher:${junit_jupiter_version}"
 	testRuntimeOnly "org.junit.vintage:junit-vintage-engine:${junit_jupiter_version}"
@@ -131,6 +133,9 @@ eclipse {
 				def linkedProjectBuildLibDirs = []
 				if (cp.entries.any { it.kind == 'src' && it.path == '/mdt-client' }) {
 					linkedProjectBuildLibDirs << project(':mdt-client').projectDir.toPath().resolve('build/libs').toUri().getPath().replaceAll('/+$', '')
+				}
+				if (cp.entries.any { it.kind == 'src' && it.path == '/mdt-robot-client' }) {
+					linkedProjectBuildLibDirs << project(':mdt-robot-client').projectDir.toPath().resolve('build/libs').toUri().getPath().replaceAll('/+$', '')
 				}
 				if (cp.entries.any { it.kind == 'src' && it.path == '/utils' }) {
 					linkedProjectBuildLibDirs << project(':utils').projectDir.toPath().resolve('build/libs').toUri().getPath().replaceAll('/+$', '')

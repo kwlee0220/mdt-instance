@@ -117,7 +117,8 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 
 	@Override
 	public void deleteSubmodel(String id) throws ResourceNotFoundException, PersistenceException {
-		if ( MDTModelLookup.getInstance().getDataSubmodel().getId().equals(id) ) {
+		// Data submodel이 없는 트윈도 있으므로 getDataSubmodel()을 직접 쓰지 않는다.
+		if ( MDTModelLookup.getInstance().isDataSubmodel(id) ) {
 			m_guard.lock();
 			try {
 				getBasePersistence().deleteSubmodel(id);
@@ -151,7 +152,7 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 
 	@Override
 	public void save(Submodel submodel) throws PersistenceException {
-		if ( MDTModelLookup.getInstance().getDataSubmodel().getId().equals(submodel.getId()) ) {
+		if ( MDTModelLookup.getInstance().isDataSubmodel(submodel.getId()) ) {
 			m_guard.runChecked(() -> getBasePersistence().save(submodel));
 		}
 		else {
@@ -174,7 +175,7 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 	@Override
 	public Submodel getSubmodel(String id, QueryModifier modifier)
 															throws ResourceNotFoundException, PersistenceException {
-		if ( MDTModelLookup.getInstance().getDataSubmodel().getId().equals(id) ) {
+		if ( MDTModelLookup.getInstance().isDataSubmodel(id) ) {
 			m_guard.lock();
 			try {
 				return getBasePersistence().getSubmodel(id, modifier);

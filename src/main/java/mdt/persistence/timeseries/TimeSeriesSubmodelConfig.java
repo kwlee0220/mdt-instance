@@ -107,7 +107,9 @@ public class TimeSeriesSubmodelConfig {
 	
 	@Override
 	public String toString() {
-		return String.format("TimeSeries[idShort=%s, endpoint=%s, table=%s", m_idShort, m_endpoint, m_tableName);
+		// 로그에 DB 비밀번호가 노출되지 않도록 endpoint는 질의 부분('?' 이후의 user, password 등)을 빼고 출력한다.
+		String url = (m_endpoint != null) ? m_endpoint.split("\\?", 2)[0] : null;
+		return String.format("TimeSeries[idShort=%s, endpoint=%s, table=%s]", m_idShort, url, m_tableName);
 	}
 	
 	public static enum Order {

@@ -103,8 +103,8 @@ public class MultiColumnCollectionAssetVariable
 	}
 
 	@Override
-	protected void saveBuffer(Connection conn) throws AssetVariableException {
-		SubmodelElementCollection smc = (SubmodelElementCollection)m_prototype;
+	protected void saveBuffer(Connection conn, SubmodelElement value) throws AssetVariableException {
+		SubmodelElementCollection smc = (SubmodelElementCollection)value;
 		
 		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()) ) {
 			FStream.from(getConfig().getColumnToSubPathMappings())

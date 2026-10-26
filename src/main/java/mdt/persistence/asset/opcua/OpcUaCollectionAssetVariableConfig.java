@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import org.jetbrains.annotations.Nullable;
 
+import utils.func.Optionals;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
 
@@ -66,6 +67,8 @@ public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableCon
 			gen.writeNumberField(mapping.subPath(), mapping.opcuaId());
 		}
 		gen.writeEndObject();
+		// deserializeFields()가 읽는 'readable'도 저장해야 readable=false 설정이 유지된다.
+		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**

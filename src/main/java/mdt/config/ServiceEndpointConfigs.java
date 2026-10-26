@@ -4,6 +4,7 @@ import utils.async.command.ProgramServiceConfig;
 
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.ros2.Ros2EndpointConfig;
+import mdt.endpoint.rt.RobotTwinEndpointConfig;
 
 
 /**
@@ -13,6 +14,7 @@ import mdt.endpoint.ros2.Ros2EndpointConfig;
 public class ServiceEndpointConfigs {
 	private MqttEndpointConfig.MDTConfig m_mqtt;
 	private Ros2EndpointConfig.MDTConfig m_ros2;
+	private RobotTwinEndpointConfig.RobotTwinConfig m_robotTwin;
 	private ProgramServiceConfig m_companion;
 	
 	public MqttEndpointConfig.MDTConfig getMqtt() {
@@ -27,6 +29,13 @@ public class ServiceEndpointConfigs {
 	}
 	public void setRos2(Ros2EndpointConfig.MDTConfig ros2) {
 		m_ros2 = ros2;
+	}
+	
+	public RobotTwinEndpointConfig.RobotTwinConfig getRobotTwin() {
+		return m_robotTwin;
+	}
+	public void setRobotTwin(RobotTwinEndpointConfig.RobotTwinConfig robotTwin) {
+		m_robotTwin = robotTwin;
 	}
 	
 	public ProgramServiceConfig getCompanion() {

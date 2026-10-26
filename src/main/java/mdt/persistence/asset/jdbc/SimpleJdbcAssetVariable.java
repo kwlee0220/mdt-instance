@@ -6,6 +6,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
+
 import utils.Preconditions;
 
 import mdt.persistence.MDTModelLookup;
@@ -102,15 +104,16 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 	}
 	
 	/**
-	 * prototype의 값을 update query의 단일 파라미터로 바인딩하여 DBMS에 기록한다.
+	 * 주어진 SubmodelElement의 값을 update query의 단일 파라미터로 바인딩하여 DBMS에 기록한다.
 	 *
 	 * @param conn	DBMS와 연결된 Connection 객체.
+	 * @param value	저장할 SubmodelElement.
 	 * @throws AssetVariableException	저장이 실패한 경우.
 	 */
 	@Override
-	protected void saveBuffer(Connection conn) throws AssetVariableException {
+	protected void saveBuffer(Connection conn, SubmodelElement value) throws AssetVariableException {
 		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()) ) {
-			Object jdbcValue = m_handler.toJdbcObject(m_prototype); 
+			Object jdbcValue = m_handler.toJdbcObject(value);
 			
 			pstmt.setObject(1, jdbcValue);
 			pstmt.execute();

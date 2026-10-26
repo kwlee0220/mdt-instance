@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -84,18 +85,21 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 								m_tsConfig.getTableName(), periodStr, m_metadata);
 	}
 
+	// 시간 컬럼 이름은 설정(TimeSeriesSubmodelConfig#getTimestampColumn)을 따른다.
+	// 기준 시각은 DBMS 전용 구문(예: PostgreSQL의 '?::INTERVAL') 대신 파라미터로 전달한다.
 	private static final String SQL_GET_TAIL_SEGMENT_BY_TIME = """
 		SELECT ${columns}
 		FROM ${tableName}
-		WHERE timestamp >= NOW() - (?::INTERVAL)
-		ORDER BY id ASC;
+		WHERE ${tsCol} >= ?
+		ORDER BY ${tsCol} ASC;
 	""";
 	private List<DefaultRecord> readTailRecordsByDuration(Duration duration) {
 		String colsExpr = FStream.from(m_tsConfig.getParameterColumns())
 									.map(pc -> pc.getColumn())
 									.join(", ");
 		
-		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr,
+									"tsCol", m_tsConfig.getTimestampColumn()))
 									.failOnUndefinedVariable(false)
 									.replace(SQL_GET_TAIL_SEGMENT_BY_TIME);
 
@@ -103,7 +107,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
-			pstmt.setString(1, JdbcUtils.toPostgresInterval(duration));
+			pstmt.setTimestamp(1, Timestamp.from(Instant.now().minus(duration)));
 			
 			return JdbcUtils.fstream(pstmt.executeQuery(), JdbcUtils::toColumnObjectList)
 							.zipWithIndex()
@@ -120,7 +124,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 	private static final String SQL_GET_TAIL_SEGMENT_BY_COUNT = """
 		SELECT ${columns}
 		FROM ${tableName}
-		ORDER BY id DESC
+		ORDER BY ${tsCol} DESC
 		LIMIT ?;
 	""";
 	private List<DefaultRecord> readTailRecordsByLength(int length) {
@@ -132,7 +136,8 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 		int width = String.valueOf(length).length();
 		String zeroPaddingFormat = "rec%0" + width + "d";
 		
-		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+		String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr,
+									"tsCol", m_tsConfig.getTimestampColumn()))
                                     .failOnUndefinedVariable(false)
                                     .replace(SQL_GET_TAIL_SEGMENT_BY_COUNT);
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());

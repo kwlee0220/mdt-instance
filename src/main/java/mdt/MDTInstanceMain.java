@@ -79,6 +79,7 @@ import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
 import mdt.endpoint.ros2.Ros2EndpointConfig;
+import mdt.endpoint.rt.RobotTwinEndpointConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.persistence.ConcurrentPersistenceConfig;
 import mdt.persistence.MDTModelLookup;
@@ -201,6 +202,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		System.out.printf("MDT_INSTANCE_ID=%s%n", System.getenv("MDT_INSTANCE_ID"));
 		System.out.printf("MDT_INSTANCE_HOME=%s%n", System.getenv("MDT_INSTANCE_HOME"));
 		System.out.printf("MQTT_BROKER_URL=%s%n", System.getenv("MQTT_BROKER_URL"));
+		System.out.printf("AUTH_TOKEN=%s%n", System.getenv("AUTH_TOKEN"));
 		System.out.printf("CurrentWorkingDir=%s%n", FileUtils.getCurrentWorkingDirectory());
 		System.out.println("---------------------------------------------------------------");
 		
@@ -518,7 +520,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			throw new IllegalArgumentException("Unknown instance type: " + m_type);
 		}
 		
-		// 추가의 service endpoint들의 설정 정보가 있으면 이를 추가한다.
+		// HOOK: 추가의 service endpoint들의 설정 정보가 있으면 이를 추가한다.
 		// FA3ST의 endpoint 설정에 추가한다.
 		if ( instConf.getServiceEndpoints() != null ) {
 			// MQTT endpoint 설정 정보가 있으면 추가한다.
@@ -535,6 +537,14 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				configs.add(c);
 				
 				getLogger().info("Register ROS2 endpoint: {}", c);
+			});
+			
+			// RobotTwin endpoint 설정 정보가 있으면 추가한다.
+			FOption.accept(instConf.getServiceEndpoints().getRobotTwin(), conf -> {
+				RobotTwinEndpointConfig epConfig = new RobotTwinEndpointConfig(conf);
+				configs.add(epConfig);
+				
+				getLogger().info("Register RobotTwin endpoint: {}", epConfig);
 			});
 			
 			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
@@ -615,8 +625,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 							.forEach((opType, conf) -> {
 								Reference opRef = conf.getOperationIdentifier(opType).toReference();
 								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-								opProviderConfig.setHttp(new HttpOperationProviderConfig(conf.getEndpoint(),
-																						conf.getOpId(),
+								opProviderConfig.setHttp(new HttpOperationProviderConfig(conf.getBaseUrl(),
+																						conf.getEndpoint(),
 																						conf.getPollInterval(),
 																						conf.getTimeout()));
 								opProviders.put(opRef, opProviderConfig);

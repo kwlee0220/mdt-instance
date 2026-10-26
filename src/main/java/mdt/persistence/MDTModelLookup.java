@@ -40,8 +40,8 @@ public class MDTModelLookup {
 	private Map<String,Submodel> m_submodelsByIdShort;	// idShort -> Submodel
 	private Map<String,Submodel> m_submodelsById;	    // id -> Submodel
 	
-	private Submodel m_dataSubmodel;
-	private Map<String,String> m_pathToParamIdMap;
+	private Submodel m_dataSubmodel;	// Data submodel이 없는 트윈이면 null
+	private Map<String,String> m_pathToParamIdMap = Map.of();	// Data submodel이 없으면 빈 map
 
 	private MDTModelLookup(List<Submodel> submodels) throws ResourceNotFoundException {
 		loadMDTModel(submodels);
@@ -107,8 +107,26 @@ public class MDTModelLookup {
 		return sm;
 	}
 	
+	/**
+	 * Data submodel을 반환한다.
+	 * <p>
+	 * Data submodel은 모든 트윈에 있지 않으므로, 결과가 {@code null}일 수 있다.
+	 * 주어진 Submodel이 Data submodel인지만 확인할 때는 {@link #isDataSubmodel(String)}을 사용한다.
+	 *
+	 * @return Data submodel. 없으면 {@code null}.
+	 */
 	public Submodel getDataSubmodel() {
 		return m_dataSubmodel;
+	}
+
+	/**
+	 * 주어진 ID의 Submodel이 Data submodel인지 여부를 반환한다.
+	 *
+	 * @param submodelId	Submodel ID.
+	 * @return	Data submodel이면 {@code true}. 트윈에 Data submodel이 없으면 항상 {@code false}.
+	 */
+	public boolean isDataSubmodel(String submodelId) {
+		return m_dataSubmodel != null && m_dataSubmodel.getId().equals(submodelId);
 	}
 	
 	public SubmodelElement getSubmodelElement(ElementLocation loc) {
@@ -127,12 +145,12 @@ public class MDTModelLookup {
 	 * 주어진 SubmodelElementIdentifier에 해당하는 parameter 식별자를 반환한다.
 	 *
 	 * @param identifier    SubmodelElementIdentifier
-	 * @return
+	 * @return	parameter 식별자. 대상이 parameter가 아니거나 트윈에 Data submodel이 없으면 {@code null}.
 	 */
 	public String getParameterId(SubmodelElementIdentifier identifier) {
 		Preconditions.checkState(identifier != null, "SubmodelElementIdentifier is null");
-		
-		if ( m_dataSubmodel.getId().equals(identifier.getSubmodelId()) ) {
+
+		if ( isDataSubmodel(identifier.getSubmodelId()) ) {
 			return m_pathToParamIdMap.get(identifier.getIdShortPath().toString());
 		}
 		else {

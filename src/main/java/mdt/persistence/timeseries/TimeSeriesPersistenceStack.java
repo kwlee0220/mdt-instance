@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementCollection;
@@ -26,6 +27,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceExceptio
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceAlreadyExistsException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotAContainerElementException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelElementSearchCriteria;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 
@@ -67,6 +69,37 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 	@Override
 	public TimeSeriesPersistenceStackConfig asConfig() {
 		return m_config;
+	}
+
+	/**
+	 * 주어진 operation이 속한 시계열 Submodel의 설정을 persistence 스택에서 찾는다.
+	 * <p>
+	 * 시계열 persistence는 스택의 가장 바깥에 있지 않을 수 있으므로({@code ConcurrentPersistence}가
+	 * 바깥을 감쌀 수 있다) {@link PersistenceStack#findInStack(Persistence, Class)}로 찾는다.
+	 * 설정은 persistence 설정에서 바로 찾으므로 {@link #start()} 이전에도 사용할 수 있다.
+	 *
+	 * @param top			탐색을 시작할 persistence. 보통 서비스의 최상위 persistence이다.
+	 * @param operationRef	대상 operation의 reference.
+	 * @return	operation이 속한 Submodel의 시계열 설정.
+	 * @throws ConfigurationInitializationException	스택에 시계열 persistence가 없거나(시계열 Submodel이
+	 * 									하나도 설정되지 않은 경우), operation이 속한 Submodel의 시계열 설정이 없는 경우.
+	 */
+	static TimeSeriesSubmodelConfig getTimeSeriesSubmodelConfig(Persistence<?> top, Reference operationRef)
+		throws ConfigurationInitializationException {
+		String smId = SubmodelElementIdentifier.fromReference(operationRef).getSubmodelId();
+
+		TimeSeriesPersistenceStack tsStack
+				= findInStack(top, TimeSeriesPersistenceStack.class)
+					.getOrThrow(() -> new ConfigurationInitializationException(
+										"TimeSeriesPersistenceStack is not in the persistence stack "
+										+ "(no TimeSeries submodel is configured): submodel-id=" + smId));
+		TimeSeriesSubmodelConfig tsConfig = Funcs.findFirst(tsStack.asConfig().getTimeSeriesSubmodelConfigs(),
+															cfg -> smId.equals(cfg.getId()));
+		if ( tsConfig == null ) {
+			throw new ConfigurationInitializationException("Cannot find TimeSeriesSubmodelConfig: submodel-id=" + smId);
+		}
+
+		return tsConfig;
 	}
 
 	@Override
@@ -192,17 +225,20 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 		String segmentId = (parts.size() > 1) ?  parts.get(1) : null;
 		
 		// 모든 segments를 포함(segmentId == null)하던가, 특정 segment만 포함(segmentId != null)
-		if ( segmentId == null || segmentId.equals("Tail") ) {
-			TailConfig tailConfig = tsConfig.getTail();
-			if ( tailConfig == null ) {
-				throw new mdt.model.ResourceNotFoundException("TailConfig", "path=" + idShortPath);
-			}
+		// Tail 설정은 선택 사항이다. 전체 Segments를 요청한 경우는 Tail 없이 구성하고,
+		// Tail만 요청한 경우는 해당 segment가 없으므로 404(ResourceNotFoundException)로 응답한다.
+		TailConfig tailConfig = tsConfig.getTail();
+		if ( "Tail".equals(segmentId) && tailConfig == null ) {
+			throw new ResourceNotFoundException(String.format("Tail segment is not configured: submodel=%s, path=%s",
+																submodelId, idShortPath));
+		}
+		if ( tailConfig != null && (segmentId == null || segmentId.equals("Tail")) ) {
 			JdbcTailInternalSegment segment = new JdbcTailInternalSegment(metadata.getRecord(), tsConfig);
 			segment.loadAASModel();
 			if ( getLogger().isDebugEnabled() ) {
 				getLogger().info("loaded: {}", segment);
 			}
-			
+
 			if ( parts.size() > 1 ) {
 				SubmodelElementCollection segmentSmc = segment.newSubmodelElement();
 				String subPath = FStream.from(parts).drop(2).join('.');
@@ -211,7 +247,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 				}
 				else {
 					return segmentSmc;
-				} 
+				}
 			}
 			segmentList.add(segment);
 		}
@@ -235,19 +271,14 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 			segmentList.add(segment);
 		}
 
-		DefaultSegments segments = new DefaultSegments(segmentList);
 		if ( segmentId == null ) {
+			DefaultSegments segments = new DefaultSegments(segmentList);
 			return segments.newSubmodelElement();
 		}
-		
-		SubmodelElementCollection segmentSmc = segmentList.get(0).newSubmodelElement();
-		if ( parts.size() == 2 ) {
-			return segmentSmc;
-		}
-		else {
-			String subPath = FStream.from(parts).drop(2).join('/');
-			return SubmodelUtils.traverse(segmentSmc, subPath);
-		}
+
+		// 특정 segment를 요청한 경우는 위에서 이미 반환했으므로, 여기에 오면 Tail·FullRange가 아닌 segment ID이다.
+		throw new ResourceNotFoundException(String.format("Unknown segment: submodel=%s, path=%s",
+															submodelId, idShortPath));
 	}
 
 	@Override

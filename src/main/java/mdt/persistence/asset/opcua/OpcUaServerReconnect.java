@@ -1,18 +1,18 @@
 package mdt.persistence.asset.opcua;
 
 import java.time.Duration;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CancellationException;
 
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.SessionActivityListener;
 import org.eclipse.milo.opcua.sdk.client.api.UaClient;
-import org.eclipse.milo.opcua.stack.core.UaException;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import utils.Throwables;
 import utils.async.AbstractPeriodicPoller;
 import utils.func.FOption;
 
@@ -44,28 +44,46 @@ public class OpcUaServerReconnect extends AbstractPeriodicPoller<UaClient> {
 	}
 
 	@Override
-	protected FOption<UaClient> tryPoll() throws ExecutionException, InterruptedException {
+	protected FOption<UaClient> tryPoll() throws InterruptedException, CancellationException {
 		getLogger().debug("trying connection to {}", m_endpointUrl);
 
+		OpcUaClient client = null;
 		try {
-			// MQTT Broker에 연결을 시도한다.
-			UaClient opcUaClient = connectToOpcUaServer();
+			// OPC-UA 서버에 연결을 시도한다.
+			client = OpcUaClient.create(m_endpointUrl);
+			if ( m_listener != null ) {
+				client.addSessionActivityListener(m_listener);
+			}
+			client.connect().get();
 			getLogger().info("connected to OpcUaServer: endpoint={}", m_endpointUrl);
-			
-			// MQTT Broker에 연결된 경우 {@link MqttClient} 객체를 반환하고 loop를 종료시킨다
-			return FOption.of(opcUaClient);
+
+			// 연결된 경우 클라이언트 객체를 반환하고 loop를 종료시킨다.
+			return FOption.of(client);
 		}
-		catch ( UaException e ) {
-			// MQTT Broker에 연결되지 않은 경우 {@link Optional#empty()}를 반환하여
-			// loop를 계속 수행하도록 한다.
+		catch ( InterruptedException | CancellationException e ) {
+			disconnectQuietly(client);
+			throw e;
+		}
+		catch ( Exception e ) {
+			// 서버 탐색 실패는 UaException으로, 세션 생성·활성화 실패는 ExecutionException으로 온다.
+			// 어느 경우든 만들다 만 클라이언트를 정리하고 FOption.empty()를 반환하여
+			// 다음 주기에 다시 시도한다(예외를 던지면 poller가 실패로 끝나 재연결이 멈춘다).
+			getLogger().debug("failed to connect to OpcUaServer: endpoint={}, cause={}",
+								m_endpointUrl, "" + Throwables.unwrapThrowable(e));
+			disconnectQuietly(client);
+
 			return FOption.empty();
 		}
 	}
-	
-	private UaClient connectToOpcUaServer() throws UaException, InterruptedException, ExecutionException {
-		OpcUaClient client = OpcUaClient.create(m_endpointUrl);
-		client.addSessionActivityListener(m_listener);
-		return client.connect().get();
+
+	private void disconnectQuietly(@Nullable OpcUaClient client) {
+		if ( client != null ) {
+			// 정리 과정의 세션 이벤트로 재연결이 중복 시작되지 않도록 listener를 먼저 제거한다.
+			if ( m_listener != null ) {
+				client.removeSessionActivityListener(m_listener);
+			}
+			client.disconnect();
+		}
 	}
 	
 	public static Builder builder() {

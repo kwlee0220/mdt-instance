@@ -1,5 +1,7 @@
 package mdt.assetconnection.operation;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
@@ -8,24 +10,36 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
+import utils.func.FOption;
+import utils.http.OkHttpClientUtils;
+import utils.rpc.restful.RESTfulAsyncRpcClient;
+import utils.rpc.restful.RpcRequestMessage;
 import utils.stream.FStream;
 
-import mdt.client.operation.HttpOperationClient;
-import mdt.client.operation.OperationRequest;
-import mdt.client.operation.OperationResponse;
+import mdt.model.MDTModelSerDe;
+import mdt.model.sm.value.ElementValue;
+import mdt.model.sm.value.ElementValues;
 
 
 /**
+ * HTTP 연산 서버({@code mdt-operation-http}의 {@code RpcServerDispatcher})에 등록된 연산을
+ * {@link RESTfulAsyncRpcClient}로 호출하는 {@link OperationProvider}.
+ * <p>
+ * 설정의 {@code endpoint}는 연산 서버의 기본 URL(예: {@code http://localhost:12987})이고,
+ * {@code opId}는 서버의 operations 디렉터리 하위 연산 디렉터리 이름이다. 연산은
+ * {@code POST {endpoint}/api/v1/operations/{opId}}로 시작되며 이후 세션 상태를 폴링하여 완료를 기다린다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
 class HttpOperationProvider implements OperationProvider {
 	private static final Logger s_logger = LoggerFactory.getLogger(HttpOperationProvider.class);
+	private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(3);
 	
 	@SuppressWarnings("unused")
 	private final ServiceContext m_svcContext;
@@ -37,8 +51,9 @@ class HttpOperationProvider implements OperationProvider {
 		
 		if ( s_logger.isInfoEnabled() ) {
 			IdShortPath idShortPath = IdShortPath.fromReference(operationRef);
-			s_logger.info("Operation: Http ({}), id={}, poll={}, op-ref={}",
-							m_config.getEndpoint(), m_config.getOpId(), m_config.getPollInterval(), idShortPath);
+			String url = m_config.getBaseUrl() + m_config.getEndpoint();
+			s_logger.info("Operation: Http, url={}, poll={}, op-ref={}",
+							url, m_config.getPollInterval(), idShortPath);
 		}
 	}
 	
@@ -47,87 +62,53 @@ class HttpOperationProvider implements OperationProvider {
 							OperationVariable[] outputVars) throws Exception {
 		Preconditions.checkArgument(inoutputVars == null || inoutputVars.length == 0,
 									"inoutput parameters are not supported in HttpOperation");
-		OperationRequest req = new OperationRequest();
-		req.setOperation(m_config.getOpId());
-		req.setInputArguments(toArgumentMap(inputVars));
-		req.setAsync(false);
 		
-		HttpOperationClient client = HttpOperationClient.builder()
-														.setEndpoint(m_config.getEndpoint())
-														.setRequestBody(req)
-														.setPollInterval(m_config.getPollInterval())
-														.setTimeout(m_config.getTimeout())
-														.build();
+		// 입력 인자뿐 아니라 출력 인자도 SubmodelElement JSON으로 함께 전달하여, 서버가 출력 값을
+		// 해당 SubmodelElement 타입에 맞는 ElementValue로 반환하도록 한다.
+		RpcRequestMessage reqMsg = new RpcRequestMessage(toArgumentMap(inputVars), toArgumentMap(outputVars));
+		RESTfulAsyncRpcClient client = RESTfulAsyncRpcClient.builder()
+													.setHttpClient(OkHttpClientUtils.newClient())
+													.setBaseUrl(m_config.getBaseUrl())
+													.setOperationEndpoint(m_config.getEndpoint())
+													.setPollInterval(FOption.getOrElse(m_config.getPollInterval(),
+																					DEFAULT_POLL_INTERVAL))
+													.setTimeout(m_config.getTimeout())
+													.setRequestMessage(reqMsg)
+													.setJsonMapper(MDTModelSerDe.getJsonMapper())
+													.build();
 		
-		OperationResponse resp = client.run();
+		Map<String,JsonNode> outputs = client.run();
 		if ( s_logger.isInfoEnabled() ) {
-			s_logger.info("HttpOperation terminates: result=" + resp);
+			s_logger.info("HttpOperation terminates: outputs={}", outputs.keySet());
 		}
 		
-		updateOutputVariables(resp, inoutputVars, outputVars);
+		updateOutputVariables(outputs, outputVars);
 	}
 	
-//	public void invokeAsync(OperationVariable[] inputVars,
-//							OperationVariable[] inoutputVars,
-//							OperationVariable[] outputVars,
-//							BiConsumer<OperationVariable[], OperationVariable[]> callbackSuccess,
-//							Consumer<Throwable> callbackFailure) throws Exception {
-//		HttpTask task = new HttpTask(m_config.getEndpoint(), m_config.getOpId(), m_config.getPollInterval(),
-//									false, null);
-//		
-//		FStream.of(inputVars).map(OperationUtils::toParameter).forEach(task::addOrReplaceInputParameter);
-//		FStream.of(inoutputVars).map(OperationUtils::toParameter).forEach(task::addOrReplaceOutputParameter);
-//		FStream.of(outputVars).map(OperationUtils::toParameter).forEach(task::addOrReplaceOutputParameter);
-//		
-//		task.whenFinished(result -> {
-//			if ( result.isSuccessful() ) {
-//				updateOutputVariables(inoutputVars, outputVars, result.getUnchecked());
-//				Try.run(() -> callbackSuccess.accept(inoutputVars, outputVars));
-//			}
-//			else if ( result.isFailed() ) {
-//				Throwable cause = Throwables.unwrapThrowable(result.getCause());
-//				if ( cause instanceof RESTfulRemoteException re ) {
-//					cause = re.getCause();
-//				}
-//				else if ( cause instanceof RESTfulIOException re ) {
-//					cause = re.getCause();
-//				}
-//				if ( cause instanceof TimeoutException
-//					|| cause instanceof TaskException
-//					|| cause instanceof CancellationException
-//					|| cause instanceof ExecutionException
-//					|| cause instanceof InterruptedException ) {
-//					cause = new ExecutionException(cause);
-//				}
-//				callbackFailure.accept(cause);
-//			}
-//			else if ( result.isNone() ) {
-//				callbackFailure.accept(new CancellationException());
-//			}
-//		});
-//
-//		if ( s_logger.isInfoEnabled() ) {
-//			s_logger.info("starting HttpOperation: task=" + task);
-//		}
-//		task.start();
-//	}
-	
-	private Map<String, SubmodelElement> toArgumentMap(OperationVariable[] vars) {
+	private Map<String,JsonNode> toArgumentMap(OperationVariable[] vars) {
 		return FStream.of(vars)
-						.map(var -> var.getValue())
+						.map(OperationVariable::getValue)
 						.tagKey(SubmodelElement::getIdShort)
+						.mapValue(sme -> MDTModelSerDe.toJsonNode(sme))
 						.toMap();
 	}
 	
-	private void updateOutputVariables(OperationResponse resp, OperationVariable[] inoutputVars,
-										OperationVariable[] outputVars) {
-		FStream.of(outputVars)
-				.tagKey(v -> v.getValue().getIdShort())
-				.match(resp.getOutputArguments())
-				.forEach(match -> {
-					OperationVariable outOpVar = match.value()._1;
-					SubmodelElement out = match.value()._2;
-					outOpVar.setValue(out);
-				});
+	/**
+	 * 연산 수행 결과를 출력 인자에 반영한다.
+	 * <p>
+	 * 서버는 출력 값을 {@code @type}이 포함된 {@link ElementValue} JSON으로 반환하거나, 프로토타입이 없는
+	 * 경우에는 일반 JSON 값으로 반환하므로 두 형태를 모두 처리한다. 결과에 포함되지 않은 출력 인자는
+	 * 갱신하지 않는다.
+	 */
+	private void updateOutputVariables(Map<String,JsonNode> outputs, OperationVariable[] outputVars)
+		throws IOException {
+		for ( OperationVariable outVar: outputVars ) {
+			SubmodelElement sme = outVar.getValue();
+			JsonNode jnode = outputs.get(sme.getIdShort());
+			if ( jnode != null ) {
+				ElementValue smev = ElementValues.parseGeneralJsonNode(jnode, ElementValues.getValue(sme));
+				ElementValues.update(sme, smev);
+			}
+		}
 	}
 }

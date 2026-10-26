@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.Preconditions;
 import utils.websocket.WebSocketContext;
 
+import mdt.ext.rck.VideoInfoMessages.VideoInfo;
+
 
 /**
  * RCK 시뮬레이션 WebSocket 세션의 도메인 컨텍스트.
@@ -28,7 +30,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 
 	private JsonNode m_equipmentProperties;
 	private RCKSimulationResult m_simulationResult;
-	private VideoInfo m_simulationVideo;
+	private VideoInfo m_simulationVideoInfo;
 	private Throwable m_failureCause;
 	
 	/**
@@ -118,23 +120,23 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	public void setSimulationResult(RCKSimulationResult simulationResult) {
 		m_simulationResult = simulationResult;
 	}
-
+	
 	/**
-	 * 시뮬레이션 종료 후 수신된 결과 비디오 정보를 반환한다.
+	 * 시뮬레이션 결과 비디오 정보를 반환한다.
 	 *
-	 * @return	결과 비디오 정보. 아직 수신되지 않았으면 {@code null}.
+	 * @return	시뮬레이션 결과 비디오 정보. 아직 수신되지 않았으면 {@code null}.
 	 */
-	public VideoInfo getSimulationVideo() {
-		return m_simulationVideo;
+	public VideoInfo getSimulationVideoInfo() {
+		return m_simulationVideoInfo;
 	}
-
+	
 	/**
 	 * 시뮬레이션 결과 비디오 정보를 설정한다.
 	 *
-	 * @param simulationVideo	결과 비디오 정보
+	 * @param videoInfo	시뮬레이션 결과 비디오 정보
 	 */
-	public void setSimulationVideo(VideoInfo simulationVideo) {
-		m_simulationVideo = simulationVideo;
+	public void setSimulationVideoInfo(VideoInfo videoInfo) {
+		m_simulationVideoInfo = videoInfo;
 	}
 
 	/**

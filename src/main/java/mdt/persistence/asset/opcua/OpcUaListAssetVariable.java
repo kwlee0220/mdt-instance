@@ -35,7 +35,9 @@ public class OpcUaListAssetVariable extends AbstractOpcUaAssetVariable<OpcUaList
 
 	@Override
 	public SubmodelElement read() throws AssetVariableException {
-		SubmodelElementList sml = (SubmodelElementList)m_prototype;
+		// 동시에 호출된 read()끼리 간섭하지 않도록 공유 prototype은 고치지 않고
+		// 복사본에 값을 반영해 반환한다.
+		SubmodelElementList sml = (SubmodelElementList)SubmodelUtils.duplicate(m_prototype);
 		FStream.from(m_config.getIdentifierAll())
 				.zipWith(FStream.from(sml.getValue()))
 				.forEachOrThrow(pair -> {
@@ -45,7 +47,7 @@ public class OpcUaListAssetVariable extends AbstractOpcUaAssetVariable<OpcUaList
 					Double newValue = readNode(opcuaId);
 					ElementValues.update(buffer, PropertyValue.DOUBLE(newValue));
 				});
-		
-		return SubmodelUtils.duplicate(sml);
+
+		return sml;
 	}
 }

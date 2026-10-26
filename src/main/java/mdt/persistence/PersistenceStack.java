@@ -33,6 +33,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 import utils.LoggerSettable;
 import utils.ReflectionUtils;
 import utils.Throwables;
+import utils.func.FOption;
 import utils.func.Optionals;
 
 
@@ -85,6 +86,29 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 	
 	public void setBasePersistence(Persistence<?> base) {
 		m_basePersistence = base;
+	}
+
+	/**
+	 * 주어진 persistence부터 base persistence 방향으로 내려가며 주어진 타입의 persistence를 찾는다.
+	 * <p>
+	 * MDT의 persistence는 여러 {@link PersistenceStack}이 겹쳐진 형태이고, 어떤 스택이 몇 번째 겹에
+	 * 있는지는 설정에 따라 달라진다(예: {@link ConcurrentPersistence}가 가장 바깥에 올 수 있다).
+	 * 따라서 특정 스택이 필요할 때는 최상위 persistence를 캐스팅하지 말고 이 메소드로 찾는다.
+	 *
+	 * @param <T>	찾을 persistence의 타입.
+	 * @param top	탐색을 시작할 persistence. 보통 서비스의 최상위 persistence이다.
+	 * @param type	찾을 persistence의 클래스.
+	 * @return	찾은 persistence. 스택에 해당 타입이 없으면 {@link FOption#empty()}.
+	 */
+	public static <T> FOption<T> findInStack(Persistence<?> top, Class<T> type) {
+		Persistence<?> current = top;
+		while ( current != null ) {
+			if ( type.isInstance(current) ) {
+				return FOption.of(type.cast(current));
+			}
+			current = (current instanceof PersistenceStack<?> stack) ? stack.getBasePersistence() : null;
+		}
+		return FOption.empty();
 	}
 
 	@Override

@@ -5,6 +5,7 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementList;
 
 import com.google.common.base.Preconditions;
 
+import mdt.model.ResourceNotFoundException;
 import mdt.model.sm.SubmodelUtils;
 import mdt.persistence.MDTModelLookup;
 
@@ -26,6 +27,10 @@ public class MDTParameterLocation implements ElementLocation {
 	@Override
 	public void activate(MDTModelLookup lookup) {
 		Submodel dataSubmodel = lookup.getDataSubmodel();
+		if ( dataSubmodel == null ) {
+			// parameter는 Data submodel에 정의되므로, Data submodel이 없는 트윈에서는 찾을 수 없다.
+			throw new ResourceNotFoundException("Data Submodel", "parameter=" + m_paramExpr);
+		}
 		m_submodelId = dataSubmodel.getId();
 		m_submodelIdShort = dataSubmodel.getIdShort();
 		

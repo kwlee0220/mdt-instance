@@ -4,6 +4,7 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
 import mdt.ElementLocation;
 import mdt.model.sm.SubmodelUtils;
+import mdt.model.sm.value.ElementValues;
 import mdt.persistence.MDTModelLookup;
 
 
@@ -54,9 +55,9 @@ public interface AssetVariable {
 	 * <p>
 	 * 연결된 datasource에서 최신 값을 읽어 최신의 SubmodelElement를 구성하여 반환한다.
 	 * <p>
-	 * <b>주의:</b> 반환된 SubmodelElement는 구현에 따라 내부 캐시와 공유되는 인스턴스일 수 있다.
-	 * 따라서 호출자는 반환값을 변경하거나 다음 {@code read()} 호출 이후까지 보유해서는 안 된다.
-	 * 값을 변경하거나 장기간 보관해야 하는 경우에는 복사본을 만들어 사용해야 한다.
+	 * 반환값은 호출할 때마다 새로 만든 객체이며 내부 캐시와 공유되지 않는다. 따라서 호출자는
+	 * 반환값을 변경하거나 보관해도 된다. 구현은 내부 캐시를 그대로 반환해서는 안 되며,
+	 * 캐시를 보호하는 임계 구역 안에서 복사본을 만들어 반환해야 한다.
 	 *
 	 * @return	SubmodelElement
 	 * @throws AssetVariableException	연결된 datasource에서 값 읽기가 실패한 경우.
@@ -66,13 +67,31 @@ public interface AssetVariable {
 	/**
 	 * 주어진 값을 연결된 datasource에 저장한다.
 	 * <p>
-	 * <b>주의:</b> 전달된 {@code newElement}는 구현에 따라 내부 캐시로 채택되어 보유될 수 있다.
-	 * 따라서 호출자는 이 메서드 호출 이후 해당 객체를 변경해서는 안 된다.
+	 * 구현은 전달된 {@code newElement}를 내부 캐시로 보관해서는 안 된다(필요하면 복사본을 보관한다).
+	 * 따라서 호출자는 이 메서드 호출 이후에도 {@code newElement}를 계속 사용할 수 있다.
 	 *
 	 * @param newElement	저장할 값.
 	 * @throws AssetVariableException	연결된 datasource에 값 저장이 실패한 경우.
 	 */
 	public void update(SubmodelElement newElement) throws AssetVariableException;
+
+	/**
+	 * 연결된 SubmodelElement 중 {@code relPath}가 가리키는 하위 요소의 값만 {@code part}의 값으로 바꿔 저장한다.
+	 * <p>
+	 * 현재 값을 읽어 하위 요소의 값을 바꾼 뒤 전체를 저장한다. 기본 구현은 {@link #read()}와
+	 * {@link #update(SubmodelElement)}를 차례로 호출하므로 원자적이지 않다. 동시에 여러 갱신이
+	 * 일어날 수 있는 구현은 이 메소드를 재정의하여 읽기-수정-저장을 하나의 임계 구역에서 수행해야
+	 * 한다. 그렇지 않으면 동시에 들어온 갱신 중 하나가 사라질 수 있다.
+	 *
+	 * @param relPath	이 {@code AssetVariable}의 SubmodelElement를 기준으로 한 하위 요소의 상대 idShort 경로.
+	 * @param part		하위 요소에 반영할 값을 가진 SubmodelElement.
+	 * @throws AssetVariableException	읽기 또는 저장이 실패한 경우.
+	 */
+	public default void updatePart(String relPath, SubmodelElement part) throws AssetVariableException {
+		SubmodelElement whole = read();
+		ElementValues.update(SubmodelUtils.traverse(whole, relPath), ElementValues.getValue(part));
+		update(whole);
+	}
 	
 	public default boolean contains(String elementPath) {
 		return isPathPrefix(getElementLocation().getElementPath(), elementPath);

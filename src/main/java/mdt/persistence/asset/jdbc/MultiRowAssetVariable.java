@@ -81,10 +81,10 @@ public class MultiRowAssetVariable extends AbstractJdbcAssetVariable<MultiRowAss
 	}
 
 	@Override
-	protected void saveBuffer(Connection conn) throws AssetVariableException {
+	protected void saveBuffer(Connection conn, SubmodelElement value) throws AssetVariableException {
 		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()); ) {
 			for ( Map.Entry<String,String> ent: getConfig().getKeyToSubpathMapping().entrySet() ) {
-				SubmodelElement part = SubmodelUtils.traverse(m_prototype, ent.getValue());
+				SubmodelElement part = SubmodelUtils.traverse(value, ent.getValue());
 				SubmodelElementHandler handler = m_memberHandlers.get(ent.getKey());
 				pstmt.setObject(1, handler.toJdbcObject(part));
 				pstmt.setString(2, ent.getKey());

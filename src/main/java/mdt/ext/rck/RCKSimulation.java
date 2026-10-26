@@ -3,10 +3,12 @@ package mdt.ext.rck;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,8 +19,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import utils.Throwables;
 import utils.func.Try;
-import utils.func.Unchecked;
 import utils.io.IOUtils;
 import utils.statechart.AbstractState;
 import utils.statechart.Signal;
@@ -35,9 +37,11 @@ import utils.websocket.WebSocketStateChart;
 
 import mdt.client.HttpMDTManager;
 import mdt.client.instance.HttpMDTInstanceManager;
-import mdt.model.sm.ref.ElementReference;
-import mdt.model.sm.ref.ElementReferences;
+import mdt.ext.rck.VideoInfoMessages.VideoInfo;
+import mdt.ext.rck.VideoInfoMessages.VideoProgress;
+import mdt.ext.rck.VideoInfoMessages.VideoReady;
 import mdt.model.sm.ref.MDTArgumentReference;
+import mdt.model.sm.value.PropertyValue;
 import mdt.model.sm.value.PropertyValue.StringPropertyValue;
 
 
@@ -74,15 +78,34 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private static final String STATE_LAYOUT_LOADING = "/LayoutLoading";
 	private static final String STATE_SIMULATION_STARTING = "/SimulationStarting";
 	private static final String STATE_RUNNING = "/Running";
+	private static final String STATE_WAITING_VIDEO = "/WaitingVideo";
 	private static final String STATE_RECEIVING_VIDEO = "/ReceivingVideo";
-	private static final String STATE_STOPPING = "/Stopping";
 	private static final String STATE_COMPLETED = "/Completed";
 	private static final String STATE_CANCELLED = "/Cancelled";
 	private static final String STATE_FAILED = "/Failed";
+	private static final Map<String,String> STATE_NAMES = Map.of(
+		STATE_OPEN_WEBSOCKET, "소켓 개발",
+		STATE_CONNECTING, "시뮬에이터 연결중",
+		STATE_LAYOUT_LOADING, "레이아웃 로딩중",
+		STATE_SIMULATION_STARTING, "시뮬레이션 시작중",
+		STATE_RUNNING, "시뮬레이션 진행중",
+		STATE_WAITING_VIDEO, "영상 생성중",
+		STATE_RECEIVING_VIDEO, "영상 수신중",
+		STATE_COMPLETED, "시뮬레이션 완료",
+		STATE_CANCELLED, "시뮬레이션 취소됨",
+		STATE_FAILED, "시뮬레이션 실패"
+	);
 
+	private static final String MSG_TYPE_VIDEO_PROGRESS = "video_progress";
+	private static final String MSG_TYPE_VIDEO_READY = "video_ready";
+	private static final String MSG_TYPE_VIDEO_INFO = "video_info";
+	
 	private SimulationOutputUpdater m_utilizationUpdater;
 	private MDTArgumentReference m_stateRef;
 	private MDTArgumentReference m_videoRef;
+
+	private static final long PSEUDO_CHUNK_SIZE = 1024 * 1024;	// 1MB
+	private long m_pseudoChunkRemains;
 
 	/**
 	 * 주어진 시뮬레이션 문맥으로 RCK 시뮬레이션 상태 차트를 생성한다.
@@ -104,8 +127,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		addState(new LayoutLoading(STATE_LAYOUT_LOADING, getContext()));
 		addState(new SimulationStarting(STATE_SIMULATION_STARTING, getContext()));
 		addState(new Running(STATE_RUNNING, getContext()));
+		addState(new WaitingVideo(STATE_WAITING_VIDEO, getContext()));
 		addState(new ReceivingVideo(STATE_RECEIVING_VIDEO, getContext()));
-		addState(new Stopping(STATE_STOPPING, getContext()));
 		addState(new Completed(STATE_COMPLETED, getContext()));
 		addState(new Failed(STATE_FAILED, getContext()));
 		addState(new Cancelled(STATE_CANCELLED, getContext()));
@@ -145,9 +168,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	/**
 	 * 텍스트(JSON) 메시지를 처리하는 상태들의 공통 기반 클래스.
 	 * <p>
-	 * {@link utils.websocket.Signals.TextMessage} 수신 시 메시지를 JSON으로 파싱하여 {@link #handleMessage(JsonNode)}에
-	 * 위임하고, {@link #STOP} 신호 수신 시 {@code Stopping} 상태로 전이한다. JSON 파싱 또는 메시지 처리 중 예외가
-	 * 발생하면 실패 원인을 문맥에 기록하고 {@code Failed} 상태로 전이한다.
+	 * {@link utils.websocket.Signals.TextMessage} 수신 시 메시지를 JSON으로 파싱하여
+	 * {@link #handleMessage(JsonNode)}에 위임하고, {@link #STOP} 신호 수신 시 {@code Stopping} 상태로 전이한다.
+	 * JSON 파싱 또는 메시지 처리 중 예외가 발생하면 실패 원인을 문맥에 기록하고 {@code Failed} 상태로 전이한다.
 	 */
 	private abstract class AbstractTextHandlingState extends AbstractState<RCKSimulationContext> {
 		/**
@@ -176,7 +199,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				}
 			}
 			else if ( signal == STOP ) {
-				return Optional.of(Transitions.noop(STATE_STOPPING));
+				return Optional.of(Transitions.noop(STATE_CANCELLED));
 			}
 			else {
 				return Optional.empty();
@@ -197,6 +220,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		public void enter() {
 			// 시뮬레이터에 클라이언트 등록을 요청한다.
 			// 성공적으로 등록되면 시뮬레이터로부터 {@code connected} 메시지가 도착할 것이다.
+			getLogger().info("requesting client registration: {}", getContext().getClientId());
 			requestRegister();
 			
 			updateSimulationState(getPath());
@@ -233,7 +257,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		
 		@Override
 		public void enter() {
+			// 시뮬레이터에 레이아웃 로딩을 요청한다.
+			getLogger().info("requesting layout: {}", getContext().getLayoutName());
 			requestLayout();
+			
+			// MDT 인스턴스의 State 출력 인자를 현재 상태로 갱신한다.
 			updateSimulationState(getPath());
 		}
 	
@@ -241,13 +269,19 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		protected Transition<RCKSimulationContext> handleMessage(JsonNode payload) throws Exception {
 			String type = payload.get("type").asText();
 	
+			// "loading" 메시지가 도착하면 레이아웃 로딩이 진행 중이라는 의미이므로 대기한다.
 			if ( type.equals("loading") ) {
 				return Transitions.stay();
 			}
 			// "facility"가 도착하면 layout 정보가 도착한 것이기 때문에
 			// layout 정보를 context에 설정하고 시뮬레이션을 시작시킨다.
 			else if ( type.equals("facility") ) {
-				getContext().setEquipmentProperties(payload.get("message"));
+				JsonNode equipProps = payload.get("message");
+				getContext().setEquipmentProperties(equipProps);
+				if ( s_logger.isInfoEnabled() ) {
+					s_logger.info("received facility info: {}", equipProps.toPrettyString());
+				}
+				
 				return Transitions.noop(STATE_SIMULATION_STARTING);
 			}
 			else {
@@ -276,7 +310,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		
 		@Override
 		public void enter() {
+			// 시뮬레이터에 시뮬레이션 시작 명령을 전송한다.
+			getLogger().info("requesting simulation start: {}", getContext().getProcessName());
 			startSimulation();
+			
+			// MDT 인스턴스의 State 출력 인자를 현재 상태로 갱신한다.
 			updateSimulationState(getPath());
 		}
 	
@@ -284,9 +322,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		protected Transition<RCKSimulationContext> handleMessage(JsonNode payload) throws Exception {
 			String type = payload.get("type").asText();
 			if ( type.equals("simulation_waiting") ) {
+				// 시뮬레이션이 시작되기 전까지는 대기한다.
 				return Transitions.stay();
 			}
 			else if ( type.equals("simulation_start") ) {
+				// 시뮬레이션이 시작되었으므로 Running 상태로 전이한다.
 				return Transitions.noop(STATE_RUNNING);
 			}
 			else {
@@ -322,7 +362,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		@Override
 		public void enter() {
 			updateSimulationState(getPath());
-			getLogger().info("connected to MDT Instance: {}", m_instanceId);
 		}
 	
 		@Override
@@ -331,7 +370,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			if ( type.equals("simulation_status") ) {
 				JsonNode message = payload.get("message");
 				RCKSimulationResult result = RCKSimulationResult.parse(message);
+				getLogger().info("{}: received simulation status: {}", this, result);
 				
+				// MDT 인스턴스 매니저에 접속되어 있는 경우, 시뮬레이션 결과 (진행율, 제품 생산 갯수)를
+				// 출력 인자에 반영한다. 접속되어 있지 않으면 결과를 문맥에만 저장한다.
 				if ( m_mdtConnected ) {
 					try {
 						m_utilizationUpdater.update(result);
@@ -345,10 +387,12 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				return Transitions.stay();
 			}
 			else if ( type.equals("video_info") ) {
+				// 시뮬레이션 결과 영상 정보를 문맥에 저장하고 ReceivingVideo 상태로 전이해서,
+				// 이후 도착하는 영상 이진 데이터를 파일로 기록한다.
 				VideoInfo video = MAPPER.treeToValue(payload, VideoInfo.class);
-				getContext().setSimulationVideo(video);
+				getLogger().info("{}: received simulation status: {}", this, video);
 				
-				return Transitions.noop(STATE_RECEIVING_VIDEO);
+				return Transitions.noop(STATE_WAITING_VIDEO);
 			}
 			else {
 				String errorMsg = String.format("Unexpected message type: %s (state=%s)", type, this);
@@ -368,7 +412,101 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 시뮬레이션 자체는 종료된 것으로 보아 {@code Completed}로 전이한다.
 	 * <p>
 	 * 상태를 벗어날 때({@link #exit()}) 수신이 완료되었으면(MDT 영상 reference가 있을 경우) 영상 파일을 출력 인자에
-	 * 첨부하고, 미완료 상태로 중단되었으면 부분 수신된 파일을 삭제한다.
+	 * 첨부한다. 미완료 상태로 중단되었으면 부분 수신된 파일을 삭제하고, 문맥의 영상 정보
+	 * ({@link RCKSimulationContext#getSimulationVideo()})도 {@code null}로 되돌려 결과를 수집하는 측이
+	 * 영상이 없음을 알 수 있게 한다.
+	 * <p>
+	 * 영상 수신이 중단되더라도 시뮬레이션 자체는 이미 끝난 상태이므로 진척도·생산량 등 나머지 결과는 유효하다.
+	 * 따라서 이 경우도 {@code Failed}가 아니라 {@code Completed}로 종료하되 영상만 없는 것으로 처리한다.
+	 */
+	private final class WaitingVideo extends AbstractState<RCKSimulationContext> {
+		protected WaitingVideo(String path, RCKSimulationContext context) {
+			super(path, context);
+		}
+		
+		@Override
+		public void enter() {
+			updateSimulationState(getPath());
+		}
+		
+		@Override
+		public void exit() {
+			// 수신된 비디오가 저장될 MDT reference가 존재하는 경우,
+			// 해당 reference 장소에 비디오 파일을 복사한다.
+			if ( m_videoRef != null ) {
+				try {
+					String videoUrl = getContext().getSimulationVideoInfo().downloadUrl();
+					m_videoRef.updateValue(PropertyValue.STRING(videoUrl));
+					s_logger.info("update SimulationVideoUrl: {}", videoUrl);
+				}
+				catch ( Exception e ) {
+					s_logger.error("Failed to update SimulationVideo output: cause=" + e, e);
+				}
+			}
+		}
+	
+		@Override
+		public Optional<Transition<RCKSimulationContext>> selectTransition(Signal signal) {
+			if ( signal instanceof TextMessage msg ) {
+				String payload = msg.getMessage();
+				try {
+					JsonNode jnode = MAPPER.readTree(payload);
+					String type = jnode.get("type").asText();
+					switch ( type ) {
+						case MSG_TYPE_VIDEO_PROGRESS:
+							VideoProgress progress = MAPPER.treeToValue(jnode, VideoProgress.class);
+							getLogger().debug("{}: received video progress: {}", this, progress);
+							return Optional.of(Transitions.stay());
+						case MSG_TYPE_VIDEO_READY:
+							VideoReady ready = MAPPER.treeToValue(jnode, VideoReady.class);
+							getLogger().debug("{}: received: {}", this, ready);
+							return Optional.of(Transitions.stay());
+						case MSG_TYPE_VIDEO_INFO:
+							VideoInfo videInfo = MAPPER.treeToValue(jnode, VideoInfo.class);
+							getContext().setSimulationVideoInfo(videInfo);
+							getLogger().info("{}: received: {}", this, videInfo);
+							
+							return Optional.of(Transitions.noop(STATE_RECEIVING_VIDEO));
+						default:
+							System.out.println("Unexpected message type: " + type + " (state=" + this + ")");
+							return Optional.of(Transitions.stay());
+					}
+				}
+				catch ( Exception e ) {
+					getContext().setFailureCause(e);
+					return Optional.of(Transitions.noop(STATE_FAILED));
+				}
+			}
+			else if ( signal == STOP ) {
+				return Optional.of(Transitions.noop(STATE_CANCELLED));
+			}
+			else if ( signal instanceof ConnectionClosed ) {
+				// 비디오 수신 중 연결이 끊어지더라고 시뮬레이션 자체는 종료된 상태이기 때문에
+				// 완료 상태로 전이한다.
+				return Optional.of(Transitions.noop(STATE_COMPLETED));
+			}
+			else {
+				return Optional.empty();
+			}
+		}
+	}
+
+
+	/**
+	 * 시뮬레이션 결과 영상을 이진 메시지로 수신하여 파일에 저장하는 상태.
+	 * <p>
+	 * 진입 시 {@code video_info}로 받은 파일명·크기로 출력 파일을 열고, 이진 메시지가 도착할 때마다 파일에 기록하며
+	 * 남은 크기({@code m_remains})를 차감한다. 남은 크기가 0 이하가 되면 {@code Completed} 상태로 전이한다.
+	 * 수신 도중 {@link #STOP} 신호를 받으면 {@code Stopping}으로, 연결이 끊기면({@link ConnectionClosed})
+	 * 시뮬레이션 자체는 종료된 것으로 보아 {@code Completed}로 전이한다.
+	 * <p>
+	 * 상태를 벗어날 때({@link #exit()}) 수신이 완료되었으면(MDT 영상 reference가 있을 경우) 영상 파일을 출력 인자에
+	 * 첨부한다. 미완료 상태로 중단되었으면 부분 수신된 파일을 삭제하고, 문맥의 영상 정보
+	 * ({@link RCKSimulationContext#getSimulationVideo()})도 {@code null}로 되돌려 결과를 수집하는 측이
+	 * 영상이 없음을 알 수 있게 한다.
+	 * <p>
+	 * 영상 수신이 중단되더라도 시뮬레이션 자체는 이미 끝난 상태이므로 진척도·생산량 등 나머지 결과는 유효하다.
+	 * 따라서 이 경우도 {@code Failed}가 아니라 {@code Completed}로 종료하되 영상만 없는 것으로 처리한다.
 	 */
 	private final class ReceivingVideo extends AbstractState<RCKSimulationContext> {
 		private File m_videoFile;
@@ -386,10 +524,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		public void enter() {
 			try {
 				// 수신된 비디오 정보를 저장할 파일을 생성하고 수신 준비한다.
-				VideoInfo videoInfo = getContext().getSimulationVideo();
-				m_videoFile = new File(videoInfo.getFileName());
+				// 파일명은 시뮬레이터가 보낸 값이기 때문에 절대 경로나 상위 디렉토리 참조('..')가
+				// 포함되더라도 작업 디렉토리를 벗어나지 않도록 이름 부분만 취한다.
+				VideoInfo videoInfo = getContext().getSimulationVideoInfo();
+				m_videoFile = new File(new File(videoInfo.fileName()).getName());
 				m_fos = new FileOutputStream(m_videoFile, false);
-				m_remains = videoInfo.getFileSize();
+				m_remains = videoInfo.fileSize();
+				m_pseudoChunkRemains = (m_remains / PSEUDO_CHUNK_SIZE) + 1;
 				updateSimulationState(getPath());
 			}
 			catch ( FileNotFoundException e ) {
@@ -417,6 +558,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			else {
 				s_logger.warn("video receiving interrupted: remains={}", m_remains);
 				m_videoFile.delete();
+
+				// 온전하지 않은 영상은 결과로 사용할 수 없기 때문에 파일과 함께 문맥에서도 제거한다.
+				// 이렇게 해야 시뮬레이션 결과를 수집하는 측이 '영상 없음'을 인지할 수 있다.
+				getContext().setSimulationVideoInfo(null);
 			}
 		}
 	
@@ -428,12 +573,18 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 					byte[] chunk = msg.getBytes();
 					m_fos.write(chunk);
 					m_remains -= chunk.length;
-					s_logger.info("received video chunk: {}, remains={}", chunk.length, m_remains);
+					s_logger.debug("received video chunk: {}, remains={}", chunk.length, m_remains);
 
 					if ( m_remains <= 0 ) {
 						return Optional.of(Transitions.noop(STATE_COMPLETED));
 					}
 					else {
+						long chunkRemains = (m_remains / PSEUDO_CHUNK_SIZE) + 1;
+						if ( chunkRemains != m_pseudoChunkRemains ) {
+							m_pseudoChunkRemains = chunkRemains;
+							s_logger.info("video receiving progress: remains={}", m_remains);
+						}
+						
 						return Optional.of(Transitions.stay());
 					}
 				}
@@ -444,7 +595,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				}
 			}
 			else if ( signal == STOP ) {
-				return Optional.of(Transitions.noop(STATE_STOPPING));
+				return Optional.of(Transitions.noop(STATE_CANCELLED));
 			}
 			else if ( signal instanceof ConnectionClosed ) {
 				// 비디오 수신 중 연결이 끊어지더라고 시뮬레이션 자체는 종료된 상태이기 때문에
@@ -453,47 +604,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			}
 			else {
 				return Optional.empty();
-			}
-		}
-	}
-	
-	/**
-	 * 사용자의 중지 요청({@link #cancel(boolean)})에 따라 시뮬레이터에 중지 명령을 보내고 중지 완료를 기다리는 상태.
-	 * {@code simulation_stop}을 받으면 {@code Cancelled} 종료 상태로 전이하며, 중지 처리 중 도착하는
-	 * {@code simulation_status} 메시지는 결과만 문맥에 반영하고 대기를 유지한다.
-	 */
-	private class Stopping extends AbstractTextHandlingState {
-		protected Stopping(String path, RCKSimulationContext context) {
-			super(path, context);
-		}
-		
-		@Override
-		public void enter() {
-			stopSimulation();
-			updateSimulationState(getPath());
-		}
-		
-		@Override
-		protected Transition<RCKSimulationContext> handleMessage(JsonNode payload) throws Exception {
-			String type = payload.get("type").asText();
-			if ( type.equals("simulation_stop") ) {
-				return Transitions.noop(STATE_CANCELLED);
-			}
-			else if ( type.equals("simulation_status") ) {
-				getLogger().info("handling pending simulation_status message during stopping");
-				
-				// pending되었던 simulation_status 메시지 처리
-				JsonNode message = payload.get("message");
-				RCKSimulationResult result = RCKSimulationResult.parse(message);
-				getContext().setSimulationResult(result);
-				
-				return Transitions.stay();
-			}
-			else {
-				String errorMsg = String.format("Unexpected message type: %s (state=%s)", type, this);
-				s_logger.warn(errorMsg);
-				
-				return null;
 			}
 		}
 	}
@@ -509,7 +619,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		@Override
 		public void enter() {
 			super.enter();
+			
+			stopSimulation();
 			s_logger.info("simulation completed");
+			
 			updateSimulationState(getPath());
 		}
 	}
@@ -525,7 +638,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		@Override
 		public void enter() {
 			super.enter();
+			
+			stopSimulation();
 			s_logger.info("simulation failed: cause={}", getContext().getFailureCause());
+			
 			updateSimulationState(getPath());
 		}
 	}
@@ -541,7 +657,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		@Override
 		public void enter() {
 			super.enter();
+			
+			stopSimulation();
 			s_logger.info("simulation cancelled");
+			
 			updateSimulationState(getPath());
 		}
 	}
@@ -556,8 +675,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 */
 	private void updateSimulationState(String state) {
 		if ( m_mdtConnected ) {
+			String stateName = STATE_NAMES.getOrDefault(state, state);
 			try {
-				m_stateRef.updateValue(new StringPropertyValue(state));
+				m_stateRef.updateValue(new StringPropertyValue(stateName));
 			}
 			catch ( Exception e ) {
 				s_logger.warn("failed to update simulation state", e);
@@ -585,12 +705,21 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			m_utilizationUpdater = new SimulationOutputUpdater(m_manager, m_instanceId);
 			m_utilizationUpdater.update(RCKSimulationResult.empty());
 
-			m_stateRef = getArgumentReference(m_manager, m_instanceId, "State");
-			m_videoRef = Try.get(() -> getArgumentReference(m_manager, m_instanceId, "SimulationVideo"))
-							.ifSuccessful(ref -> Unchecked.runOrIgnore(ref::removeAttachment))
+			m_stateRef = SimulationOutputUpdater.getArgumentReference(m_manager, m_instanceId, "State");
+			m_videoRef = Try.get(() -> SimulationOutputUpdater.getArgumentReference(m_manager, m_instanceId,
+																					"SimulationVideoUrl"))
+							.ifSuccessful(ref -> {
+								try {
+									ref.updateValue(PropertyValue.STRING(""));
+								}
+								catch ( IOException e ) {
+									Throwables.sneakyThrow(e);
+								}
+							})
 							.getOrNull();
-			
+
 			m_mdtConnected = true;
+			s_logger.info("connected to MDT Instance: {}", m_instanceId);
 		}
 		catch ( Exception e ) {
 			s_logger.warn("failed to connect MDT InstanceManager: " + e);
@@ -602,6 +731,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 시뮬레이터에 현재 공정의 시뮬레이션 중지 명령을 전송한다.
 	 */
 	private void stopSimulation() {
+		getLogger().info("requesting simulation stop: {}", getContext().getProcessName());
+		
 		sendJson(Map.of("type", "stop", "target", getContext().getProcessName()));
 	}
 
@@ -635,28 +766,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * MDT 인스턴스의 {@code PressSimulation} 오퍼레이션 출력 인자에 대한 reference를 생성·활성화한다.
-	 *
-	 * @param manager	MDT 인스턴스 매니저
-	 * @param instId	대상 인스턴스 식별자
-	 * @param argName	출력 인자 이름 (예: {@code "State"}, {@code "SimulationVideo"})
-	 * @return	활성화된 인자 reference
-	 * @throws IllegalArgumentException	해당 표현식이 {@link MDTArgumentReference}로 해석되지 않는 경우
-	 */
-	private MDTArgumentReference getArgumentReference(HttpMDTInstanceManager manager, String instId,
-														String argName) {
-		String argExpr = String.format("oparg:%s:PressSimulation:out:%s", instId, argName);
-		ElementReference ref = ElementReferences.parseExpr(argExpr);
-		if ( ref instanceof MDTArgumentReference argRef ) {
-			argRef.activate(manager);
-			return argRef;
-		}
-		else {
-			throw new IllegalArgumentException("Target element is not MDTElementReference: " + ref);
-		}
-	}
-	
-	/**
 	 * 시뮬레이션을 단독 실행하기 위한 개발/테스트용 진입점.
 	 * <p>
 	 * 시뮬레이터 서버 주소·공정명·레이아웃을 지정하여 {@link RCKSimulation}을 생성·구동하고 종료를 기다린다.
@@ -665,31 +774,33 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * @throws Exception	시뮬레이션 구동 중 오류가 발생한 경우
 	 */
 	public static final void main(String... args) throws Exception {
-        String serverUrl = "ws://59.10.5.215:4000";
+        String serverUrl = "wss://press.rck.dscloud.biz";
 //        String serverUrl = "ws://localhost:4000/rck/simulator";
         String processName = "press";
-		String layoutName = "프레스 공정_사람+설비추가_NOCON.vcmx";
+//		String layoutName = "프레스 공정_사람+설비추가_NOCON.vcmx";
 //		String layoutName = "프레스 공정_AMR_NOCON.vcmx";
 //		String layoutName = "프레스 공정_설비추가_NOCON.vcmx";
-//		String layoutName = "프레스 공정_사람_NOCON.vcmx";
+		String layoutName = "프레스 공정_사람_NOCON.vcmx";
         
 		RCKSimulationContext ctxt = new RCKSimulationContext(serverUrl, "mdt", processName, layoutName);
         RCKSimulation sim = new RCKSimulation(ctxt);
-        sim.setPingInterval(Duration.ofSeconds(20));
-        sim.setPongTimeout(Duration.ofSeconds(60));
+        sim.setPingInterval(Duration.ofSeconds(30));
+        sim.setPongTimeout(Duration.ofSeconds(5));
         sim.start();
         
-       sim.waitForFinished(3, TimeUnit.SECONDS);
-//        if ( sim.isRunning() ) {
-//        	sim.cancel(true);
-//        	sim.waitForFinished();
-//        	
-//        	return;
-//		}
-        
-        File videoFile = new File(ctxt.getSimulationVideo().getFileName());
-        System.out.println("video-file: " + videoFile.getAbsolutePath());
-        
-//        videoFile.delete();
+        try {
+//			sim.waitForFinished(10, TimeUnit.SECONDS);
+        	sim.waitForFinished(50, TimeUnit.MINUTES);
+			
+	        System.out.println("Simulation video url: " + ctxt.getSimulationVideoInfo().downloadUrl());
+		}
+		catch ( TimeoutException e ) {
+	        if ( sim.isRunning() ) {
+	        	sim.cancel(true);
+	        	sim.waitForFinished();
+	        	
+	        	return;
+			}
+		}
 	}
 }

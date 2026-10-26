@@ -22,6 +22,7 @@ import utils.stream.FStream;
 
 import mdt.client.support.MqttBrokerConfig;
 import mdt.endpoint.ros2.RosBridgeConnectionConfig;
+import mdt.endpoint.rt.RobotTwinConfig;
 import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;
@@ -41,6 +42,7 @@ public final class MDTGlobalConfigurations {
 	public static final String CONFIG_GROUP_MQTT_BROKER = "mqttBrokers";
 	public static final String CONFIG_GROUP_OPC_UA = "opcuas";
 	public static final String CONFIG_GROUP_ROS_BRIDGE = "rosBridges";
+	public static final String CONFIG_GROUP_ROBOT_TWIN = "robotTwins";
 	
 	private static File s_globalConfigFile;
 	
@@ -50,7 +52,7 @@ public final class MDTGlobalConfigurations {
 	
 	public static <T> T getConfig(String configGroup, String configName, Class<T> cls)
 		throws ResourceNotFoundException {
-		JsonNode configNode = getConfigNode(configGroup, configName);
+		JsonNode configNode = getConfig(configGroup, configName);
 		
 		try {
 			JsonMapper mapper = MDTModelSerDe.getJsonMapper();
@@ -59,6 +61,31 @@ public final class MDTGlobalConfigurations {
 		catch ( IOException e ) {
 			throw new InitializationException("Failed to read configuration: group="
 														+ configGroup + ", name=" + configName, e);
+		}
+	}
+	
+	public static JsonNode getConfig(String configGroup, String configKey) {
+		JsonNode configGroupNode = findConfigGroup(configGroup);
+		Map<String,JsonNode> configs = FStream.from(configGroupNode.fields())
+												.mapToKeyValue(ent -> KeyValue.of(ent.getKey(), ent.getValue()))
+												.toMap(Maps.newLinkedHashMap());
+		
+		JsonNode configNode = configs.get(configKey);
+		if ( configNode != null ) {
+			return replaceVariables(configNode);
+		}
+		else if ( configKey.equalsIgnoreCase("default") ) {
+			JsonNode jnode = Funcs.getFirst(configs.values());
+			if ( jnode == null ) {
+				throw new ResourceNotFoundException("Global configuration", 
+													String.format("key=%s.%s", configGroup, configKey));
+			}
+			
+			return replaceVariables(jnode);
+		}
+		else {
+			throw new ResourceNotFoundException("Global configuration",
+												String.format("key=%s.%s", configGroup, configKey));
 		}
 	}
 	
@@ -92,30 +119,9 @@ public final class MDTGlobalConfigurations {
 	public static RosBridgeConnectionConfig getRosBridgeConfig(String configName) throws ResourceNotFoundException  {
 		return getConfig(CONFIG_GROUP_ROS_BRIDGE, configName, RosBridgeConnectionConfig.class);
 	}
-	
-	private static JsonNode getConfigNode(String configGroup, String configKey) {
-		JsonNode configGroupNode = findConfigGroup(configGroup);
-		Map<String,JsonNode> configs = FStream.from(configGroupNode.fields())
-												.mapToKeyValue(ent -> KeyValue.of(ent.getKey(), ent.getValue()))
-												.toMap(Maps.newLinkedHashMap());
-		
-		JsonNode configNode = configs.get(configKey);
-		if ( configNode != null ) {
-			return replaceVariables(configNode);
-		}
-		else if ( configKey.equalsIgnoreCase("default") ) {
-			JsonNode jnode = Funcs.getFirst(configs.values());
-			if ( jnode == null ) {
-				throw new ResourceNotFoundException("Global configuration", 
-													String.format("key=%s.%s", configGroup, configKey));
-			}
-			
-			return replaceVariables(jnode);
-		}
-		else {
-			throw new ResourceNotFoundException("Global configuration",
-												String.format("key=%s.%s", configGroup, configKey));
-		}
+
+	public static RobotTwinConfig getRobotTwinConfig(String configName) throws ResourceNotFoundException  {
+		return getConfig(CONFIG_GROUP_ROBOT_TWIN, configName, RobotTwinConfig.class);
 	}
 	
 	private static JsonNode findConfigGroup(String configKey) {

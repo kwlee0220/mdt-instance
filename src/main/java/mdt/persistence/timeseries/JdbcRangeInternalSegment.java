@@ -54,23 +54,24 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 		setRecords(new DefaultRecords(recList));
 	}
 
+	// 시간 컬럼 이름은 설정(TimeSeriesSubmodelConfig#getTimestampColumn)을 따른다.
 	private static final String SQL_READ_RECORDS_IN_RANGE = """
 		SELECT ${columns}
 		FROM ${tableName}
-		WHERE timestamp between ? and ?
-		ORDER BY timestamp ASC;
+		WHERE ${tsCol} between ? and ?
+		ORDER BY ${tsCol} ASC;
 	""";
 	private static final String SQL_READ_RECORDS_LATER_THAN = """
 		SELECT ${columns}
 		FROM ${tableName}
-		WHERE timestamp >= ?
-		ORDER BY timestamp ASC;
+		WHERE ${tsCol} >= ?
+		ORDER BY ${tsCol} ASC;
 	""";
 	private static final String SQL_READ_RECORDS_EARLIER_THAN = """
 		SELECT ${columns}
 		FROM ${tableName}
-		WHERE timestamp <= ?
-		ORDER BY timestamp ASC;
+		WHERE ${tsCol} <= ?
+		ORDER BY ${tsCol} ASC;
 	""";
 	private List<DefaultRecord> readRecordsInRange(Range range) {
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
@@ -99,7 +100,8 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 									.join(", ");
 		
 		if ( minTs != null && maxTs != null ) {
-			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr,
+									"tsCol", m_tsConfig.getTimestampColumn()))
                                         .failOnUndefinedVariable(false)
                                         .replace(SQL_READ_RECORDS_IN_RANGE);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -108,7 +110,8 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 			return pstmt;
 		}
 		else if ( minTs != null && maxTs == null ) {
-			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr,
+									"tsCol", m_tsConfig.getTimestampColumn()))
                                         .failOnUndefinedVariable(false)
                                         .replace(SQL_READ_RECORDS_LATER_THAN);
 			PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -116,7 +119,8 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 			return pstmt;
 		}
 		else if ( minTs == null && maxTs != null ) {
-			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr))
+			String sql = StrSubstitutor.with(Map.of("tableName", m_tsConfig.getTableName(), "columns", colsExpr,
+									"tsCol", m_tsConfig.getTimestampColumn()))
 										.failOnUndefinedVariable(false)
 										.replace(SQL_READ_RECORDS_EARLIER_THAN);
 			PreparedStatement pstmt = conn.prepareStatement(sql);

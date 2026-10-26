@@ -89,7 +89,7 @@ public class MultiColumnCollectionListAssetVariable
 	}
 
 	@Override
-	protected void saveBuffer(Connection conn) throws AssetVariableException {
+	protected void saveBuffer(Connection conn, SubmodelElement value) throws AssetVariableException {
 	}
 	
 	private List<DataType<?>> getMemberTypes(ResultSet rs) throws SQLException {

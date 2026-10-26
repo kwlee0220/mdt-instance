@@ -93,10 +93,18 @@ public sealed class AASOperationConfig
 	}
 
 	public static final class HttpConfig extends AASOperationConfig {
+		private String m_baseUrl;
 		private String m_endpoint;
-		private String m_opId;
 		private String m_pollInterval;
 		private String m_timeout;
+		
+		public String getBaseUrl() {
+			return m_baseUrl;
+		}
+		
+		public void setBaseUrl(String baseUrl) {
+			m_baseUrl = baseUrl;
+		}
 		
 		public String getEndpoint() {
 			return m_endpoint;
@@ -104,14 +112,6 @@ public sealed class AASOperationConfig
 		
 		public void setEndpoint(String endpoint) {
 			m_endpoint = endpoint;
-		}
-		
-		public String getOpId() {
-			return m_opId;
-		}
-		
-		public void setOpId(String opId) {
-			m_opId = opId;
 		}
 		
 		public String getPollInterval() {

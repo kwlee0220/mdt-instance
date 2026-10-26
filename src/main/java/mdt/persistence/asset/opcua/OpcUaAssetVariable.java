@@ -1,49 +1,44 @@
 package mdt.persistence.asset.opcua;
 
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
-import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
-import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfigBuilder;
-import org.eclipse.milo.opcua.stack.client.DiscoveryClient;
-import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
-import org.eclipse.milo.opcua.stack.core.types.enumerated.TimestampsToReturn;
-import org.eclipse.milo.opcua.stack.core.types.structured.EndpointDescription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import utils.Throwables;
 
+import mdt.model.sm.SubmodelUtils;
 import mdt.persistence.MDTModelLookup;
-import mdt.persistence.asset.AbstractAssetVariable;
 import mdt.persistence.asset.AssetVariableException;
 import mdt.persistence.asset.jdbc.SubmodelElementHandler;
 
+import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
+
 
 /**
+ * OPC-UA 서버의 노드 하나를 SubmodelElement 하나에 연결하는 읽기 전용 {@code AssetVariable}.
+ * <p>
+ * 접속할 서버는 전역 설정의 OPC-UA 설정({@code opcuas.default})을 따르고, 읽을 노드는 설정의
+ * {@code nodePath}를 namespace 2의 문자열 identifier로 사용한다({@code ns=2;s=<nodePath>}).
+ * 읽은 값은 연결된 SubmodelElement의 타입에 맞게 변환된다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class OpcUaAssetVariable extends AbstractAssetVariable<OpcUaAssetVariableConfig> {
+public class OpcUaAssetVariable extends AbstractOpcUaAssetVariable<OpcUaAssetVariableConfig> {
 	private static final Logger s_logger = LoggerFactory.getLogger(OpcUaAssetVariable.class);
-	private static final String SERVER_ENDPOINT = "opc.tcp://localhost:4840/mdt/panda";
-	
-	private OpcUaClient m_client;
+
 	private SubmodelElementHandler m_handler;
-	
-	public OpcUaAssetVariable(OpcUaAssetVariableConfig config) throws Exception {
+
+	public OpcUaAssetVariable(OpcUaAssetVariableConfig config) throws ConfigurationInitializationException {
 		super(config);
-		
-		m_client = connect();
+
 		setLogger(s_logger);
 	}
 
 	@Override
 	public void initialize(MDTModelLookup lookup) {
 		super.initialize(lookup);
-		
+
 		m_handler = new SubmodelElementHandler(m_prototype);
 	}
 
@@ -53,53 +48,22 @@ public class OpcUaAssetVariable extends AbstractAssetVariable<OpcUaAssetVariable
 	}
 
 	@Override
-	public boolean isUpdatable() {
-        return false;
-    }
-
-	@Override
 	public SubmodelElement read() throws AssetVariableException {
+		String nodePath = getConfig().getNodePath();
+		Object value = readNodeValue(new NodeId(2, nodePath));
 		try {
-			double value = readNode(m_client, "panda.jointstates.joint2");
-			
-			m_handler.update(m_prototype, "" + value);
-			
-			return m_prototype;
+			// 동시에 호출된 read()끼리 간섭하지 않도록 공유 prototype은 고치지 않고
+			// 복사본에 값을 반영해 반환한다.
+			SubmodelElement result = SubmodelUtils.duplicate(m_prototype);
+			m_handler.update(result, value);
+
+			return result;
 		}
 		catch ( Exception e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
-			String msg = String.format("Failed to read OPC-UA node: path=%s, cause=%s",
-										"panda.jointstates.joint2", e.getMessage());
+			String msg = String.format("Failed to update %s with OPC-UA node value: path=%s, value=%s, cause=%s",
+										getElementLocation(), nodePath, value, cause);
 			throw new AssetVariableException(msg, cause);
 		}
-	}
-
-	@Override
-	public void update(SubmodelElement newElement) throws AssetVariableException {
-		throw new AssetVariableException("update is not supported for OPC-UA node: path=" + "panda.jointstates.joint2");
-	}
-
-	private OpcUaClient connect() throws Exception {
-	    // Discover endpoints
-	    List<EndpointDescription> endpoints = DiscoveryClient.getEndpoints(SERVER_ENDPOINT).get();
-
-	    // Configure and create client
-	    OpcUaClientConfigBuilder config = new OpcUaClientConfigBuilder();
-	    config.setEndpoint(endpoints.get(0));
-
-	    OpcUaClient client = OpcUaClient.create(config.build());
-	    client.connect().get();
-
-	    if ( getLogger().isInfoEnabled() ) {
-	    	getLogger().info("Connected to OPC UA server: {}", SERVER_ENDPOINT);
-	    }
-	    
-	    return client;
-	}
-
-	private double readNode(OpcUaClient client, String path) throws InterruptedException, ExecutionException {
-        NodeId nodeId = new NodeId(2, path);
-        DataValue value = client.readValue(0, TimestampsToReturn.Both, nodeId).get();
-        return (Double)value.getValue().getValue();
 	}
 }

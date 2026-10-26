@@ -19,18 +19,18 @@ import utils.UnitUtils;
 @Getter
 @JsonInclude(Include.NON_NULL)
 public class HttpOperationProviderConfig {
+	private final String baseUrl;
 	private final String endpoint;
-	private final String opId;
 	private final Duration pollInterval;
 	private final Duration timeout;
 	
 	@JsonCreator
-	public HttpOperationProviderConfig(@JsonProperty("endpoint") String endpoint,
-										@JsonProperty("opId") String opId,
+	public HttpOperationProviderConfig(@JsonProperty("baseUrl") String baseUrl,
+										@JsonProperty("endpoint") String endpoint,
 										@JsonProperty("pollInterval") String pollInterval,
 										@JsonProperty("timeout") String timeout) {
+		this.baseUrl = baseUrl;
 		this.endpoint = endpoint;
-		this.opId = opId;
 		this.pollInterval = UnitUtils.parseDuration(pollInterval);
 		this.timeout = UnitUtils.parseDuration(timeout);
 	}
@@ -49,6 +49,6 @@ public class HttpOperationProviderConfig {
 	public String toString() {
 		String timeoutStr = (this.timeout != null) ? String.format(", timeout=%s", this.timeout) : "";
 		return String.format("HttpOperation[server=%s, opId=%s, poll=%s%s]",
-								this.endpoint, this.opId, this.pollInterval, timeoutStr);
+								this.baseUrl, this.endpoint, this.pollInterval, timeoutStr);
 	}
 }

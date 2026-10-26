@@ -110,10 +110,13 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 													.mapOrThrow(this::duplicateOperationVariable)
 													.toArray(OperationVariable.class);
 			m_opProvider.invokeSync(inputVars, inoutputVars, outputVars);
-			
+
 	    	return outputVars;
 		}
 		catch ( Exception e ) {
+			// FA³ST의 동기 호출 처리기는 실패 원인을 로그에도, 응답의 messages에도 남기지 않기 때문에
+			// 여기서 기록하지 않으면 원인을 알 수 없다.
+			s_logger.error("Failed to invoke operation: op-ref={}", IdShortPath.fromReference(m_opRef), e);
 			Throwables.throwIfInstanceOf(e, AssetConnectionException.class);
 			throw new AssetConnectionException(e);
 		}
@@ -132,6 +135,7 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 			m_opProvider.invokeAsync(inputVars, inoutputVars, outputVars, callbackSuccess, callbackFailure);
 		}
 		catch ( Exception e ) {
+			s_logger.error("Failed to start operation: op-ref={}", IdShortPath.fromReference(m_opRef), e);
 			Throwables.throwIfInstanceOf(e, AssetConnectionException.class);
 			throw new AssetConnectionException(e);
 		}
@@ -176,7 +180,7 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 		catch ( Exception e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
 			String msg = String.format("Failed to load JavaOperation: class=%s", javaOpConfig.getOperationClassName());
-			s_logger.info("{}, cause={}", msg, cause);
+			s_logger.error(msg, cause);
 			throw new InternalException(msg, cause);
 		}
 	}

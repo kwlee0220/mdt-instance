@@ -1,16 +1,14 @@
 package mdt.ext.rck;
 
-import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import utils.KeyValue;
+import utils.Preconditions;
 import utils.func.Funcs;
-import utils.json.JacksonUtils;
 import utils.stream.FStream;
 
 /**
@@ -53,14 +51,38 @@ public class RCKSimulationResult {
 		return new RCKSimulationResult(0, 0, Map.of());
 	}
 	
+	/**
+	 * 시뮬레이터가 보낸 {@code simulation_status} 메시지의 본문을 파싱하여 시뮬레이션 결과를 생성한다.
+	 * <p>
+	 * 필드 부재는 다음과 같이 서로 다르게 다룬다.
+	 * <ul>
+	 *   <li>{@code Progress} - 상태 보고 메시지라면 반드시 있어야 하는 필드이므로, 없으면 메시지 형식이
+	 *       잘못된 것으로 보고 예외를 발생시킨다.</li>
+	 *   <li>{@code Conveyor_6.Production} - 레이아웃에 따라 없을 수 있으므로 0으로 간주한다.</li>
+	 *   <li>설비의 {@code Name} / {@code Utilization} - 둘 중 하나라도 없는 설비는 이용률 집계에서
+	 *       제외한다.</li>
+	 * </ul>
+	 *
+	 * @param progressReport	{@code simulation_status} 메시지의 {@code message} 부분. ({@code null} 불가)
+	 * @return	파싱된 시뮬레이션 결과.
+	 * @throws IllegalArgumentException	{@code progressReport}가 {@code null}이거나 {@code Progress}
+	 * 									필드를 갖지 않는 경우.
+	 */
 	public static RCKSimulationResult parse(JsonNode progressReport) {
-		int progress = progressReport.get("Progress").asInt();
+		Preconditions.checkNotNullArgument(progressReport, "progressReport is null");
+
+		JsonNode progressNode = progressReport.get("Progress");
+		if ( progressNode == null ) {
+			throw new IllegalArgumentException("invalid simulation status message "
+												+ "(no 'Progress' field): " + progressReport);
+		}
+		int progress = progressNode.asInt();
 		int production = progressReport.path("Conveyor_6").path("Production").asInt();
-		
+
 		List<JsonNode> equipList = new LeafObjectNodeCollector(progressReport).collect();
 		Map<String, Float> utilsMap
 				= FStream.from(equipList)
-						.filter(equip -> equip.has("Utilization"))
+						.filter(equip -> equip.has("Name") && equip.has("Utilization"))
 						.mapToKeyValue(equip -> {
 							String name = equip.get("Name").asText();
 							int util = equip.get("Utilization").asInt();
@@ -83,13 +105,5 @@ public class RCKSimulationResult {
 						.toMap();
 		
 		return new RCKSimulationResult(progress, production, utilsMap);
-	}
-	
-	public static final void main(String[] args) throws Exception {
-		JsonMapper mapper = JacksonUtils.newJsonMapper(true);
-		JsonNode root = mapper.readTree(new File("/home/kwlee/tmp/simulation_sample.json"));
-		
-		RCKSimulationResult updater = RCKSimulationResult.parse(root);
-		System.out.println(updater);
 	}
 }

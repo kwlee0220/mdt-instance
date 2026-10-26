@@ -36,15 +36,17 @@ public class OpcUaCollectionAssetVariable extends AbstractOpcUaAssetVariable<Opc
 
 	@Override
 	public SubmodelElement read() throws AssetVariableException {
+		// 동시에 호출된 read()끼리 간섭하지 않도록 공유 prototype은 고치지 않고
+		// 복사본에 값을 반영해 반환한다.
 		// subpath -> opcua identifier mapping
-		SubmodelElementCollection smc = (SubmodelElementCollection)m_prototype;
+		SubmodelElementCollection smc = (SubmodelElementCollection)SubmodelUtils.duplicate(m_prototype);
 		FStream.from(m_config.getFieldMappings())
 				.forEach(mapping -> {
 					SubmodelElement part = SubmodelUtils.traverse(smc, mapping.subPath());
 					Double newValue = readNode(mapping.opcuaId());
 					ElementValues.update(part, PropertyValue.DOUBLE(newValue));
 				});
-		
-		return SubmodelUtils.duplicate(smc);
+
+		return smc;
 	}
 }

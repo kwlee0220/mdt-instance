@@ -18,6 +18,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceExceptio
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 
 import utils.InternalException;
+import utils.Tuple;
 import utils.async.command.CommandExecution;
 import utils.async.command.CommandVariable;
 import utils.io.FileUtils;
@@ -29,7 +30,6 @@ import mdt.model.MDTModelSerDe;
 import mdt.model.sm.value.ElementValue;
 import mdt.model.sm.value.ElementValues;
 import mdt.task.TaskException;
-import mdt.task.builtin.ProgramOperationDescriptor;
 
 
 /**
@@ -73,6 +73,10 @@ class ProgramOperationProvider implements OperationProvider {
 			opDesc.setWorkingDirectory(m_opDescFile.getParentFile());
 		}
 		
+		var outVarList = FStream.of(inoutputVars)
+								.concatWith(FStream.of(outputVars))
+								.toList();
+		
 		File workingDir = opDesc.getWorkingDirectory();
 		File envFile = new File(workingDir, "env.file");
 		CommandExecution.Builder builder = CommandExecution.builder()
@@ -83,8 +87,10 @@ class ProgramOperationProvider implements OperationProvider {
 		
 		FStream.of(inputVars)
 				.concatWith(FStream.of(inoutputVars))
-				.concatWith(FStream.of(outputVars))
-				.mapOrThrow(opv -> newCommandVariable(workingDir, opv))
+				.mapOrThrow(opv -> newInputCommandVariable(workingDir, opv))
+				.forEach(builder::addVariable);
+		FStream.of(outputVars)
+				.mapOrThrow(opv -> newOutputOnlyCommandVariable(workingDir, opv))
 				.forEach(builder::addVariable);
 
 		// stdout/stderr redirection
@@ -94,27 +100,14 @@ class ProgramOperationProvider implements OperationProvider {
 		m_cmdExec = builder.build();
 		try {
 			m_cmdExec.run();
-			if ( s_logger.isInfoEnabled() ) {
-				s_logger.info("ProgramOperationProvider terminates");
-			}
-
-			FStream.of(inoutputVars)
-					.concatWith(FStream.of(outputVars))
-					.tagKey(v -> v.getValue().getIdShort())
+			s_logger.info("ProgramOperationProvider terminates");
+			
+			FStream.from(outVarList)
+					.tagKey(opv -> opv.getValue().getIdShort())
 					.match(m_cmdExec.getVariableMap())
 					.forEachOrThrow(match -> {
-						OperationVariable opv = match.value()._1;
-						CommandVariable var = match.value()._2;
-						
-						// CommandExecution에서 생성한 값은 ElementValue의 valueJson형태로 설정됨.
-						try {
-							SubmodelElement old = opv.getValue();
-							ElementValues.updateWithValueJsonString(old, var.getValue());
-						}
-						catch ( Exception e ) {
-							s_logger.error("Failed to update OperationVariable: {}, cause={}",
-											opv.getValue().getIdShort(), ""+e);
-						}
+						Tuple<OperationVariable,CommandVariable> t = match.value();
+						handleOutputVariable(t._1, t._2);
 					});
 		}
 		finally {
@@ -122,7 +115,7 @@ class ProgramOperationProvider implements OperationProvider {
 		}
 	}
 	
-	private CommandVariable newCommandVariable(File workingDir, OperationVariable opv) throws TaskException {
+	private CommandVariable newInputCommandVariable(File workingDir, OperationVariable opv) throws TaskException {
 		SubmodelElement data = opv.getValue();
 		String name = data.getIdShort();
 		
@@ -163,6 +156,7 @@ class ProgramOperationProvider implements OperationProvider {
 				else {
 					String valStr = smev.toValueJsonString();
 					IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
+					return new CommandVariable(name, valStr, cvFile);
 				}
 					
 				return new CommandVariable(name, cvFile);
@@ -171,6 +165,48 @@ class ProgramOperationProvider implements OperationProvider {
 		catch ( IOException e ) {
 			throw new InternalException("Failed to write value to file: name=" + name
 										+ ", path=" + cvFile.getAbsolutePath(), e);
+		}
+	}
+	
+	private CommandVariable newOutputOnlyCommandVariable(File workingDir, OperationVariable opv) {
+		String name = opv.getValue().getIdShort();
+		File cvFile = new File(workingDir, name);
+		return new CommandVariable(name, cvFile);
+	}
+	
+	private void handleOutputVariable(OperationVariable opv, CommandVariable var)
+		throws IOException, PersistenceException {
+		SubmodelElement old = opv.getValue();
+		if ( old instanceof org.eclipse.digitaltwin.aas4j.v3.model.File aasFile ) {
+			String outFilePath = var.getValue();
+			if ( outFilePath == null || outFilePath.length() == 0 ) {
+				s_logger.warn("Output CommandVariable[{}] has empty value", var.getName());
+				return;
+			}
+
+			File cvFile = new File(outFilePath);
+			try {
+				// 출력 파일을 읽어서 AASFile에 upload하도록 한다.
+				String aasFileName = cvFile.getName();
+				byte[] content = IOUtils.toBytes(cvFile);
+				aasFile.setValue(aasFileName);
+				
+				@SuppressWarnings("rawtypes")
+				FileStorage fileStore = m_svcContext.getFileStorage();
+				fileStore.save(aasFileName, content);
+			}
+			finally {
+				// 출력 파일은 삭제한다.
+				if ( cvFile.isFile() ) {
+					if ( !cvFile.delete() ) {
+						s_logger.warn("Failed to delete output file: {}", cvFile.getAbsolutePath());
+					}
+				}
+			}
+		}
+		else {
+			// AASFile이 아닌 경우, CommandVariable에서 생성한 valueJson을 SubmodelElement에 설정한다.
+			ElementValues.updateWithValueJsonString(old, var.getValue());
 		}
 	}
 }

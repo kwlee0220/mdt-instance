@@ -42,7 +42,18 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 	public String getSerializationType() {
 		return SERIALIZATION_TYPE;
 	}
-	
+
+	/**
+	 * 읽을 OPC-UA 노드의 경로를 반환한다.
+	 * <p>
+	 * 이 값은 namespace 2의 문자열 identifier로 사용된다({@code ns=2;s=<nodePath>}).
+	 *
+	 * @return	노드 경로.
+	 */
+	public String getNodePath() {
+		return m_nodePath;
+	}
+
 	public boolean isReadable() {
 		return m_readable == null || m_readable;
 	}
@@ -51,8 +62,8 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
 //		gen.writeStringField("serverEndpoint", m_serverEndpoint);
-		gen.writeStringField("nodePath", m_nodePath);
-		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_NODE_PATH, f));
+		gen.writeStringField(FIELD_NODE_PATH, m_nodePath);
+		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**
