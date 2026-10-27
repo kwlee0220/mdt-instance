@@ -5,12 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import okhttp3.RequestBody;
@@ -20,8 +18,11 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
 
 import utils.func.FOption;
 import utils.http.HttpRESTfulClient;
+import utils.stream.FStream;
+import utils.stream.KeyValueFStream;
 
 import mdt.model.MDTModelSerDe;
+import mdt.model.sm.value.ElementValues;
 
 
 /**
@@ -35,6 +36,7 @@ public class AIModelOperation extends AbstractJavaOperationProvider {
 	
 	private final String m_serverUrl;
 	private final String m_modelId;
+	private final String m_version;
 	private final String m_servingUrl;
 	private final HttpRESTfulClient m_restClient;
 
@@ -59,8 +61,9 @@ public class AIModelOperation extends AbstractJavaOperationProvider {
 			throw new ConfigurationInitializationException("Missing argument 'modelId' in operation config: "
 															+ config);
 		}
+		m_version = getStringArgument("version");
 		
-		m_servingUrl = getServingUrl();
+		m_servingUrl = buildServingUrl();
 		m_restClient = HttpRESTfulClient.newDefaultClient();
 	}
 
@@ -68,42 +71,55 @@ public class AIModelOperation extends AbstractJavaOperationProvider {
 	protected void invokeSync(Map<String, SubmodelElement> inputVarList,
 							Map<String, SubmodelElement> inoutputVarList,
 							Map<String, SubmodelElement> outputVarList) throws Exception {
-		String samples = getRequiredStringVariableValue(inputVarList, "Samples");
-
-		Property anomalyScoreProp = getRequiredPropertyVariable(outputVarList, "AnomalyScore",
-																DataTypeDefXsd.DOUBLE);
-		Property clusterProp = getRequiredPropertyVariable(outputVarList, "Cluster", DataTypeDefXsd.STRING);
-
-		Map<String,Object> outputs = predict(m_servingUrl, samples);
-		
-		// 연산 수행 결과를 Output OperationVariable들에 반영한다.
-		double anomalyScore = (Double)outputs.get("AnomalyScore");
-		anomalyScoreProp.setValue("" + anomalyScore);
-		String cluster = (String)outputs.get("Cluster");
-		clusterProp.setValue(cluster);
-	}
-	
-	private Map<String,Object> predict(String modelUrl, String samples)
-		throws JsonProcessingException {
 		Map<String,JsonNode> inputs = new HashMap<>();
-		inputs.put("Samples", MDTModelSerDe.MAPPER.valueToTree(samples));
-		
+		KeyValueFStream.from(inputVarList)
+						.filterValue(v -> v != null)
+						.forEach((varName, varSme) -> {
+							if ( varSme instanceof Property prop ) {
+								Object value = prop.getValue();
+								if ( value != null ) {
+									inputs.put(varName, MDTModelSerDe.MAPPER.valueToTree(value));
+								}
+							}
+							else {
+								throw new IllegalArgumentException("Unsupported SubmodelElement type: " + varSme);
+							}
+						});
+
 		var args = Map.of("Inputs", inputs);
 		var argsJson = MDTModelSerDe.toJsonString(args);
 
 		RequestBody reqBody = HttpRESTfulClient.newJsonRequestBody(argsJson);
-		String respJson = m_restClient.post(modelUrl, reqBody);
-		JsonNode outputs = MDTModelSerDe.MAPPER.readTree(respJson).get("Outputs");
+		String respJson = m_restClient.post(m_servingUrl, reqBody);
 		
-		return Map.of(
-			"AnomalyScore", outputs.get("AnomalyScore").doubleValue(),
-			"Cluster", outputs.get("Cluster").asText()
-		);
+		JsonNode respNode = MDTModelSerDe.MAPPER.readTree(respJson);
+		JsonNode outputs = FStream.from(respNode.fields())
+								.findFirst(field -> field.getKey().equalsIgnoreCase("Outputs"))
+								.map(Map.Entry::getValue)
+								.getOrThrow(() -> new IllegalStateException("Missing 'Outputs' field in the response: "
+															+ respJson));
+		
+		for ( Map.Entry<String,SubmodelElement> ent: outputVarList.entrySet() ) {
+			String varName = ent.getKey();
+			SubmodelElement valueSme = ent.getValue();
+			
+			JsonNode outVar = outputs.get(varName);
+			if ( outVar == null ) {
+				continue;
+			}
+			
+			ElementValues.update(valueSme, outVar);
+		}
 	}
 	
-	private String getServingUrl() {
+	private String buildServingUrl() {
 		String encodedModelId = URLEncoder.encode(m_modelId, StandardCharsets.UTF_8);
-		return m_serverUrl + encodedModelId;
+		String url = m_serverUrl + encodedModelId;
+		if ( m_version != null ) {
+			url += "/" + URLEncoder.encode(m_version, StandardCharsets.UTF_8);;
+		}
+		
+		return url;
 	}
 	
 //	private String fetchModelUrl() {
