@@ -20,6 +20,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundExc
 import utils.InternalException;
 import utils.Tuple;
 import utils.async.command.CommandExecution;
+import utils.async.command.CommandExecution.Output;
 import utils.async.command.CommandVariable;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
@@ -94,8 +95,8 @@ class ProgramOperationProvider implements OperationProvider {
 				.forEach(builder::addVariable);
 
 		// stdout/stderr redirection
-		builder.redirectErrorStream();
-		builder.redirectStdoutToFile(new File(workingDir, "output.log"));
+		builder.stderr(Output.toStdout());
+		builder.stdout(Output.file(new File(workingDir, "output.log")));
 		
 		m_cmdExec = builder.build();
 		try {

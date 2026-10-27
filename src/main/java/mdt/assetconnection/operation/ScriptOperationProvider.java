@@ -21,6 +21,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
 import utils.KeyValue;
 import utils.async.command.CommandExecution;
+import utils.async.command.CommandExecution.Output;
 import utils.func.FOption;
 import utils.func.Unchecked;
 import utils.io.FileUtils;
@@ -114,8 +115,8 @@ class ScriptOperationProvider implements OperationProvider {
 															.environmentFile(envFile)
 															.timeout(m_config.getTimeout());
 		// stdout/stderr redirection
-		builder.redirectErrorStream();
-		builder.redirectStdoutToFile(new File(workingDir, "output.log"));
+		builder.stderr(Output.toStdout());
+		builder.stdout(Output.file(new File(workingDir, "output.log")));
 		
 		m_cmdExec = builder.build();
 		try {

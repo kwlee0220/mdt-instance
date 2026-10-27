@@ -487,9 +487,13 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 | `workingDirectory` | 현재 작업 디렉터리 |
 | `environmentFile` | 선택적 환경 변수 파일 |
 | `environments` | 기본 빈 Map. 표준 로더에서 인스턴스 환경 변수 Map으로 교체 |
-| `restartPolicy` | 기본 `ALWAYS`. Java enum은 `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO` |
+| `restartPolicy` | 기본 `ALWAYS`. `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO` (`on-completed`처럼 소문자·하이픈 표기도 허용) |
 | `restartDelay` | 기본 5초. 재시작 실행에 적용 |
-| `startTimeout` | 설정 DTO 기본 `30s`이나 현재 `ProgramService` 실행 구성에서 사용하지 않음 |
+| `maxRestartDelay` | 기본 1분. 짧은 실행이 연달아 일어날 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 backoff 없음 |
+| `stableRunTime` | 기본 10초. 이보다 짧게 끝난 실행을 backoff 대상으로 본다 |
+| `restartLimit` | 기본 0(제한 없음). 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스 `FAILED` |
+| `restartLimitInterval` | 기본 1분 |
+| `startTimeout` | 기본 `30s`. 첫 실행이 이 시간 안에 시작(RUNNING)되지 못하면 서비스 `FAILED`. `0s`이면 제한 없음 |
 
 로더가 주입하는 환경 변수는 `MDT_INSTANCE_ID`, `MDT_INSTANCE_ENDPOINT`, `MDT_URL`,
 `MDT_INSTANCE_PORT`, `MDT_INSTANCE_DIR`이다. `MDT_INSTANCE_PORT`는 설정의 `port`가 없으면 빈 문자열이다.
@@ -499,8 +503,11 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 `ProgramService`는 실행 종료 결과에 따라 재시작 정책을 적용한다.
 `ALWAYS`는 성공·실패 종료 후 재시작하고, `ON_COMPLETED`는 성공 종료, `ON_FAILED`는 실패 종료에 적용한다.
 명시적 중지 요청에는 재시작하지 않는다. 실행 timeout은 현재 `null`로 지정되어 전체 실행 시간 제한이 없다.
-표준 오류는 표준 출력과 병합되어 작업 디렉터리의 `application.log`로 전달된다.
-출력 파일은 append 옵션 없이 열리므로 프로그램이 재시작할 때 이전 로그가 덮어써질 수 있다.
+첫 실행이 시작되지 못하고 끝나면 재시작 정책과 무관하게 서비스가 `FAILED`가 된다.
+실행이 `stableRunTime`보다 짧게 끝나는 일이 연달아 일어나면 두 번째 재시작부터 지연을 두 배씩 늘려
+`maxRestartDelay`까지 키우고(시작값은 `restartDelay`와 1초 중 큰 값), 한 번이라도 오래 실행되면 원래 지연으로 돌아간다.
+표준 오류는 표준 출력과 병합되어 작업 디렉터리의 `application.log` 뒤에 이어 기록된다.
+재시작해도 이전 실행의 로그가 남지만, 파일 크기를 제한하지 않으므로 필요하면 외부에서 정리해야 한다.
 
 엔드포인트는 `init()`에서 shutdown hook을 등록하고, `start()`에서 프로그램 서비스를 비동기로 시작한다.
 `stop()`은 서비스 중지를 요청하고 hook을 해제하며, 종료 완료까지 기다리지는 않는다.
