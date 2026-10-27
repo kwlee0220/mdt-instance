@@ -137,7 +137,8 @@ class ProgramOperationProvider implements OperationProvider {
 					byte[] content = fileStore.get(path);
 					IOUtils.toFile(content, cvFile);
 					
-					return new CommandVariable(name, cvFile);
+					// 실행을 위해 복사해 둔 파일이므로 변수 close 시 삭제한다.
+					return CommandVariable.inputFile(name, cvFile, true);
 				}
 				catch ( ResourceNotFoundException | PersistenceException e ) {
 					throw new TaskException("Failed to read AASFile " + aasFile, e);
@@ -157,10 +158,10 @@ class ProgramOperationProvider implements OperationProvider {
 				else {
 					String valStr = smev.toValueJsonString();
 					IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
-					return new CommandVariable(name, valStr, cvFile);
+					return CommandVariable.input(name, valStr, cvFile);
 				}
 					
-				return new CommandVariable(name, cvFile);
+				return CommandVariable.inputFile(name, cvFile, true);
 			}
 		}
 		catch ( IOException e ) {
@@ -172,7 +173,8 @@ class ProgramOperationProvider implements OperationProvider {
 	private CommandVariable newOutputOnlyCommandVariable(File workingDir, OperationVariable opv) {
 		String name = opv.getValue().getIdShort();
 		File cvFile = new File(workingDir, name);
-		return new CommandVariable(name, cvFile);
+		// 이전 실행이 남긴 출력 파일은 생성 시 삭제된다.
+		return CommandVariable.output(name, cvFile);
 	}
 	
 	private void handleOutputVariable(OperationVariable opv, CommandVariable var)
