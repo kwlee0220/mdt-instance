@@ -252,6 +252,9 @@ MQTT 자산 변수(`mdt:asset:mqtt`)와 공유한다. 처음 연결을 얻는 �
 마지막 사용자인 경우 연결이 종료될 때까지 최대 5초 기다린다.
 
 `MqttService`는 초기 연결을 반복 시도하며 기본 재시도 간격은 5초다.
+첫 연결 시도가 실패하면 broker 주소와 원인을 WARN 로그로 한 번 남기고, 이후의 실패는 DEBUG로만 남긴다.
+연결에 성공하면 그때까지 실패한 횟수와 함께 INFO 로그를 남긴다. 연결된 뒤 끊어지면 WARN 로그를 남기고
+Paho 자동 재연결을 사용한다. 공유 연결의 서비스 자체가 실패하면 `MqttServicePool`이 ERROR 로그를 남긴다.
 연결 옵션은 clean session과 Paho 자동 재연결을 사용하고, 연결 완료 callback에서 모든 토픽을 재구독한다.
 `MqttService`는 topic별 QoS(같은 topic에 요청된 QoS 중 최댓값)를 보관하여 재구독할 때도 같은 QoS를 사용하며,
 일부 topic의 재구독이 실패해도 나머지 topic은 계속 구독한다. 엔드포인트는 QoS 1로 구독한다.

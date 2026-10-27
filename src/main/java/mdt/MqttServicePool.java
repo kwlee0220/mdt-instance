@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Maps;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.Service;
 import com.google.common.util.concurrent.Service.State;
 
 import utils.Preconditions;
@@ -84,6 +86,15 @@ public final class MqttServicePool {
 
 		if ( created ) {
 			s_logger.info("created a shared MQTT connection: broker={}", key.brokerUrl());
+			// 서비스가 실패하면 이 연결을 쓰는 모든 사용자의 발행·구독이 멈추므로 오류 로그를 남긴다.
+			// 실패한 서비스는 다음 acquire()에서 새 서비스로 교체된다.
+			entry.m_service.addListener(new Service.Listener() {
+				@Override
+				public void failed(State from, Throwable failure) {
+					s_logger.error("shared MQTT connection failed: broker={}, state={}, cause={}",
+									key.brokerUrl(), from, "" + failure);
+				}
+			}, MoreExecutors.directExecutor());
 			entry.m_service.startAsync();
 		}
 		return new Lease(entry);
