@@ -288,20 +288,31 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 
 	@Override
 	public void save(Submodel submodel) throws PersistenceException {
-		getBasePersistence().save(submodel);
-
-		// 갱신된 Submodel 정보를 해당 AssetVariable들을 통해 외부 asset에 갱신한다.
+		// update()와 같이 외부 asset에 먼저 반영한 뒤 base persistence에 저장한다.
+		// 따라서 외부 asset 갱신이 실패하면 base persistence의 Submodel은 변경되지 않는다.
+		//
+		// 외부 asset에 쓰기 전에 모든 AssetVariable에 해당하는 요소를 먼저 찾는다.
+		// 이렇게 하면 저장할 Submodel에 일부 요소가 없는 경우, 외부 asset을 일부만 갱신한 채
+		// 실패하는 일이 없다.
+		List<KeyValue<AssetVariable,SubmodelElement>> updates = Lists.newArrayList();
 		for ( AssetVariable var : m_assetVariables.getOrDefault(submodel.getId(), List.of()) ) {
 			if ( var.isUpdatable() ) {
 				String elementPath = var.getElementLocation().getElementPath();
-				SubmodelElement newSme = SubmodelUtils.traverse(submodel, elementPath);
-				var.update(newSme);
-				if ( getLogger().isDebugEnabled() ) {
-					getLogger().debug("update AssetVariable {} from saved Submodel {}: value={}",
-							var.getElementLocation(), submodel.getIdShort(), ElementValues.getValue(newSme));
-				}
+				updates.add(KeyValue.of(var, SubmodelUtils.traverse(submodel, elementPath)));
 			}
 		}
+
+		// 갱신된 Submodel 정보를 해당 AssetVariable들을 통해 외부 asset에 갱신한다.
+		for ( KeyValue<AssetVariable,SubmodelElement> update : updates ) {
+			update.key().update(update.value());
+			if ( getLogger().isDebugEnabled() ) {
+				getLogger().debug("update AssetVariable {} from saved Submodel {}: value={}",
+									update.key().getElementLocation(), submodel.getIdShort(),
+									ElementValues.getValue(update.value()));
+			}
+		}
+
+		getBasePersistence().save(submodel);
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
