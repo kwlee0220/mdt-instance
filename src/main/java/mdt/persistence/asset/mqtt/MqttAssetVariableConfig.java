@@ -13,10 +13,10 @@ import utils.json.JacksonUtils;
 
 import mdt.MDTGlobalConfigurations;
 import mdt.client.support.MqttBrokerConfig;
-import mdt.model.MDTModelSerDe;
 import mdt.model.ResourceNotFoundException;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
 import mdt.persistence.asset.AssetVariableConfig;
+import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**
@@ -37,7 +37,7 @@ import mdt.persistence.asset.AssetVariableConfig;
  * }</pre>
  * {@code mqttBrokerConfig}는 전역 설정 파일의 {@code mqttBrokers} 항목 이름(문자열)이거나
  * broker 설정 객체이다. 생략하면 {@code "default"}이다. 이전 형식의 {@code mqttBrokerConfigName}도
- * 받지만, {@code mqttBrokerConfig}와 함께 사용할 수는 없다.
+ * 받지만, {@code mqttBrokerConfig}와 함께 사용할 수는 없다({@link ConnectionConfigRef}).
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -52,7 +52,6 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	private static final String FIELD_PUBLISH_TIMEOUT = "publishTimeout";
 	private static final String FIELD_WHEN_DISCONNECTED = "whenDisconnected";
 
-	public static final String DEFAULT_BROKER_CONFIG_NAME = "default";
 	public static final int DEFAULT_QOS = 1;
 	public static final boolean DEFAULT_RETAINED = false;
 	public static final Duration DEFAULT_PUBLISH_TIMEOUT = Duration.ofSeconds(10);
@@ -97,9 +96,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	}
 	public static final DisconnectedPolicy DEFAULT_DISCONNECTED_POLICY = DisconnectedPolicy.SKIP;
 
-	// 둘 중 정확히 하나만 null이 아니다.
-	private String m_mqttBrokerConfigName;			// 전역 설정의 broker 이름
-    private MqttBrokerConfig m_mqttBrokerConfig;	// 설정에 직접 기술된 broker 설정
+	private ConnectionConfigRef<MqttBrokerConfig> m_brokerRef;
     private String m_topic;
     private int m_qos = DEFAULT_QOS;
     private boolean m_retained = DEFAULT_RETAINED;
@@ -114,7 +111,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	 * @return	broker 설정 이름. broker 설정이 직접 기술된 경우는 {@code null}.
 	 */
 	public String getMqttBrokerConfigName() {
-		return m_mqttBrokerConfigName;
+		return m_brokerRef.name();
 	}
 
 	/**
@@ -129,12 +126,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	 * @throws IllegalStateException	전역 설정 파일이 지정되지 않았거나 존재하지 않는 경우.
 	 */
 	public MqttBrokerConfig getMqttBrokerConfig() throws ResourceNotFoundException {
-		if ( m_mqttBrokerConfig != null ) {
-			return m_mqttBrokerConfig;
-		}
-		else {
-			return MDTGlobalConfigurations.getMqttBrokerConfig(m_mqttBrokerConfigName);
-		}
+		return m_brokerRef.resolve(MDTGlobalConfigurations::getMqttBrokerConfig);
 	}
 
 	public String getTopic() {
@@ -188,9 +180,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
     @Override
     public String toString() {
 		// 전역 설정 파일을 읽지 않도록 broker 설정을 해석하지 않고 설정에 기술된 내용만 사용한다.
-		String broker = (m_mqttBrokerConfig != null)
-						? m_mqttBrokerConfig.getBrokerUrl()
-						: String.format("mqttBrokers.%s", m_mqttBrokerConfigName);
+		String broker = m_brokerRef.toDisplayString("mqttBrokers", MqttBrokerConfig::getBrokerUrl);
 		return String.format("%s, broker=%s, topic=%s, qos=%d%s", super.toString(), broker, m_topic, m_qos,
 								m_retained ? ", retained" : "");
 	}
@@ -198,12 +188,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
-		if ( m_mqttBrokerConfig != null ) {
-			gen.writeObjectField(FIELD_BROKER_CONFIG, m_mqttBrokerConfig);
-		}
-		else {
-			gen.writeStringField(FIELD_BROKER_CONFIG, m_mqttBrokerConfigName);
-		}
+		m_brokerRef.serialize(gen, FIELD_BROKER_CONFIG);
 		gen.writeStringField(FIELD_TOPIC, m_topic);
 		gen.writeNumberField(FIELD_QOS, m_qos);
 		gen.writeBooleanField(FIELD_RETAINED, m_retained);
@@ -222,7 +207,8 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 		MqttAssetVariableConfig config = new MqttAssetVariableConfig();
 		config.loadFields(jnode);
 
-		loadBrokerConfig(config, jnode);
+		config.m_brokerRef = ConnectionConfigRef.load(jnode, FIELD_BROKER_CONFIG, FIELD_BROKER_CONFIG_NAME,
+														MqttBrokerConfig.class);
 
 		config.m_topic = JacksonUtils.getStringField(jnode, FIELD_TOPIC);
 		try {
@@ -274,32 +260,5 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 		}
 
 		return config;
-	}
-
-	private static void loadBrokerConfig(MqttAssetVariableConfig config, JsonNode jnode) throws IOException {
-		JsonNode brokerNode = JacksonUtils.getFieldOrNull(jnode, FIELD_BROKER_CONFIG);
-		if ( brokerNode != null && brokerNode.isNull() ) {
-			brokerNode = null;
-		}
-		String legacyName = JacksonUtils.getStringFieldOrNull(jnode, FIELD_BROKER_CONFIG_NAME);
-
-		if ( brokerNode != null && legacyName != null ) {
-			throw new IOException(String.format("'%s' and '%s' cannot be used together",
-												FIELD_BROKER_CONFIG, FIELD_BROKER_CONFIG_NAME));
-		}
-
-		if ( brokerNode == null ) {
-			config.m_mqttBrokerConfigName = (legacyName != null) ? legacyName : DEFAULT_BROKER_CONFIG_NAME;
-		}
-		else if ( brokerNode.isTextual() ) {
-			config.m_mqttBrokerConfigName = brokerNode.asText();
-		}
-		else if ( brokerNode.isObject() ) {
-			config.m_mqttBrokerConfig = MDTModelSerDe.readValue(brokerNode, MqttBrokerConfig.class);
-		}
-		else {
-			throw new IOException(String.format("invalid '%s' value: %s (expected: a name or an object)",
-												FIELD_BROKER_CONFIG, brokerNode));
-		}
 	}
 }

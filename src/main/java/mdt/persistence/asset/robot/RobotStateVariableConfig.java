@@ -20,9 +20,9 @@ import utils.json.JacksonUtils;
 import mdt.ElementLocation;
 import mdt.MDTGlobalConfigurations;
 import mdt.endpoint.rt.RobotTwinConfig;
-import mdt.model.MDTModelSerDe;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
 import mdt.persistence.asset.AssetVariableConfig;
+import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**
@@ -48,8 +48,9 @@ import mdt.persistence.asset.AssetVariableConfig;
  *     }
  * }
  * }</pre>
- * {@code robotTwinConfig}가 생략된 경우에는 전역 설정({@code robotTwins} 그룹)의
- * {@code robotTwinConfigName} 항목(기본 {@code default})에서 접속 정보를 읽는다.
+ * {@code robotTwinConfig}는 전역 설정({@code robotTwins} 그룹)의 항목 이름(문자열)이거나 접속 정보 객체이다.
+ * 생략하면 전역 설정의 {@code default} 항목을 사용한다. 이전 형식의 {@code robotTwinConfigName}도 받지만
+ * {@code robotTwinConfig}와 함께 사용할 수는 없다({@link ConnectionConfigRef}).
  * {@code requireOkQuality}는 boolean이며 생략하면 {@code false}다.
  * Mapping의 값은 문자열 JSON Pointer여야 하며, 설정을 읽을 때 문법을 검사한다.
  *
@@ -58,16 +59,13 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class RobotStateVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:robot-twin:state";
 
-	private static final String FIELD_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";
+	private static final String FIELD_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";	// 이전 형식
 	private static final String FIELD_ROBOT_TWIN_CONFIG = "robotTwinConfig";
 	private static final String FIELD_VARIABLE = "variable";
 	private static final String FIELD_MAPPINGS = "mappings";
 	private static final String FIELD_REQUIRE_OK_QUALITY = "requireOkQuality";
 
-	private static final String DEFAULT_CONN_CONFIG_NAME = "default";
-
-	private String m_robotTwinConfigName;
-	private RobotTwinConfig m_robotTwinConfig;
+	private ConnectionConfigRef<RobotTwinConfig> m_robotTwinConfigRef;
 	private String m_variable;
 	private List<SubPathToJsonPointer> m_mappings = List.of();
 	private @Nullable Boolean m_requireOkQuality = null;
@@ -119,7 +117,7 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 										String variable, List<SubPathToJsonPointer> mappings) {
 		super(elementLoc, validPeriod);
 
-		m_robotTwinConfigName = DEFAULT_CONN_CONFIG_NAME;
+		m_robotTwinConfigRef = ConnectionConfigRef.ofName(ConnectionConfigRef.DEFAULT_NAME);
 		m_variable = variable;
 		m_mappings = ( mappings != null ) ? mappings : List.of();
 	}
@@ -132,19 +130,22 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 	/**
 	 * 전역 설정에서 로봇 트윈 접속 정보를 읽을 때 사용할 설정 이름을 반환한다.
 	 *
-	 * @return 전역 설정 이름.
+	 * @return 전역 설정 이름. 접속 정보가 설정에 직접 기술된 경우는 {@code null}.
 	 */
 	public String getRobotTwinConfigName() {
-		return m_robotTwinConfigName;
+		return m_robotTwinConfigRef.name();
 	}
 	
+	/**
+	 * 로봇 트윈 접속 정보를 반환한다.
+	 * <p>
+	 * 접속 정보가 설정에 직접 기술되어 있으면 이를 반환하고, 그렇지 않으면 전역 설정을 읽어 반환한다.
+	 * 전역 설정은 호출할 때마다 파일에서 다시 읽으므로, 호출자는 결과를 보관하여 사용한다.
+	 *
+	 * @return 로봇 트윈 접속 정보.
+	 */
 	public RobotTwinConfig getRobotTwinConfig() {
-		if ( m_robotTwinConfig != null ) {
-			return m_robotTwinConfig;
-		}
-		else {
-			return MDTGlobalConfigurations.getRobotTwinConfig(m_robotTwinConfigName);
-		}
+		return m_robotTwinConfigRef.resolve(MDTGlobalConfigurations::getRobotTwinConfig);
 	}
 
 	/**
@@ -179,8 +180,7 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
 
-		gen.writeStringField(FIELD_ROBOT_TWIN_CONFIG_NAME, m_robotTwinConfigName);
-		gen.writeObjectField(FIELD_ROBOT_TWIN_CONFIG, m_robotTwinConfig);
+		m_robotTwinConfigRef.serialize(gen, FIELD_ROBOT_TWIN_CONFIG);
 		gen.writeStringField(FIELD_VARIABLE, m_variable);
 		if ( m_requireOkQuality != null ) {
 			gen.writeBooleanField(FIELD_REQUIRE_OK_QUALITY, m_requireOkQuality);
@@ -205,10 +205,8 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 		RobotStateVariableConfig config = new RobotStateVariableConfig();
 		config.loadFields(jnode);
 
-		config.m_robotTwinConfigName = JacksonUtils.getStringFieldOrDefault(jnode, FIELD_ROBOT_TWIN_CONFIG_NAME,
-																			DEFAULT_CONN_CONFIG_NAME);
-		JsonNode configNode = JacksonUtils.getFieldOrNull(jnode, FIELD_ROBOT_TWIN_CONFIG);
-		config.m_robotTwinConfig = MDTModelSerDe.readValue(configNode, RobotTwinConfig.class);
+		config.m_robotTwinConfigRef = ConnectionConfigRef.load(jnode, FIELD_ROBOT_TWIN_CONFIG,
+																FIELD_ROBOT_TWIN_CONFIG_NAME, RobotTwinConfig.class);
 		
 		config.m_variable = JacksonUtils.getStringField(jnode, FIELD_VARIABLE);
 
@@ -271,7 +269,8 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 
 	@Override
 	public String toString() {
-		return String.format("%s, twin=%s, variable=%s",
-							super.toString(), getRobotTwinConfig().getTwinId(), m_variable);
+		// 전역 설정 파일을 읽지 않도록 접속 정보를 해석하지 않고 설정에 기술된 내용만 사용한다.
+		String twin = m_robotTwinConfigRef.toDisplayString("robotTwins", RobotTwinConfig::getTwinId);
+		return String.format("%s, twin=%s, variable=%s", super.toString(), twin, m_variable);
 	}
 }

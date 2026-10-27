@@ -17,8 +17,8 @@ import utils.json.JacksonUtils;
 import mdt.ElementLocation;
 import mdt.ElementLocations;
 import mdt.MDTGlobalConfigurations;
-import mdt.model.MDTModelSerDe;
 import mdt.persistence.asset.AssetVariableConfig;
+import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**
@@ -27,7 +27,10 @@ import mdt.persistence.asset.AssetVariableConfig;
  * 모든 JDBC 기반 AssetVariable 설정이 공통으로 갖는 항목을 보관한다.
  * <ul>
  *   <li>element 위치({@link ElementLocation}) — 연결될 SubmodelElement의 위치.</li>
- *   <li>JDBC 접속 설정 — 전역 설정을 가리키는 이름(key)이나 인라인 {@link JdbcConfiguration} 중 하나.</li>
+ *   <li>JDBC 접속 설정({@code jdbcConfig}) — 전역 설정({@code jdbcs})의 항목 이름(문자열)이나
+ *       인라인 {@link JdbcConfiguration}(객체) 중 하나. 생략하면 {@code default}이다.
+ *       이전 형식의 {@code jdbcConfigName}도 받지만 {@code jdbcConfig}와 함께 사용할 수는 없다
+ *       ({@link ConnectionConfigRef}).</li>
  *   <li>유효 기간 — 읽은 값의 캐시 TTL. 미설정 시 {@link Duration#ZERO}(캐시하지 않음).</li>
  * </ul>
  * JDBC 접속 설정은 인라인 설정이 있으면 그것을, 없으면 이름으로 전역 설정
@@ -39,13 +42,11 @@ import mdt.persistence.asset.AssetVariableConfig;
  * @author Kang-Woo Lee (ETRI)
  */
 public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableConfig {
-	private static final String DEFAULT_JDBC_CONFIG_KEY = "default";
-	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";
+	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";	// 이전 형식
 	private static final String FIELD_JDBC_CONFIG = "jdbcConfig";
 
 	private ElementLocation m_elementLoc;
-	private String m_jdbcConfigName;
-	private JdbcConfiguration m_jdbcConfig;
+	private ConnectionConfigRef<JdbcConfiguration> m_jdbcConfigRef;
 	private @Nullable Duration m_validPeriod;
 
 	/** 역직렬화 전용 기본 생성자. */
@@ -55,15 +56,16 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * 주어진 항목으로 설정을 생성한다.
 	 *
 	 * @param elementLoc		연결할 SubmodelElement의 위치. {@code null}이면 안 된다.
-	 * @param jdbcConfigName	사용할 JDBC 접속 설정의 이름(key).
+	 * @param jdbcConfigName	사용할 JDBC 접속 설정의 이름(key). {@code null}이면 {@code default}를 사용한다.
 	 * @param validPeriod		캐시 유효 기간. {@code null}이면 캐시하지 않는다({@link Duration#ZERO}).
 	 */
-	protected AbstractJdbcAssetVariableConfig(ElementLocation elementLoc, String jdbcConfigName,
+	protected AbstractJdbcAssetVariableConfig(ElementLocation elementLoc, @Nullable String jdbcConfigName,
 												@Nullable Duration validPeriod) {
 		Preconditions.checkNotNullArgument(elementLoc, "elementLoc is null");
 
 		m_elementLoc = elementLoc;
-		m_jdbcConfigName = jdbcConfigName;
+		m_jdbcConfigRef = ConnectionConfigRef.ofName(Optionals.getOrElse(jdbcConfigName,
+																		ConnectionConfigRef.DEFAULT_NAME));
 		m_validPeriod = validPeriod;
 	}
 
@@ -81,12 +83,16 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * @return JDBC 접속 설정.
 	 */
 	public JdbcConfiguration getJdbcConfig() {
-		if ( m_jdbcConfig == null ) {
-			return MDTGlobalConfigurations.getJdbcConfig(m_jdbcConfigName);
-		}
-		else {
-			return m_jdbcConfig;
-		}
+		return m_jdbcConfigRef.resolve(MDTGlobalConfigurations::getJdbcConfig);
+	}
+	
+	/**
+	 * JDBC 접속 설정의 참조(전역 설정 이름 또는 인라인 설정)를 반환한다.
+	 *
+	 * @return	JDBC 접속 설정 참조.
+	 */
+	public ConnectionConfigRef<JdbcConfiguration> getJdbcConfigRef() {
+		return m_jdbcConfigRef;
 	}
 
 	/**
@@ -110,7 +116,8 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	/**
 	 * 공통 필드(element 위치, JDBC 접속 설정, 유효 기간)를 주어진 {@link JsonGenerator}로 직렬화한다.
 	 * <p>
-	 * JDBC 접속 설정은 이름(key)과 인라인 설정 중 설정된 것만, 유효 기간도 설정된 경우에만 기록한다.
+	 * JDBC 접속 설정은 지정된 형태(이름 또는 객체) 그대로 {@code jdbcConfig}에 기록하고,
+	 * 유효 기간은 설정된 경우에만 기록한다.
 	 *
 	 * @param gen	직렬화에 사용할 JsonGenerator.
 	 * @throws IOException	직렬화가 실패한 경우.
@@ -118,15 +125,14 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
-		Optionals.acceptThrow(m_jdbcConfigName, name -> gen.writeStringField(FIELD_JDBC_CONFIG_NAME, name));
-		Optionals.acceptThrow(m_jdbcConfig, cfg -> gen.writeObjectField(FIELD_JDBC_CONFIG, cfg));
+		m_jdbcConfigRef.serialize(gen, FIELD_JDBC_CONFIG);
 		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
 	}
 
 	/**
 	 * 주어진 JSON 노드로부터 공통 필드를 읽어 이 설정 객체에 채운다.
 	 * <p>
-	 * JDBC 접속 설정 이름이 없으면 {@code "default"}를 사용한다.
+	 * JDBC 접속 설정이 없으면 전역 설정의 {@code default} 항목을 사용한다.
 	 *
 	 * @param jnode	JSON 노드.
 	 * @throws IOException	역직렬화가 실패한 경우.
@@ -135,16 +141,15 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
-		m_jdbcConfigName = Optionals.getOrElse(JacksonUtils.getStringFieldOrNull(jnode, FIELD_JDBC_CONFIG_NAME),
-											DEFAULT_JDBC_CONFIG_KEY);
-		JsonNode configNode = JacksonUtils.getFieldOrNull(jnode, FIELD_JDBC_CONFIG);
-		m_jdbcConfig = MDTModelSerDe.readValue(configNode, JdbcConfiguration.class);
+		m_jdbcConfigRef = ConnectionConfigRef.load(jnode, FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME,
+													JdbcConfiguration.class);
 		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
 	}
 	
 	@Override
 	public String toString() {
-		String jdbcKey = Optionals.getOrElse(m_jdbcConfigName, "");
+		// 인라인 설정의 URL에는 비밀번호가 포함될 수 있으므로 출력하지 않는다.
+		String jdbcKey = m_jdbcConfigRef.toDisplayString("jdbcs", cfg -> "(inline)");
 		String validStr = Optionals.getOrElse(m_validPeriod, Duration.ZERO).toString();
 		return String.format("%s, jdbc=%s, valid=%s", m_elementLoc, jdbcKey, validStr);
 	}

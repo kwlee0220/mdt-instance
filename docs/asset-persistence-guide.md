@@ -166,6 +166,27 @@ flowchart TD
 
 공통 필드는 `element`와 선택 필드 `validPeriod`다. `validPeriod`는 생략 시 `Duration.ZERO`이며, `500ms`, `1s`, `PT1S`처럼 단위가 있는 값으로 지정한다. 직렬화 시에는 `Duration.toString()` 형식으로 기록된다.
 
+### 연결 설정 지정
+
+외부 연결이 필요한 변수는 연결 설정을 하나의 필드로 지정한다. 값이 문자열이면 전역 설정 파일의 항목 이름이고, 객체이면 연결 설정을 직접 기술한 것이다. 필드를 생략하면 전역 설정의 `default` 항목을 사용한다. MQTT 수신 엔드포인트(`serviceEndpoints.mqtt`)와 JDBC Audit도 같은 방식이다.
+
+| 변수 | 연결 설정 필드 | 전역 설정 그룹 | 이전 형식의 이름 필드 |
+| --- | --- | --- | --- |
+| JDBC 계열 | `jdbcConfig` | `jdbcs` | `jdbcConfigName` |
+| MQTT | `mqttBrokerConfig` | `mqttBrokers` | `mqttBrokerConfigName` |
+| RobotTwin 상태 | `robotTwinConfig` | `robotTwins` | `robotTwinConfigName` |
+
+```json
+"jdbcConfig": "factory"
+"jdbcConfig": { "jdbcUrl": "jdbc:postgresql://localhost:5432/mdt", "user": "mdt", "password": "..." }
+```
+
+이전 형식의 이름 필드도 계속 받지만, 새 필드와 함께 쓰면 설정 오류로 시작에 실패한다. 직렬화할 때는 새 필드 하나에 지정된 형태 그대로 기록하며, 인라인 설정의 값이 `null`인 필드는 기록하지 않는다. 로그에 출력하는 설정 문자열은 전역 설정 파일을 읽지 않고 `jdbcs.factory`처럼 이름을 표시하며, 인라인 JDBC 설정은 URL에 비밀번호가 있을 수 있어 `(inline)`으로만 표시한다.
+
+관련 코드: [ConnectionConfigRef.java](../src/main/java/mdt/persistence/asset/ConnectionConfigRef.java).
+
+### 캐시 유효 기간
+
 캐시 만료는 `현재 시각 - 마지막 갱신 시각 > validPeriod`로 판정한다. 초기 갱신 시각은 `Instant.EPOCH`다. JDBC, HTTP, RobotTwin 구현은 이 판정을 사용하지만 OPC UA 구현은 매번 노드를 읽으며 MQTT에는 읽기 캐시가 없다. `validPeriod`가 모든 프로토콜에 같은 효력을 갖는 것은 아니다.
 
 설정 레지스트리: [AssetVariableConfigs.java](../src/main/java/mdt/persistence/asset/AssetVariableConfigs.java).
@@ -174,7 +195,7 @@ flowchart TD
 
 ### 공통 연결 설정과 캐시
 
-JDBC 설정은 `jdbcConfig`에 접속 정보를 직접 넣거나 `jdbcConfigName`으로 전역 설정의 `jdbcs` 항목을 참조한다. 두 값이 모두 있으면 인라인 `jdbcConfig`가 우선한다. JSON에서 이름을 생략하면 `default`를 사용한다.
+JDBC 접속 정보는 `jdbcConfig`로 지정한다. 전역 설정 `jdbcs`의 항목 이름이나 접속 정보 객체를 쓸 수 있고, 생략하면 `default`를 사용한다([연결 설정 지정](#연결-설정-지정)).
 
 `AbstractJdbcAssetVariable`은 변수별 `Guard`로 캐시 접근을 직렬화한다.
 
@@ -212,7 +233,7 @@ sequenceDiagram
     {
       "@type": "mdt:asset:jdbc:simple",
       "element": "Telemetry:Measurements.Temperature",
-      "jdbcConfigName": "default",
+      "jdbcConfig": "default",
       "validPeriod": "1s",
       "readQuery": "SELECT temperature FROM machine_state WHERE machine_id = 'machine01'",
       "updateQuery": "UPDATE machine_state SET temperature = ? WHERE machine_id = 'machine01'"
@@ -231,7 +252,7 @@ sequenceDiagram
 {
   "@type": "mdt:asset:jdbc:multi-column",
   "element": "Telemetry:Measurements",
-  "jdbcConfigName": "default",
+  "jdbcConfig": "default",
   "validPeriod": "500ms",
   "table": "machine_state",
   "whereClause": "WHERE machine_id = 'machine01'",
@@ -264,7 +285,7 @@ sequenceDiagram
 {
   "@type": "mdt:asset:jdbc:multi-row",
   "element": "Telemetry:Measurements",
-  "jdbcConfigName": "default",
+  "jdbcConfig": "default",
   "validPeriod": "1s",
   "readQuery": "SELECT metric_key, metric_value FROM machine_metric WHERE machine_id = 'machine01'",
   "updateQuery": "UPDATE machine_metric SET metric_value = ? WHERE metric_key = ? AND machine_id = 'machine01'",
@@ -411,7 +432,7 @@ simple은 반환값을 요소 타입에 맞춰 반영하고 Bad 상태 코드를
 GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 ```
 
-접속 정보는 인라인 `robotTwinConfig` 또는 전역 `robotTwins.<robotTwinConfigName>`에서 읽는다. 인라인 설정이 우선하고 이름의 기본값은 `default`다. 현재 파서는 URL과 twin ID를 아래처럼 `robotTwinConfig` 안에서 받는다.
+접속 정보는 `robotTwinConfig`로 지정한다. 전역 설정 `robotTwins`의 항목 이름이나 접속 정보 객체를 쓸 수 있고, 생략하면 `default`를 사용한다([연결 설정 지정](#연결-설정-지정)). 객체로 지정할 때는 URL과 twin ID를 아래처럼 기술한다.
 
 ```json
 {
