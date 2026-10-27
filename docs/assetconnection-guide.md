@@ -426,8 +426,9 @@ RPC 클라이언트에는 세션 DELETE 취소 기능이 있지만 `OperationPro
 ## RobotTwin 연산
 
 로봇 연산은 `operations.javas`에 Java 제공자로 등록한다.
-`RobotTwinOperationProvider`는 `arguments.robotTwinConfigName`으로 전역 `robotTwins` 설정을 선택하거나,
-이 이름이 없으면 `arguments.robotTwinConfig` 객체를 사용한다.
+`RobotTwinOperationProvider`는 `arguments.robotTwinConfig`로 접속 정보를 지정한다.
+문자열이면 전역 `robotTwins` 설정의 항목 이름이고, 객체이면 접속 정보이다. 생략하면 전역 설정의 `default` 항목을 사용한다.
+이전 형식의 `arguments.robotTwinConfigName`도 받지만, `robotTwinConfig`와 함께 쓰면 Provider 생성이 실패한다.
 
 ```json
 {

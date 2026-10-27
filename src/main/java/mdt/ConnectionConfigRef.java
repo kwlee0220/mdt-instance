@@ -1,4 +1,4 @@
-package mdt.persistence.asset;
+package mdt;
 
 import java.io.IOException;
 import java.util.function.Function;
@@ -16,7 +16,7 @@ import mdt.model.MDTModelSerDe;
 
 
 /**
- * AssetVariable 설정에서 외부 연결 설정(JDBC, MQTT broker, 로봇 트윈 등)을 가리키는 참조.
+ * AssetVariable·연산 설정에서 외부 연결 설정(JDBC, MQTT broker, 로봇 트윈 등)을 가리키는 참조.
  * <p>
  * 연결 설정은 전역 설정 파일의 항목 이름과 설정 객체 중 정확히 하나로 지정한다.
  * JSON에서는 하나의 필드로 기술하며, 값이 문자열이면 전역 설정 이름으로, 객체이면 연결 설정으로 해석한다.

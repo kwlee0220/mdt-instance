@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import utils.jdbc.JdbcConfiguration;
 
+import mdt.ConnectionConfigRef;
 import mdt.persistence.asset.jdbc.SimpleJdbcAssetVariableConfig;
 import mdt.persistence.asset.robot.RobotStateVariableConfig;
 

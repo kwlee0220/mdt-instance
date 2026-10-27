@@ -14,11 +14,11 @@ import utils.func.Optionals;
 import utils.jdbc.JdbcConfiguration;
 import utils.json.JacksonUtils;
 
+import mdt.ConnectionConfigRef;
 import mdt.ElementLocation;
 import mdt.ElementLocations;
 import mdt.MDTGlobalConfigurations;
 import mdt.persistence.asset.AssetVariableConfig;
-import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**

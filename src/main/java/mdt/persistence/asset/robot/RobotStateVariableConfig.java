@@ -17,12 +17,12 @@ import utils.json.JacksonDeserializationException;
 import utils.Preconditions;
 import utils.json.JacksonUtils;
 
+import mdt.ConnectionConfigRef;
 import mdt.ElementLocation;
 import mdt.MDTGlobalConfigurations;
 import mdt.endpoint.rt.RobotTwinConfig;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
 import mdt.persistence.asset.AssetVariableConfig;
-import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**

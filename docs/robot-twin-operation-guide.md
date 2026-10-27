@@ -137,7 +137,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
       "Data:Operations.Grasp": {
         "className": "mdt.assetconnection.operation.robot.GraspProvider",
         "arguments": {
-          "robotTwinConfigName": "panda_functionbay"
+          "robotTwinConfig": "panda_functionbay"
         }
       }
     }
@@ -145,7 +145,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 }
 ```
 
-`robotTwinConfigName`은 전역 로봇 트윈 설정을 참조한다. 이름 참조 대신 `arguments`에 아래와 같이 직접 설정할 수도 있다.
+`robotTwinConfig`가 문자열이면 전역 설정 `robotTwins`의 항목 이름이다. 이름 대신 `arguments`에 아래와 같이 접속 정보를 직접 넣을 수도 있다. 인자를 생략하면 전역 설정의 `default` 항목(없으면 그룹의 첫 항목)을 사용한다.
 
 ```json
 {
@@ -156,7 +156,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 }
 ```
 
-위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 두 설정을 모두 넣으면 이름 설정이 우선한다. `RobotTwinConfig.operations` 필드는 존재하지만 이 패키지의 현재 Provider는 그 맵으로 원격 연산 이름을 재지정하지 않는다.
+위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([asset-persistence-guide](asset-persistence-guide.md#연결-설정-지정)). `RobotTwinConfig.operations` 필드는 존재하지만 이 패키지의 현재 Provider는 그 맵으로 원격 연산 이름을 재지정하지 않는다.
 
 ### 3.2 Pose와 관절 목표
 

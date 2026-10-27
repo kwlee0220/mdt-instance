@@ -11,12 +11,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.UnitUtils;
 import utils.json.JacksonUtils;
 
+import mdt.ConnectionConfigRef;
 import mdt.MDTGlobalConfigurations;
 import mdt.client.support.MqttBrokerConfig;
 import mdt.model.ResourceNotFoundException;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
 import mdt.persistence.asset.AssetVariableConfig;
-import mdt.persistence.asset.ConnectionConfigRef;
 
 
 /**
