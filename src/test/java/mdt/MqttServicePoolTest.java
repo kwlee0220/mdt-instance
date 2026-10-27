@@ -2,6 +2,8 @@ package mdt;
 
 import static org.junit.Assert.*;
 
+import java.time.Duration;
+
 import org.junit.After;
 import org.junit.Test;
 
@@ -62,6 +64,17 @@ public class MqttServicePoolTest {
 				MqttServicePool.Lease lease2 = MqttServicePool.acquire(config(UNREACHABLE_BROKER, "30s")) ) {
 			assertNotSame(lease1.getService(), lease2.getService());
 			assertEquals(2, MqttServicePool.size());
+		}
+	}
+
+	@Test
+	public void testDifferentReconnectIntervalsUseDifferentConnections() throws Exception {
+		MqttBrokerConfig slow = config(UNREACHABLE_BROKER, null);
+		slow.setReconnectInterval("30s");
+		try ( MqttServicePool.Lease lease1 = MqttServicePool.acquire(config(UNREACHABLE_BROKER, null));
+				MqttServicePool.Lease lease2 = MqttServicePool.acquire(slow) ) {
+			assertNotSame(lease1.getService(), lease2.getService());
+			assertEquals(Duration.ofSeconds(30), lease2.getService().getReconnectInterval());
 		}
 	}
 

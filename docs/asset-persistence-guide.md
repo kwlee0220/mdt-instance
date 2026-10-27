@@ -349,7 +349,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 `MqttAssetVariable`은 쓰기 전용이다. `initialize()`에서 broker 설정을 한 번 해석하여 보관하고 `MqttServicePool`에서 broker 연결을 얻으며, `update()`에서 `ElementValues.getValue(newElement).toValueJsonString()`을 설정된 topic으로 발행한다. AAS 요소의 전체 메타데이터가 아닌 값 표현이 메시지 본문이다.
 
-같은 broker 설정(URL, 연결 timeout, keep-alive 주기)을 쓰는 MQTT 변수들과 MQTT 수신 엔드포인트(`serviceEndpoints.mqtt`)는 연결 하나를 공유한다. 전역 설정 이름으로 지정했는지 인라인으로 지정했는지와 관계없이 해석된 설정 값이 같으면 같은 연결을 쓴다. `close()`는 연결 사용권을 반납하며, 마지막 사용자가 반납할 때 재연결 시도를 멈추고 broker와의 연결을 끊는다(최대 5초 대기).
+같은 broker 설정(URL, 연결 timeout, keep-alive 주기, 재연결 간격)을 쓰는 MQTT 변수들과 MQTT 수신 엔드포인트(`serviceEndpoints.mqtt`)는 연결 하나를 공유한다. 전역 설정 이름으로 지정했는지 인라인으로 지정했는지와 관계없이 해석된 설정 값이 같으면 같은 연결을 쓴다. `close()`는 연결 사용권을 반납하며, 마지막 사용자가 반납할 때 재연결 시도를 멈추고 broker와의 연결을 끊는다(최대 5초 대기).
 
 ```json
 {
@@ -366,7 +366,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `mqttBrokerConfig` | `"default"` | 문자열이면 전역 `mqttBrokers`의 항목 이름, 객체면 broker 설정(`brokerUrl`, `connectionTimeout`, `keepAliveInterval`)이다. MQTT 수신 엔드포인트의 같은 필드와 형식이 같다. |
+| `mqttBrokerConfig` | `"default"` | 문자열이면 전역 `mqttBrokers`의 항목 이름, 객체면 broker 설정(`brokerUrl`, `connectionTimeout`, `keepAliveInterval`, `reconnectInterval`)이다. MQTT 수신 엔드포인트의 같은 필드와 형식이 같다. |
 | `topic` | (필수) | 발행 topic. 와일드카드(`+`, `#`)가 있거나 비어 있으면 설정 오류로 시작에 실패한다. |
 | `qos` | `1` | 0, 1, 2. QoS 0은 broker의 확인을 기다리지 않고, 1·2는 각각 PUBACK·PUBCOMP를 기다린다. |
 | `retained` | `false` | `true`이면 broker가 마지막 메시지를 보관했다가 새로 구독한 쪽에 바로 전달한다. 인스턴스를 없앤 뒤에도 broker에 마지막 값이 남는다. |

@@ -21,7 +21,7 @@ import mdt.client.support.MqttService;
 /**
  * MQTT broker 연결({@link MqttService})을 broker 설정별로 공유하는 pool.
  * <p>
- * 같은 broker 설정(URL, 연결 timeout, keep-alive 주기)으로 {@link #acquire(MqttBrokerConfig)}를 호출하면
+ * 같은 broker 설정(URL, 연결 timeout, keep-alive 주기, 재연결 간격)으로 {@link #acquire(MqttBrokerConfig)}를 호출하면
  * 하나의 {@link MqttService}를 함께 사용한다. 처음 획득할 때 서비스를 생성하여 시작하고, 획득한
  * {@link Lease}가 모두 반납되면 서비스를 중지하여 broker와의 연결을 끊는다.
  * <p>
@@ -35,10 +35,11 @@ public final class MqttServicePool {
 	private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
 
 	// 같은 연결을 공유할 수 있는지 판단하는 키
-	private record BrokerKey(String brokerUrl, String connectionTimeout, String keepAliveInterval) {
+	private record BrokerKey(String brokerUrl, String connectionTimeout, String keepAliveInterval,
+								String reconnectInterval) {
 		static BrokerKey of(MqttBrokerConfig config) {
 			return new BrokerKey(config.getBrokerUrl(), config.getConnectionTimeout(),
-									config.getKeepAliveInterval());
+									config.getKeepAliveInterval(), config.getReconnectInterval());
 		}
 	}
 

@@ -213,6 +213,9 @@ primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한
 `mqttBrokerConfig` 기본값은 `default`, `subscribers` 기본값은 빈 목록이다.
 각 구독은 `topic`과 `element`를 요구한다. 브로커 설정의 URL 기본값은 `tcp://localhost:1883`이며,
 timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용한다.
+`reconnectInterval`(예: `"10s"`)은 연결될 때까지 다시 시도하는 간격이다. 첫 연결 재시도 간격이면서,
+연결된 뒤 끊어졌을 때 Paho 자동 재연결 간격의 상한이다(Paho는 1초부터 두 배씩 늘려 이 값까지 기다린다).
+생략하면 첫 연결은 5초 간격, 재연결은 최대 128초 간격이다.
 현재 `MqttBrokerConfig`에는 사용자명·비밀번호·인증서 필드가 없다.
 지원하지 않는 필드(예: 오타인 `connectTimeout`)는 무시되며, 설정을 읽을 때 경고 로그를 남긴다.
 
@@ -246,7 +249,7 @@ Property 문자열은 JSON 문자열로 인코딩해야 한다. 완전한 AAS �
 
 ### 4.3 연결·오류 처리
 
-broker 연결은 `MqttServicePool`을 통해 같은 broker 설정(URL, 연결 timeout, keep-alive 주기)을 쓰는
+broker 연결은 `MqttServicePool`을 통해 같은 broker 설정(URL, 연결 timeout, keep-alive 주기, 재연결 간격)을 쓰는
 MQTT 자산 변수(`mdt:asset:mqtt`)와 공유한다. 처음 연결을 얻는 쪽이 `MqttService`를 만들어 시작하고,
 마지막 사용자가 반납하면 연결을 끊는다. `stop()`은 이 엔드포인트의 구독을 해제한 뒤 연결을 반납하며,
 마지막 사용자인 경우 연결이 종료될 때까지 최대 5초 기다린다.
