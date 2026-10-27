@@ -203,10 +203,18 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 			else if ( AssetVariable.isPathPrefix(varElmPath, elementPath) ) {	// element < var
 				// 갱신 영역이 AssetVariable의 영역의 일부인 경우
 				// AssetVariable의 SubmodelElement 중 갱신된 부분만 바꿔 다시 저장한다.
-				// 동시에 들어온 다른 갱신이 사라지지 않도록, 읽기-수정-저장은 AssetVariable이
-				// 자신의 임계 구역에서 수행하게 한다(updatePart).
 				String relPath = SubmodelUtils.toRelativeIdShortPath(varElmPath, elementPath);
-				var.updatePart(relPath, update);
+				if ( var.isReadable() ) {
+					// 동시에 들어온 다른 갱신이 사라지지 않도록, 읽기-수정-저장은 AssetVariable이
+					// 자신의 임계 구역에서 수행하게 한다(updatePart).
+					var.updatePart(relPath, update);
+				}
+				else {
+					// 쓰기 전용 AssetVariable(예: MQTT)은 현재 값을 읽을 수 없으므로 updatePart()를 쓸 수 없다.
+					// 대신 base persistence에 저장된 현재 값을 읽어 갱신된 부분만 바꾼 뒤 전체를 기록한다.
+					// (base persistence는 이 요청의 끝에서 갱신되므로, 아직 이전 값을 갖고 있다)
+					var.update(mergePart(var, relPath, update));
+				}
 
 				getLogger().debug("update AssetVariable: {}, sub-path={}", var, relPath);
 			}
@@ -223,6 +231,27 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		}
 		
 		getBasePersistence().update(identifier, update);
+	}
+
+	/**
+	 * base persistence에 저장된 AssetVariable의 현재 값에 하위 요소 {@code part}를 반영한 사본을 반환한다.
+	 * <p>
+	 * base persistence가 반환한 객체를 변경하지 않도록 사본을 만들어 반영한다.
+	 * 서로 다른 하위 요소에 대한 갱신이 동시에 들어오면, 기록되는 전체 값에 다른 갱신의 변경이
+	 * 빠질 수 있다. 이를 막으려면 {@code ConcurrentPersistence}로 요청을 직렬화한다.
+	 *
+	 * @param var		쓰기 전용 AssetVariable.
+	 * @param relPath	AssetVariable의 요소를 기준으로 한 하위 요소의 상대 경로.
+	 * @param part		하위 요소에 반영할 값.
+	 * @return	하위 요소의 값이 반영된 AssetVariable 요소 전체.
+	 */
+	private SubmodelElement mergePart(AssetVariable var, String relPath, SubmodelElement part)
+		throws ResourceNotFoundException, PersistenceException {
+		SubmodelElementIdentifier varId = var.getElementLocation().toIdentifier();
+		SubmodelElement whole = SubmodelUtils.duplicate(getBasePersistence().getSubmodelElement(varId,
+																								QueryModifier.DEFAULT));
+		ElementValues.update(SubmodelUtils.traverse(whole, relPath), ElementValues.getValue(part));
+		return whole;
 	}
 
 	@Override

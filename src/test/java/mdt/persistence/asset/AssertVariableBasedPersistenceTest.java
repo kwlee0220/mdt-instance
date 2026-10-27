@@ -11,12 +11,19 @@ import java.util.Map;
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
 import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
+import org.eclipse.digitaltwin.aas4j.v3.model.Property;
+import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementCollection;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultProperty;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultSubmodel;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultSubmodelElementCollection;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.modifier.QueryModifier;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.Persistence;
 
 import mdt.ElementLocation;
@@ -92,10 +99,95 @@ public class AssertVariableBasedPersistenceTest {
 		verify(m_base).save(submodel);
 	}
 
+	// 검토 #5: 쓰기 전용 AssetVariable이 연결된 Collection의 하위 요소만 갱신하는 경우,
+	// base persistence의 현재 값에 갱신 부분을 반영한 전체 값을 외부에 기록한다.
+	@Test
+	public void testPartialUpdateOfWriteOnlyVariable() throws Exception {
+		AssetVariable var = variable("Measurements");
+		setAssetVariables(var);
+		SubmodelElementCollection stored = measurements("20", "100");
+		when(m_base.getSubmodelElement(any(SubmodelElementIdentifier.class), any(QueryModifier.class)))
+			.thenReturn(stored);
+		
+		SubmodelElementIdentifier id = identifier("Measurements.Temperature");
+		Property part = property("Temperature", "25");
+		m_persistence.update(id, part);
+		
+		ArgumentCaptor<SubmodelElement> written = ArgumentCaptor.forClass(SubmodelElement.class);
+		InOrder order = inOrder(var, m_base);
+		order.verify(var).update(written.capture());
+		order.verify(m_base).update(id, part);
+		verify(var, never()).updatePart(any(), any());
+		
+		// 갱신한 Temperature와 base에 저장된 Pressure가 함께 기록된다.
+		SubmodelElementCollection whole = (SubmodelElementCollection)written.getValue();
+		assertEquals("25", value(whole, "Temperature"));
+		assertEquals("100", value(whole, "Pressure"));
+		// base persistence가 반환한 객체는 변경하지 않는다.
+		assertEquals("20", value(stored, "Temperature"));
+	}
+
+	@Test
+	public void testPartialUpdateOfWriteOnlyVariableFails() throws Exception {
+		AssetVariable var = variable("Measurements");
+		doThrow(new AssetVariableException("broker is not connected")).when(var).update(any());
+		setAssetVariables(var);
+		when(m_base.getSubmodelElement(any(SubmodelElementIdentifier.class), any(QueryModifier.class)))
+			.thenReturn(measurements("20", "100"));
+		
+		assertThrows(AssetVariableException.class,
+					() -> m_persistence.update(identifier("Measurements.Temperature"), property("Temperature", "25")));
+		verify(m_base, never()).update(any(SubmodelElementIdentifier.class), any(SubmodelElement.class));
+	}
+
+	@Test
+	public void testPartialUpdateOfReadableVariableUsesUpdatePart() throws Exception {
+		AssetVariable var = variable("Measurements");
+		when(var.isReadable()).thenReturn(true);
+		setAssetVariables(var);
+		
+		Property part = property("Temperature", "25");
+		m_persistence.update(identifier("Measurements.Temperature"), part);
+		
+		verify(var).updatePart("Temperature", part);
+		verify(var, never()).update(any());
+		verify(m_base, never()).getSubmodelElement(any(SubmodelElementIdentifier.class), any(QueryModifier.class));
+	}
+	
+	private static SubmodelElementIdentifier identifier(String path) {
+		return SubmodelElementIdentifier.builder()
+										.submodelId(SUBMODEL_ID)
+										.idShortPath(IdShortPath.parse(path))
+										.build();
+	}
+	
+	private static Property property(String idShort, String value) {
+		return new DefaultProperty.Builder()
+								.idShort(idShort)
+								.valueType(DataTypeDefXsd.INT)
+								.value(value)
+								.build();
+	}
+	
+	private static SubmodelElementCollection measurements(String temperature, String pressure) {
+		return new DefaultSubmodelElementCollection.Builder()
+								.idShort("Measurements")
+								.value(List.of(property("Temperature", temperature), property("Pressure", pressure)))
+								.build();
+	}
+	
+	private static String value(SubmodelElementCollection coll, String idShort) {
+		return coll.getValue().stream()
+					.filter(e -> e.getIdShort().equals(idShort))
+					.map(e -> ((Property)e).getValue())
+					.findFirst().orElseThrow();
+	}
+	
 	private static AssetVariable variable(String elementPath) {
 		ElementLocation loc = mock(ElementLocation.class);
 		when(loc.getSubmodelId()).thenReturn(SUBMODEL_ID);
 		when(loc.getElementPath()).thenReturn(elementPath);
+		when(loc.toIdentifier()).thenCallRealMethod();
 
 		AssetVariable var = mock(AssetVariable.class);
 		when(var.getElementLocation()).thenReturn(loc);

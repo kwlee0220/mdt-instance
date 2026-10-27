@@ -130,7 +130,7 @@ flowchart TD
 | 요청과 변수의 관계 | 외부 갱신 |
 | --- | --- |
 | 같은 경로 | `var.update(update)` |
-| 요청이 변수의 하위 경로 | `var.updatePart(relativePath, update)` |
+| 요청이 변수의 하위 경로 | 읽기 가능한 변수는 `var.updatePart(relativePath, update)`. 쓰기 전용 변수는 기본 모델의 현재 값에 요청 부분을 반영한 전체 값으로 `var.update(...)` |
 | 요청이 변수의 상위 경로 | 요청 객체에서 변수 영역을 추출하여 `var.update(subElement)` |
 | 겹치지 않음 | 해당 변수는 건너뜀 |
 
@@ -386,7 +386,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 확인을 기다리는 동안에는 공유 연결의 lock을 잡지 않으므로, 한 변수의 발행이 느려도 같은 연결을 쓰는 다른 변수의 발행이나 구독이 막히지 않는다. 다만 `ConcurrentPersistence`를 사용하면 이 대기 시간 동안 인스턴스의 다른 요청은 기다리게 된다.
 
-하위 요소 갱신에는 제한이 있다. `Measurements.Temperature`만 갱신하면 영속성 계층이 기본 `updatePart()`를 호출하는데, MQTT의 `read()`는 미지원 예외를 던진다. 따라서 이 구성에서는 `Measurements` 전체를 갱신하거나, 발행 단위를 개별 Property에 연결해야 한다.
+Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 된다. 예를 들어 `Measurements.Temperature`만 갱신하면, MQTT 변수는 현재 값을 읽을 수 없으므로 영속성 계층이 기본 모델에 저장된 `Measurements`를 복사해 `Temperature`만 바꾼 뒤 `Measurements` 전체 값을 발행한다. 서로 다른 하위 요소에 대한 갱신이 동시에 들어오면 발행된 값에 다른 갱신의 변경이 빠질 수 있으며, `ConcurrentPersistence`로 요청을 직렬화하면 이를 막을 수 있다. 기본 모델에는 각 요청의 하위 요소가 정상적으로 저장된다.
 
 관련 코드: [MqttAssetVariable.java](../src/main/java/mdt/persistence/asset/mqtt/MqttAssetVariable.java).
 
@@ -475,7 +475,7 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 3. `AssetVariableConfigs.parseJsonNode()`에 해당 타입의 분기를 등록한다.
 4. 같은 패키지에 `ExampleAssetVariable`을 만들고, 접근 가능한 `ExampleAssetVariable(ExampleAssetVariableConfig config)` 생성자를 제공한다.
 5. 읽기·쓰기 지원 여부, 초기화와 데이터 변환을 구현한다. `read()`의 독립 객체 반환과 `update()` 입력 객체의 소유권 계약을 지킨다.
-6. 쓰기 가능한 복합 요소에서 동시 부분 갱신이 가능하다면 `updatePart()` 전체를 보호한다. 쓰기 전용 구현은 기본 `updatePart()`가 `read()`에 의존한다는 점을 고려한다.
+6. 쓰기 가능한 복합 요소에서 동시 부분 갱신이 가능하다면 `updatePart()` 전체를 보호한다. 쓰기 전용 구현(`isReadable()`이 `false`)에는 영속성 계층이 `updatePart()` 대신 기본 모델의 현재 값으로 만든 전체 값을 `update()`로 전달한다.
 7. 연결이나 백그라운드 작업을 시작하는 구현은 `close()`에서 이를 정리한다. `close()`는 `initialize()`가 끝나지 않은 상태에서도 호출될 수 있고, 여러 번 호출되어도 안전해야 한다.
 
 JDBC 확장은 `AbstractJdbcAssetVariable`과 `AbstractJdbcAssetVariableConfig`를 기반으로 할 수 있다. `loadOnBuffer(Connection)`에서 조회 값을 prototype에 반영하고, `saveBuffer(Connection, SubmodelElement)`에서는 전달받은 값을 저장한다. 저장 성공 전 prototype을 바꾸거나 입력 객체를 수정하지 않아야 공통 캐시 처리와 일관된다.
