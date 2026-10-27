@@ -217,8 +217,8 @@ timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용�
 
 ### 4.2 수신 값 계약
 
-1. `init()`에서 `MqttService`를 만들고 구독을 등록한다.
-2. `start()`에서 요소 위치를 활성화한 뒤 MQTT 서비스를 비동기로 시작한다.
+1. `init()`에서 broker 설정을 해석한다.
+2. `start()`에서 요소 위치를 활성화한 뒤 `MqttServicePool`에서 broker 연결을 얻어 구독을 등록한다.
 3. 수신 payload를 UTF-8 문자열로 읽는다.
 4. 최초 메시지에서 대상 요소의 FA³ST `TypeInfo`를 조회하고 값 파서를 캐시한다.
 5. `PatchSubmodelElementValueByPathRequest`를 실행하여 값을 갱신한다.
@@ -245,17 +245,24 @@ Property 문자열은 JSON 문자열로 인코딩해야 한다. 완전한 AAS �
 
 ### 4.3 연결·오류 처리
 
+broker 연결은 `MqttServicePool`을 통해 같은 broker 설정(URL, 연결 timeout, keep-alive 주기)을 쓰는
+MQTT 자산 변수(`mdt:asset:mqtt`)와 공유한다. 처음 연결을 얻는 쪽이 `MqttService`를 만들어 시작하고,
+마지막 사용자가 반납하면 연결을 끊는다. `stop()`은 이 엔드포인트의 구독을 해제한 뒤 연결을 반납하며,
+마지막 사용자인 경우 연결이 종료될 때까지 최대 5초 기다린다.
+
 `MqttService`는 초기 연결을 반복 시도하며 기본 재시도 간격은 5초다.
 연결 옵션은 clean session과 Paho 자동 재연결을 사용하고, 연결 완료 callback에서 모든 토픽을 재구독한다.
-엔드포인트는 구독 등록 시 QoS 1을 넘기지만, 연결 완료 후 재구독 경로는 `client.subscribe(topic)`을
-호출한다. QoS 인자를 별도로 저장하지 않으므로 전체 연결 생명주기에 걸친 QoS 고정 설정으로 해석하면 안 된다.
+`MqttService`는 topic별 QoS(같은 topic에 요청된 QoS 중 최댓값)를 보관하여 재구독할 때도 같은 QoS를 사용하며,
+일부 topic의 재구독이 실패해도 나머지 topic은 계속 구독한다. 엔드포인트는 QoS 1로 구독한다.
+같은 topic을 여러 구독자가 구독하면 broker 구독은 하나만 유지되고, 마지막 구독자가 해제될 때 broker 구독도 해제된다.
 
 `+`, `#` 토픽 패턴을 지원하는 로컬 분배 로직이 있다. 중복·겹치는 구독은 같은 메시지를 여러 대상에
 반영할 수 있다. 엔드포인트에는 중복 제거, 수신 시각 비교, 메시지 저장·재처리 큐가 없다.
 
-값 변경 중 예외는 로그에 기록한다. 최초 타입 파서 생성은 해당 try/catch 밖에 있고,
-상위 `MqttService`는 구독 callback의 예외를 무시하므로 일부 초기 처리 실패가 엔드포인트 오류 로그 없이
-끝날 수 있다. 서비스의 RUNNING 상태도 실제 브로커 접속 완료와 동일하지 않다.
+값 변경 중 예외는 로그에 기록한다. 최초 타입 파서 생성은 해당 try/catch 밖에 있으며, 여기서 발생한 예외는
+상위 `MqttService`가 경고 로그로 남기고 같은 topic의 다른 구독자에게는 계속 전달한다.
+구독자 호출은 `MqttService`의 lock 밖에서 수행되므로, 메시지 처리 중에도 다른 구독·발행이 막히지 않는다.
+서비스의 RUNNING 상태는 실제 브로커 접속 완료와 동일하지 않다.
 
 근거: [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java),
 [MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java),

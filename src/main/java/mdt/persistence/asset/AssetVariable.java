@@ -17,11 +17,13 @@ import mdt.persistence.MDTModelLookup;
  * {@link #update(SubmodelElement)}를 통해 SubmodelElement의 값이 설정 설비에 전달된다.
  * <p>
  * 일부 설비의 경우에는 설비로 부터 데이터 읽기만 가능하고, 데이터 쓰기는 불가능한 경우가 있다.
- * 이 경우에는 {@link #isUpdatable()}가 {@code false}를 반환한다. 
+ * 이 경우에는 {@link #isUpdatable()}가 {@code false}를 반환한다.
+ * <p>
+ * 외부 연결 등 자원을 사용하는 구현은 {@link #close()}에서 이를 반납한다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public interface AssetVariable {
+public interface AssetVariable extends AutoCloseable {
 	/**
 	 * 대상 설비의 데이터를 담당하는 AAS내의 SubmodelElement의 위치를 반환한다.
 	 * 
@@ -49,7 +51,17 @@ public interface AssetVariable {
      * @param lookup	연결할 SubmodelElement 접속에 사용할 lookup 객체.
      */
 	public void initialize(MDTModelLookup lookup);
-	
+
+	/**
+	 * 이 {@code AssetVariable}이 사용하는 자원(외부 연결, 백그라운드 작업 등)을 반납한다.
+	 * <p>
+	 * 영속성 계층이 중지될 때와, {@link #initialize(MDTModelLookup)}가 실패했을 때 호출된다.
+	 * 따라서 초기화가 완료되지 않은 상태에서도 호출될 수 있고, 여러 번 호출되어도 안전해야 한다.
+	 * 기본 구현은 아무 일도 하지 않는다.
+	 */
+	@Override
+	public default void close() { }
+
 	/**
 	 * 연결된 SubmodelElement의 최신 값을 읽어 반환한다.
 	 * <p>

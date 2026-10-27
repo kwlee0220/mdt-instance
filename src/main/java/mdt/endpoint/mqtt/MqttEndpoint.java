@@ -23,11 +23,15 @@ import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.typing.TypeInfo;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
 
+import com.google.common.collect.Lists;
+
 import utils.InternalException;
+import utils.KeyValue;
 import utils.Throwables;
 
 import mdt.ElementLocation;
 import mdt.FaaastRuntime;
+import mdt.MqttServicePool;
 import mdt.client.support.MqttBrokerConfig;
 import mdt.client.support.MqttService;
 import mdt.persistence.MDTModelLookup;
@@ -42,8 +46,9 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 	private FaaastRuntime m_faaast;
 	private MqttEndpointConfig m_config;
 	private MqttBrokerConfig m_brokerConfig;
-	private MqttService m_mqttService;
-	
+	private MqttServicePool.Lease m_lease;		// 공유 연결 사용권 (start() 이후에만 존재)
+	private final List<KeyValue<String,MqttSubscriber>> m_subscriptions = Lists.newArrayList();
+
 	private final HttpJsonApiDeserializer m_apiDeserializer = new HttpJsonApiDeserializer();
 
 	@Override
@@ -55,12 +60,6 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		
 		try {
 			m_brokerConfig = m_config.getMqttBrokerConfig();
-			
-			m_mqttService = new MqttService(m_brokerConfig);
-			for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
-				m_mqttService.subscribe(sub.getTopic(), 1, new MqttSubscriber(sub));
-			}
-			
 			s_logger.info("Initialized MqttEndpoint: {}", m_brokerConfig);
 		}
 		catch ( InitializationException e ) {
@@ -89,12 +88,31 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		}
 
 		s_logger.info("Starting service: {}", this);
-    	m_mqttService.startAsync();
+
+		// 같은 broker를 사용하는 MQTT AssetVariable들과 연결을 공유한다.
+		// 공유 연결이 이미 맺어져 있을 수 있으므로, 요소 위치를 활성화한 뒤에 구독한다.
+		m_lease = MqttServicePool.acquire(m_brokerConfig);
+		for ( MqttElementSubscriber sub: m_config.getSubscribers() ) {
+			MqttSubscriber subscriber = new MqttSubscriber(sub);
+			m_lease.getService().subscribe(sub.getTopic(), 1, subscriber);
+			m_subscriptions.add(KeyValue.of(sub.getTopic(), subscriber));
+		}
     }
 
     @Override
     public void stop() {
-    	m_mqttService.stopAsync();
+    	if ( m_lease == null ) {
+    		return;
+    	}
+
+    	// 공유 연결은 다른 사용자가 계속 사용할 수 있으므로, 이 endpoint의 구독을 먼저 해제한다.
+    	for ( KeyValue<String,MqttSubscriber> subscription: m_subscriptions ) {
+    		m_lease.getService().unsubscribe(subscription.key(), subscription.value());
+    	}
+    	m_subscriptions.clear();
+
+    	m_lease.close();
+    	m_lease = null;
     }
 	
 	@Override

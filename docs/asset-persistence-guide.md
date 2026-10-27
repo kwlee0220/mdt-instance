@@ -48,6 +48,7 @@ flowchart TD
 | `isReadable()` | 외부 데이터소스에서 읽을 수 있는지 판정 |
 | `isUpdatable()` | 외부 데이터소스에 쓸 수 있는지 판정 |
 | `initialize(MDTModelLookup)` | 위치를 실제 모델에 연결하고 prototype 준비 |
+| `close()` | 외부 연결 등 사용 중인 자원 반납. 기본 구현은 아무 일도 하지 않음 |
 | `read()` | 호출자가 독립적으로 사용할 수 있는 SubmodelElement 반환 |
 | `update(SubmodelElement)` | 전달된 요소의 값을 외부 데이터소스에 기록 |
 | `updatePart(String, SubmodelElement)` | 연결된 요소의 상대 경로에 해당하는 값만 변경 |
@@ -70,6 +71,8 @@ flowchart TD
 5. 해당 설정의 구체 타입을 인자로 받는 생성자를 리플렉션으로 호출한다.
 6. `initialize(lookup)`으로 변수를 모델에 연결한다.
 7. 변수를 `Map<String, List<AssetVariable>>`에 등록한다. 키는 Submodel의 전역 `id`다.
+
+어느 변수의 생성이나 `initialize()`가 실패하면, 그 변수와 앞서 생성된 변수들의 `close()`를 호출한 뒤 시작을 실패시킨다. 영속성 계층이 중지될 때(`AssertVariableBasedPersistence.stop()`)도 등록된 모든 변수의 `close()`를 호출한 다음 하위 영속성 구현을 중지한다. `close()`가 던진 예외는 경고 로그만 남기고 다음 변수의 종료를 계속한다.
 
 예를 들어 `SimpleJdbcAssetVariableConfig`는 같은 패키지의 `SimpleJdbcAssetVariable`과 연결된다. 클래스 이름과 생성자 시그니처는 실제 생성 규칙이므로 확장할 때 반드시 맞춰야 한다.
 
@@ -321,18 +324,30 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 ## MQTT 연동
 
-`MqttAssetVariable`은 쓰기 전용이다. `initialize()`에서 `MqttService`를 비동기로 시작하고, `update()`에서 `ElementValues.getValue(newElement).toValueJsonString()`을 설정된 topic으로 발행한다. AAS 요소의 전체 메타데이터가 아닌 값 표현이 메시지 본문이다.
+`MqttAssetVariable`은 쓰기 전용이다. `initialize()`에서 broker 설정을 한 번 해석하여 보관하고 `MqttServicePool`에서 broker 연결을 얻으며, `update()`에서 `ElementValues.getValue(newElement).toValueJsonString()`을 설정된 topic으로 발행한다. AAS 요소의 전체 메타데이터가 아닌 값 표현이 메시지 본문이다.
+
+같은 broker 설정(URL, 연결 timeout, keep-alive 주기)을 쓰는 MQTT 변수들과 MQTT 수신 엔드포인트(`serviceEndpoints.mqtt`)는 연결 하나를 공유한다. 전역 설정 이름으로 지정했는지 인라인으로 지정했는지와 관계없이 해석된 설정 값이 같으면 같은 연결을 쓴다. `close()`는 연결 사용권을 반납하며, 마지막 사용자가 반납할 때 재연결 시도를 멈추고 broker와의 연결을 끊는다(최대 5초 대기).
 
 ```json
 {
   "@type": "mdt:asset:mqtt",
   "element": "Telemetry:Measurements",
   "mqttBrokerConfigName": "default",
-  "topic": "machines/machine01/measurements"
+  "topic": "machines/machine01/measurements",
+  "whenDisconnected": "skip"
 }
 ```
 
 연결은 인라인 `mqttBrokerConfig`가 우선하며, 없으면 전역 `mqttBrokers.<mqttBrokerConfigName>`을 사용한다. 이름 기본값은 `default`다. 이 변수는 구독하여 AAS 값을 갱신하는 기능을 제공하지 않는다.
+
+`whenDisconnected`는 broker와 연결되어 있지 않을 때의 갱신 처리 방법이다. 연결은 비동기로 맺어지므로 인스턴스 시작 직후와 broker 장애 중에 이 정책이 적용된다.
+
+| 값 | 동작 |
+| --- | --- |
+| `skip` (기본값) | 발행을 건너뛰고 AAS 요소 값은 정상적으로 갱신한다. 연결이 끊긴 뒤 처음 건너뛸 때 경고 로그를 한 번 남기고, 다시 발행에 성공하면 INFO 로그를 남긴다. 건너뛴 값은 다시 연결되어도 재발행하지 않는다. |
+| `fail` | `AssetVariableException`으로 갱신을 실패시킨다. 요소 단위 갱신에서는 AAS 요소 값도 바뀌지 않는다. |
+
+연결 확인 후 발행하는 사이에 연결이 끊어진 경우(Paho 오류 코드 32104·32109·32102·32111)도 연결되지 않은 경우와 같이 처리한다. 권한 오류 등 그 밖의 발행 실패와 값 변환 실패는 정책과 관계없이 예외를 던진다. 이 정책이 없던 이전 버전은 `fail`과 같이 동작했다.
 
 하위 요소 갱신에는 제한이 있다. `Measurements.Temperature`만 갱신하면 영속성 계층이 기본 `updatePart()`를 호출하는데, MQTT의 `read()`는 미지원 예외를 던진다. 따라서 이 구성에서는 `Measurements` 전체를 갱신하거나, 발행 단위를 개별 Property에 연결해야 한다.
 
@@ -424,10 +439,11 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 4. 같은 패키지에 `ExampleAssetVariable`을 만들고, 접근 가능한 `ExampleAssetVariable(ExampleAssetVariableConfig config)` 생성자를 제공한다.
 5. 읽기·쓰기 지원 여부, 초기화와 데이터 변환을 구현한다. `read()`의 독립 객체 반환과 `update()` 입력 객체의 소유권 계약을 지킨다.
 6. 쓰기 가능한 복합 요소에서 동시 부분 갱신이 가능하다면 `updatePart()` 전체를 보호한다. 쓰기 전용 구현은 기본 `updatePart()`가 `read()`에 의존한다는 점을 고려한다.
+7. 연결이나 백그라운드 작업을 시작하는 구현은 `close()`에서 이를 정리한다. `close()`는 `initialize()`가 끝나지 않은 상태에서도 호출될 수 있고, 여러 번 호출되어도 안전해야 한다.
 
 JDBC 확장은 `AbstractJdbcAssetVariable`과 `AbstractJdbcAssetVariableConfig`를 기반으로 할 수 있다. `loadOnBuffer(Connection)`에서 조회 값을 prototype에 반영하고, `saveBuffer(Connection, SubmodelElement)`에서는 전달받은 값을 저장한다. 저장 성공 전 prototype을 바꾸거나 입력 객체를 수정하지 않아야 공통 캐시 처리와 일관된다.
 
-현재 `AssetVariable`에는 `close()`나 `stop()` 계약이 없고, `AssertVariableBasedPersistence.stop()`은 상위 클래스의 하위 persistence 종료만 수행한다. 새 구현에서 장기 실행 서비스나 연결을 시작한다면 종료 경로도 설계해야 한다. 기존 MQTT·OPC UA 변수에도 이 스택에서 서비스를 종료시키는 연결은 없다.
+현재 `close()`를 구현한 변수는 MQTT뿐이다. OPC UA 변수는 기본 구현을 그대로 사용하므로, 이 스택이 중지되어도 OPC UA 연결은 닫히지 않는다.
 
 확장 시에는 설정의 직렬화 왕복, 없는 모델 경로, 반환 객체 변경의 캐시 격리, 저장 실패 후 재조회, 동시 부분 갱신을 검증한다. TTL은 외부 변경을 가리는 기간이 될 수 있으므로 업무에서 허용하는 갱신 지연에 맞춘다.
 

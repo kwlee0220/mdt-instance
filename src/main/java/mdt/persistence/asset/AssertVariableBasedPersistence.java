@@ -22,6 +22,8 @@ import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceExceptio
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.persistence.SubmodelSearchCriteria;
 
+import com.google.common.collect.Lists;
+
 import utils.KeyValue;
 import utils.Throwables;
 import utils.stream.FStream;
@@ -71,10 +73,38 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		// 요청에는 submodel id가 오므로 submodel id를 키로 삼는다. 이렇게 하면 요청을 처리할 때
 		// 시작 시점의 모델 스냅숏(MDTModelLookup)으로 submodel을 찾을 필요가 없다.
 		m_lookup = MDTModelLookup.getInstance();
-		m_assetVariables = FStream.from(m_config.getAssetVariableConfigs())
-						 			.map(c -> createAssetVariable(c, m_lookup))
+
+		// 일부 AssetVariable 생성이 실패하면, 그 전에 생성되어 외부 연결을 맺은 AssetVariable들을 닫는다.
+		List<AssetVariable> created = Lists.newArrayList();
+		try {
+			for ( AssetVariableConfig config: m_config.getAssetVariableConfigs() ) {
+				created.add(createAssetVariable(config, m_lookup));
+			}
+		}
+		catch ( RuntimeException e ) {
+			created.forEach(this::closeAssetVariable);
+			throw e;
+		}
+		m_assetVariables = FStream.from(created)
 						 			.mapToKeyValue(var -> KeyValue.of(var.getElementLocation().getSubmodelId(), var))
 						 			.toListMap();
+	}
+
+	@Override
+	public void stop() {
+		if ( m_assetVariables != null ) {
+			m_assetVariables.values().forEach(vars -> vars.forEach(this::closeAssetVariable));
+		}
+		super.stop();
+	}
+
+	private void closeAssetVariable(AssetVariable var) {
+		try {
+			var.close();
+		}
+		catch ( Exception e ) {
+			getLogger().warn("failed to close AssetVariable {}: cause={}", var, "" + Throwables.unwrapThrowable(e));
+		}
 	}
 	
 	private boolean isNormalModifier(QueryModifier modifier) {
@@ -284,8 +314,14 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 			Class assetVarClass = Class.forName(assetVarClassName);
 			Constructor ctor = assetVarClass.getDeclaredConstructor(config.getClass());
 			AssetVariable assetVar = (AssetVariable)ctor.newInstance(config);
-			assetVar.initialize(lookup);
-			
+			try {
+				assetVar.initialize(lookup);
+			}
+			catch ( Throwable e ) {
+				closeAssetVariable(assetVar);
+				throw e;
+			}
+
 			return assetVar;
 		}
 		catch ( Throwable e ) {
