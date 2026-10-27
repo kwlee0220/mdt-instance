@@ -1,9 +1,11 @@
 package mdt.persistence.asset.mqtt;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.jetbrains.annotations.Nullable;
 
 import utils.Throwables;
@@ -82,16 +84,21 @@ public class MqttAssetVariable extends AbstractAssetVariable<MqttAssetVariableCo
 	/**
 	 * 주어진 요소의 값을 설정된 topic으로 발행한다.
 	 * <p>
-	 * broker와 연결되어 있지 않으면 설정의 {@code whenDisconnected} 정책에 따라 처리한다.
-	 * {@link DisconnectedPolicy#SKIP}이면 발행을 건너뛰고 정상 반환하므로 AAS 요소의 값은 갱신된다.
-	 * {@link DisconnectedPolicy#FAIL}이면 {@link AssetVariableException}을 던진다.
-	 * 연결 상태와 무관한 실패(값 변환 실패 등)는 정책과 상관없이 예외를 던진다.
+	 * 메시지는 설정의 {@code qos}, {@code retained}로 발행하며, QoS 1, 2인 경우는 broker의 전달 확인을
+	 * 최대 {@code publishTimeout}까지 기다린다.
+	 * broker와 연결되어 있지 않거나 제한 시간 안에 전달 확인을 받지 못하면 설정의 {@code whenDisconnected}
+	 * 정책에 따라 처리한다. {@link DisconnectedPolicy#SKIP}이면 발행을 건너뛰고 정상 반환하므로 AAS 요소의
+	 * 값은 갱신된다. {@link DisconnectedPolicy#FAIL}이면 {@link AssetVariableException}을 던진다.
+	 * 그 밖의 실패(값 변환 실패, 권한 오류 등)는 정책과 상관없이 예외를 던진다.
 	 */
 	@Override
 	public void update(SubmodelElement newElement) throws AssetVariableException {
-		String valueJson;
+		MqttMessage message;
 		try {
-			valueJson = ElementValues.getValue(newElement).toValueJsonString();
+			String valueJson = ElementValues.getValue(newElement).toValueJsonString();
+			message = new MqttMessage(valueJson.getBytes(StandardCharsets.UTF_8));
+			message.setQos(m_config.getQos());
+			message.setRetained(m_config.isRetained());
 		}
 		catch ( Exception e ) {
 			Throwable cause = Throwables.unwrapThrowable(e);
@@ -100,12 +107,12 @@ public class MqttAssetVariable extends AbstractAssetVariable<MqttAssetVariableCo
 		}
 
 		if ( !m_mqtt.isConnected() ) {
-			handleDisconnected(null);
+			handleUndelivered("MQTT broker is not connected", null);
 			return;
 		}
 
 		try {
-			m_mqtt.publish(m_config.getTopic(), valueJson);
+			m_mqtt.publish(m_config.getTopic(), message, m_config.getPublishTimeout());
 			if ( m_skipping.getAndSet(false) ) {
 				getLogger().info("resumed publishing: {}", this);
 			}
@@ -113,7 +120,12 @@ public class MqttAssetVariable extends AbstractAssetVariable<MqttAssetVariableCo
 		catch ( MqttException e ) {
 			// 연결 확인 이후 발행 도중에 연결이 끊어진 경우도 연결되지 않은 경우와 동일하게 처리한다.
 			if ( isDisconnectedError(e) ) {
-				handleDisconnected(e);
+				handleUndelivered("MQTT broker is not connected", e);
+			}
+			else if ( e.getReasonCode() == MqttException.REASON_CODE_CLIENT_TIMEOUT ) {
+				// 메시지가 실제로 전달되었을 수도 있으나 확인하지 못한 경우이다.
+				String reason = String.format("MQTT delivery is not confirmed within %s", m_config.getPublishTimeout());
+				handleUndelivered(reason, e);
 			}
 			else {
 				String msg = String.format("Failed to publish MQTT message: %s, cause=%s", this, e);
@@ -127,18 +139,19 @@ public class MqttAssetVariable extends AbstractAssetVariable<MqttAssetVariableCo
 		}
 	}
 
-	private void handleDisconnected(@Nullable MqttException cause) throws AssetVariableException {
+	private void handleUndelivered(String reason, @Nullable MqttException cause) throws AssetVariableException {
 		if ( m_config.getWhenDisconnected() == DisconnectedPolicy.FAIL ) {
-			String msg = String.format("MQTT broker is not connected: %s", this);
+			String msg = String.format("%s: %s", reason, this);
 			throw new AssetVariableException(msg, cause);
 		}
 
-		// 연결이 끊어진 동안 갱신마다 경고가 쌓이지 않도록 처음 한 번만 경고하고, 이후는 debug로 남긴다.
+		// 전달하지 못하는 동안 갱신마다 경고가 쌓이지 않도록 처음 한 번만 경고하고, 이후는 debug로 남긴다.
+		// 경고 상태는 발행에 다시 성공하면 해제된다.
 		if ( !m_skipping.getAndSet(true) ) {
-			getLogger().warn("MQTT broker is not connected, skip publishing until reconnected: {}", this);
+			getLogger().warn("{}, skip publishing until delivered again: {}", reason, this);
 		}
 		else {
-			getLogger().debug("MQTT broker is not connected, skip publishing: {}", this);
+			getLogger().debug("{}, skip publishing: {}", reason, this);
 		}
 	}
 

@@ -1,6 +1,7 @@
 package mdt.persistence.asset.mqtt;
 
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -8,20 +9,25 @@ import static org.mockito.Mockito.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultProperty;
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import mdt.MDTGlobalConfigurations;
+import mdt.client.support.MqttBrokerConfig;
 import mdt.client.support.MqttService;
 import mdt.persistence.asset.AssetVariableException;
 import mdt.persistence.asset.mqtt.MqttAssetVariableConfig.DisconnectedPolicy;
@@ -141,7 +147,7 @@ public class MqttAssetVariableTest {
 		MqttAssetVariable var = newVariable("skip", mqtt);
 		var.update(newProperty("10"));
 		var.update(newProperty("11"));
-		verify(mqtt, never()).publish(anyString(), anyString());
+		verify(mqtt, never()).publish(anyString(), any(MqttMessage.class), any(Duration.class));
 	}
 
 	@Test
@@ -151,7 +157,7 @@ public class MqttAssetVariableTest {
 
 		MqttAssetVariable var = newVariable("fail", mqtt);
 		assertThrows(AssetVariableException.class, () -> var.update(newProperty("10")));
-		verify(mqtt, never()).publish(anyString(), anyString());
+		verify(mqtt, never()).publish(anyString(), any(MqttMessage.class), any(Duration.class));
 	}
 
 	@Test
@@ -159,7 +165,7 @@ public class MqttAssetVariableTest {
 		MqttService mqtt = mock(MqttService.class);
 		when(mqtt.isConnected()).thenReturn(true);
 		doThrow(new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED))
-			.when(mqtt).publish(anyString(), anyString());
+			.when(mqtt).publish(anyString(), any(MqttMessage.class), any(Duration.class));
 
 		MqttAssetVariable var = newVariable("skip", mqtt);
 		var.update(newProperty("10"));
@@ -170,7 +176,7 @@ public class MqttAssetVariableTest {
 		MqttService mqtt = mock(MqttService.class);
 		when(mqtt.isConnected()).thenReturn(true);
 		doThrow(new MqttException(MqttException.REASON_CODE_NOT_AUTHORIZED))
-			.when(mqtt).publish(anyString(), anyString());
+			.when(mqtt).publish(anyString(), any(MqttMessage.class), any(Duration.class));
 
 		MqttAssetVariable var = newVariable("skip", mqtt);
 		assertThrows(AssetVariableException.class, () -> var.update(newProperty("10")));
@@ -183,20 +189,148 @@ public class MqttAssetVariableTest {
 
 		MqttAssetVariable var = newVariable("fail", mqtt);
 		var.update(newProperty("10"));
-		verify(mqtt).publish(eq("t"), anyString());
+		verify(mqtt).publish(eq("t"), any(MqttMessage.class), any(Duration.class));
 	}
 
+	@Test
+	public void testBrokerConfigByName() throws Exception {
+		MqttAssetVariableConfig dflt = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t" }
+			""");
+		assertEquals("default", dflt.getMqttBrokerConfigName());
+		
+		MqttAssetVariableConfig named = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t", "mqttBrokerConfig": "factory" }
+			""");
+		assertEquals("factory", named.getMqttBrokerConfigName());
+		
+		// 이전 형식의 'mqttBrokerConfigName'도 받는다.
+		MqttAssetVariableConfig legacy = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t", "mqttBrokerConfigName": "factory" }
+			""");
+		assertEquals("factory", legacy.getMqttBrokerConfigName());
+	}
+
+	@Test
+	public void testInvalidBrokerConfig() throws Exception {
+		assertThrows(IOException.class, () -> load("""
+			{ "element": "Telemetry:Measurements", "topic": "t",
+			  "mqttBrokerConfig": "factory", "mqttBrokerConfigName": "factory" }
+			"""));
+		assertThrows(IOException.class, () -> load("""
+			{ "element": "Telemetry:Measurements", "topic": "t", "mqttBrokerConfig": 10 }
+			"""));
+	}
+
+	@Test
+	public void testPublishOptionDefaults() throws Exception {
+		MqttAssetVariableConfig config = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t" }
+			""");
+		assertEquals(1, config.getQos());
+		assertFalse(config.isRetained());
+		assertEquals(Duration.ofSeconds(10), config.getPublishTimeout());
+	}
+
+	@Test
+	public void testInvalidPublishOptions() throws Exception {
+		for ( String field: new String[] { "\"qos\": 3", "\"qos\": \"one\"", "\"retained\": \"yes\"",
+											"\"publishTimeout\": \"0s\"", "\"publishTimeout\": \"soon\"" } ) {
+			String json = String.format("{ \"element\": \"Telemetry:Measurements\", \"topic\": \"t\", %s }", field);
+			assertThrows(field, IOException.class, () -> load(json));
+		}
+	}
+
+	@Test
+	public void testTopicWithWildcardIsRejected() throws Exception {
+		assertThrows(IOException.class, () -> load("""
+			{ "element": "Telemetry:Measurements", "topic": "machines/+/measurements" }
+			"""));
+		assertThrows(IOException.class, () -> load("""
+			{ "element": "Telemetry:Measurements", "topic": "machines/#" }
+			"""));
+	}
+
+	@Test
+	public void testSerializationRoundTrip() throws Exception {
+		MqttAssetVariableConfig named = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t", "mqttBrokerConfig": "factory",
+			  "qos": 2, "retained": true, "publishTimeout": "3s" }
+			""");
+		JsonNode written = serialize(named);
+		assertEquals("factory", written.get("mqttBrokerConfig").asText());
+		assertFalse(written.has("mqttBrokerConfigName"));
+		
+		MqttAssetVariableConfig reloaded = MqttAssetVariableConfig.deserializeFields(written);
+		assertEquals("factory", reloaded.getMqttBrokerConfigName());
+		assertEquals(2, reloaded.getQos());
+		assertTrue(reloaded.isRetained());
+		assertEquals(Duration.ofSeconds(3), reloaded.getPublishTimeout());
+		
+		MqttAssetVariableConfig inline = load("""
+			{ "element": "Telemetry:Measurements", "topic": "t",
+			  "mqttBrokerConfig": { "brokerUrl": "tcp://broker:1883" } }
+			""");
+		JsonNode inlineWritten = serialize(inline);
+		assertEquals("tcp://broker:1883", inlineWritten.get("mqttBrokerConfig").get("brokerUrl").asText());
+		MqttBrokerConfig reloadedBroker = MqttAssetVariableConfig.deserializeFields(inlineWritten).getMqttBrokerConfig();
+		assertEquals("tcp://broker:1883", reloadedBroker.getBrokerUrl());
+	}
+
+	@Test
+	public void testPublishUsesConfiguredOptions() throws Exception {
+		MqttService mqtt = mock(MqttService.class);
+		when(mqtt.isConnected()).thenReturn(true);
+		
+		MqttAssetVariable var = newVariable("""
+			{ "element": "Telemetry:Measurements", "topic": "t", "qos": 0, "retained": true,
+			  "publishTimeout": "2s" }
+			""", mqtt);
+		var.update(newProperty("10"));
+		
+		ArgumentCaptor<MqttMessage> msg = ArgumentCaptor.forClass(MqttMessage.class);
+		verify(mqtt).publish(eq("t"), msg.capture(), eq(Duration.ofSeconds(2)));
+		assertEquals(0, msg.getValue().getQos());
+		assertTrue(msg.getValue().isRetained());
+		assertEquals("10", new String(msg.getValue().getPayload(), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void testPublishTimeoutFollowsPolicy() throws Exception {
+		MqttService mqtt = mock(MqttService.class);
+		when(mqtt.isConnected()).thenReturn(true);
+		doThrow(new MqttException(MqttException.REASON_CODE_CLIENT_TIMEOUT))
+			.when(mqtt).publish(anyString(), any(MqttMessage.class), any(Duration.class));
+		
+		newVariable("skip", mqtt).update(newProperty("10"));
+		
+		MqttAssetVariable failing = newVariable("fail", mqtt);
+		assertThrows(AssetVariableException.class, () -> failing.update(newProperty("10")));
+	}
+	
 	// setMqttService()로 지정한 서비스는 MqttServicePool에서 획득한 것이 아니므로,
 	// 이렇게 만든 AssetVariable은 close()할 필요가 없다.
-	private static MqttAssetVariable newVariable(String policy, MqttService mqtt) throws Exception {
-		MqttAssetVariableConfig config = load(String.format("""
-			{ "element": "Telemetry:Measurements", "topic": "t", "whenDisconnected": "%s" }
-			""", policy));
-		MqttAssetVariable var = new MqttAssetVariable(config);
+	private static MqttAssetVariable newVariable(String policyOrJson, MqttService mqtt) throws Exception {
+		String json = policyOrJson.strip().startsWith("{")
+					? policyOrJson
+					: String.format("""
+						{ "element": "Telemetry:Measurements", "topic": "t", "whenDisconnected": "%s" }
+						""", policyOrJson);
+		MqttAssetVariable var = new MqttAssetVariable(load(json));
 		var.setMqttService(mqtt);
 		return var;
 	}
-
+	
+	private static JsonNode serialize(MqttAssetVariableConfig config) throws Exception {
+		StringWriter writer = new StringWriter();
+		try ( JsonGenerator gen = MAPPER.getFactory().createGenerator(writer) ) {
+			gen.writeStartObject();
+			config.serializeFields(gen);
+			gen.writeEndObject();
+		}
+		return MAPPER.readTree(writer.toString());
+	}
+	
 	private static Property newProperty(String value) {
 		return new DefaultProperty.Builder()
 								.idShort("Measurements")

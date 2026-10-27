@@ -1,10 +1,14 @@
 package mdt.persistence.asset.mqtt;
 
 import java.io.IOException;
+import java.time.Duration;
+
+import org.eclipse.paho.client.mqttv3.MqttTopic;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import utils.UnitUtils;
 import utils.json.JacksonUtils;
 
 import mdt.MDTGlobalConfigurations;
@@ -16,19 +20,48 @@ import mdt.persistence.asset.AssetVariableConfig;
 
 
 /**
+ * {@link MqttAssetVariable}의 설정.
+ * <p>
+ * 설정 예:
+ * <pre>{@code
+ * {
+ *   "@type": "mdt:asset:mqtt",
+ *   "element": "Telemetry:Measurements",
+ *   "mqttBrokerConfig": "factory",
+ *   "topic": "machines/machine01/measurements",
+ *   "qos": 1,
+ *   "retained": false,
+ *   "publishTimeout": "10s",
+ *   "whenDisconnected": "skip"
+ * }
+ * }</pre>
+ * {@code mqttBrokerConfig}는 전역 설정 파일의 {@code mqttBrokers} 항목 이름(문자열)이거나
+ * broker 설정 객체이다. 생략하면 {@code "default"}이다. 이전 형식의 {@code mqttBrokerConfigName}도
+ * 받지만, {@code mqttBrokerConfig}와 함께 사용할 수는 없다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
 public class MqttAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:mqtt";
-	
-	private static final String FIELD_BROKER_CONFIG_NAME = "mqttBrokerConfigName";
+
+	private static final String FIELD_BROKER_CONFIG_NAME = "mqttBrokerConfigName";	// 이전 형식
 	private static final String FIELD_BROKER_CONFIG = "mqttBrokerConfig";
 	private static final String FIELD_TOPIC = "topic";
+	private static final String FIELD_QOS = "qos";
+	private static final String FIELD_RETAINED = "retained";
+	private static final String FIELD_PUBLISH_TIMEOUT = "publishTimeout";
 	private static final String FIELD_WHEN_DISCONNECTED = "whenDisconnected";
 
+	public static final String DEFAULT_BROKER_CONFIG_NAME = "default";
+	public static final int DEFAULT_QOS = 1;
+	public static final boolean DEFAULT_RETAINED = false;
+	public static final Duration DEFAULT_PUBLISH_TIMEOUT = Duration.ofSeconds(10);
+
 	/**
-	 * MQTT broker와 연결되어 있지 않을 때 값 갱신({@link MqttAssetVariable#update})을 처리하는 방법.
+	 * 메시지를 broker에 전달하지 못했을 때 값 갱신({@link MqttAssetVariable#update})을 처리하는 방법.
+	 * <p>
+	 * broker와 연결되어 있지 않은 경우와, {@code publishTimeout} 안에 broker의 전달 확인을 받지 못한
+	 * 경우에 적용된다.
 	 */
 	public enum DisconnectedPolicy {
 		/** 갱신을 실패시킨다. 이 경우 AAS 요소의 값도 갱신되지 않는다. */
@@ -64,22 +97,31 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	}
 	public static final DisconnectedPolicy DEFAULT_DISCONNECTED_POLICY = DisconnectedPolicy.SKIP;
 
-	private String m_mqttBrokerConfigName;
-    private MqttBrokerConfig m_mqttBrokerConfig;
+	// 둘 중 정확히 하나만 null이 아니다.
+	private String m_mqttBrokerConfigName;			// 전역 설정의 broker 이름
+    private MqttBrokerConfig m_mqttBrokerConfig;	// 설정에 직접 기술된 broker 설정
     private String m_topic;
+    private int m_qos = DEFAULT_QOS;
+    private boolean m_retained = DEFAULT_RETAINED;
+    private Duration m_publishTimeout = DEFAULT_PUBLISH_TIMEOUT;
     private DisconnectedPolicy m_whenDisconnected = DEFAULT_DISCONNECTED_POLICY;
 
 	private MqttAssetVariableConfig() { }
-	
+
+	/**
+	 * 전역 설정 파일에서 사용할 broker 설정의 이름을 반환한다.
+	 *
+	 * @return	broker 설정 이름. broker 설정이 직접 기술된 경우는 {@code null}.
+	 */
 	public String getMqttBrokerConfigName() {
 		return m_mqttBrokerConfigName;
 	}
-	
+
 	/**
 	 * 사용할 MQTT broker 설정을 반환한다.
 	 * <p>
-	 * 설정에 broker 정보({@code mqttBrokerConfig})가 직접 기술되어 있으면 이를 반환하고, 그렇지 않으면
-	 * 전역 설정 파일의 {@code mqttBrokers.<mqttBrokerConfigName>}을 읽어 반환한다.
+	 * 설정에 broker 정보가 직접 기술되어 있으면 이를 반환하고, 그렇지 않으면
+	 * 전역 설정 파일의 {@code mqttBrokers.<이름>}을 읽어 반환한다.
 	 * 전역 설정은 호출할 때마다 파일에서 다시 읽으므로, 호출자는 결과를 보관하여 사용한다.
 	 *
 	 * @return	MQTT broker 설정.
@@ -94,13 +136,42 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 			return MDTGlobalConfigurations.getMqttBrokerConfig(m_mqttBrokerConfigName);
 		}
 	}
-	
+
 	public String getTopic() {
 		return m_topic;
 	}
 
 	/**
-	 * MQTT broker와 연결되어 있지 않을 때의 갱신 처리 정책을 반환한다.
+	 * 발행 QoS를 반환한다. 설정에 기술되지 않은 경우는 {@link #DEFAULT_QOS}이다.
+	 *
+	 * @return	QoS (0, 1, 2).
+	 */
+	public int getQos() {
+		return m_qos;
+	}
+
+	/**
+	 * 발행 메시지를 broker가 보관(retained)하게 할지 여부를 반환한다.
+	 * 설정에 기술되지 않은 경우는 {@link #DEFAULT_RETAINED}이다.
+	 *
+	 * @return	retained 여부.
+	 */
+	public boolean isRetained() {
+		return m_retained;
+	}
+
+	/**
+	 * QoS 1, 2 발행에서 broker의 전달 확인을 기다리는 최대 시간을 반환한다.
+	 * 설정에 기술되지 않은 경우는 {@link #DEFAULT_PUBLISH_TIMEOUT}이다.
+	 *
+	 * @return	최대 대기 시간.
+	 */
+	public Duration getPublishTimeout() {
+		return m_publishTimeout;
+	}
+
+	/**
+	 * 메시지를 broker에 전달하지 못했을 때의 갱신 처리 정책을 반환한다.
 	 * 설정에 기술되지 않은 경우는 {@link #DEFAULT_DISCONNECTED_POLICY}이다.
 	 *
 	 * @return	갱신 처리 정책.
@@ -113,42 +184,89 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 	public String getSerializationType() {
 		return SERIALIZATION_TYPE;
 	}
-    
+
     @Override
     public String toString() {
 		// 전역 설정 파일을 읽지 않도록 broker 설정을 해석하지 않고 설정에 기술된 내용만 사용한다.
 		String broker = (m_mqttBrokerConfig != null)
 						? m_mqttBrokerConfig.getBrokerUrl()
 						: String.format("mqttBrokers.%s", m_mqttBrokerConfigName);
-		return String.format("%s, broker=%s, topic=%s", super.toString(), broker, m_topic);
+		return String.format("%s, broker=%s, topic=%s, qos=%d%s", super.toString(), broker, m_topic, m_qos,
+								m_retained ? ", retained" : "");
 	}
-	
+
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
-		gen.writeStringField(FIELD_BROKER_CONFIG_NAME, m_mqttBrokerConfigName);
-		gen.writeObjectField(FIELD_BROKER_CONFIG, m_mqttBrokerConfig);
+		if ( m_mqttBrokerConfig != null ) {
+			gen.writeObjectField(FIELD_BROKER_CONFIG, m_mqttBrokerConfig);
+		}
+		else {
+			gen.writeStringField(FIELD_BROKER_CONFIG, m_mqttBrokerConfigName);
+		}
 		gen.writeStringField(FIELD_TOPIC, m_topic);
+		gen.writeNumberField(FIELD_QOS, m_qos);
+		gen.writeBooleanField(FIELD_RETAINED, m_retained);
+		gen.writeStringField(FIELD_PUBLISH_TIMEOUT, m_publishTimeout.toString());
 		gen.writeStringField(FIELD_WHEN_DISCONNECTED, m_whenDisconnected.toJsonValue());
 	}
-	
+
 	/**
 	 * JSON 노드로부터 {@link MqttAssetVariableConfig} 객체를 생성한다.
-	 * 
+	 *
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link MqttAssetVariableConfig} 객체.
-	 * @throws IOException 
+	 * @throws IOException	필드 값이 잘못된 경우.
 	 */
 	public static MqttAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		MqttAssetVariableConfig config = new MqttAssetVariableConfig();
 		config.loadFields(jnode);
-		
-		config.m_mqttBrokerConfigName = JacksonUtils.getStringFieldOrDefault(jnode,
-																			FIELD_BROKER_CONFIG_NAME, "default");
-		JsonNode configNode = JacksonUtils.getFieldOrNull(jnode, FIELD_BROKER_CONFIG);
-		config.m_mqttBrokerConfig = MDTModelSerDe.readValue(configNode, MqttBrokerConfig.class);
-		
+
+		loadBrokerConfig(config, jnode);
+
 		config.m_topic = JacksonUtils.getStringField(jnode, FIELD_TOPIC);
+		try {
+			// 발행 topic에는 와일드카드('+', '#')를 사용할 수 없다.
+			MqttTopic.validate(config.m_topic, false);
+		}
+		catch ( IllegalArgumentException e ) {
+			throw new IOException(String.format("invalid '%s' value: '%s', cause=%s",
+												FIELD_TOPIC, config.m_topic, e.getMessage()));
+		}
+
+		JsonNode qosNode = JacksonUtils.getFieldOrNull(jnode, FIELD_QOS);
+		if ( qosNode != null && !qosNode.isNull() ) {
+			if ( !qosNode.canConvertToInt() || qosNode.asInt() < 0 || qosNode.asInt() > 2 ) {
+				throw new IOException(String.format("invalid '%s' value: %s (expected: 0, 1, or 2)",
+													FIELD_QOS, qosNode));
+			}
+			config.m_qos = qosNode.asInt();
+		}
+
+		JsonNode retainedNode = JacksonUtils.getFieldOrNull(jnode, FIELD_RETAINED);
+		if ( retainedNode != null && !retainedNode.isNull() ) {
+			if ( !retainedNode.isBoolean() ) {
+				throw new IOException(String.format("invalid '%s' value: %s (expected: true or false)",
+													FIELD_RETAINED, retainedNode));
+			}
+			config.m_retained = retainedNode.asBoolean();
+		}
+
+		String timeoutStr = JacksonUtils.getStringFieldOrNull(jnode, FIELD_PUBLISH_TIMEOUT);
+		if ( timeoutStr != null ) {
+			Duration timeout;
+			try {
+				timeout = UnitUtils.parseDuration(timeoutStr);
+			}
+			catch ( Exception e ) {
+				throw new IOException(String.format("invalid '%s' value: %s, cause=%s",
+													FIELD_PUBLISH_TIMEOUT, timeoutStr, e.getMessage()));
+			}
+			if ( timeout.isNegative() || timeout.isZero() ) {
+				throw new IOException(String.format("'%s' must be positive: %s", FIELD_PUBLISH_TIMEOUT, timeoutStr));
+			}
+			config.m_publishTimeout = timeout;
+		}
 
 		String policy = JacksonUtils.getStringFieldOrNull(jnode, FIELD_WHEN_DISCONNECTED);
 		if ( policy != null ) {
@@ -156,5 +274,32 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 		}
 
 		return config;
+	}
+
+	private static void loadBrokerConfig(MqttAssetVariableConfig config, JsonNode jnode) throws IOException {
+		JsonNode brokerNode = JacksonUtils.getFieldOrNull(jnode, FIELD_BROKER_CONFIG);
+		if ( brokerNode != null && brokerNode.isNull() ) {
+			brokerNode = null;
+		}
+		String legacyName = JacksonUtils.getStringFieldOrNull(jnode, FIELD_BROKER_CONFIG_NAME);
+
+		if ( brokerNode != null && legacyName != null ) {
+			throw new IOException(String.format("'%s' and '%s' cannot be used together",
+												FIELD_BROKER_CONFIG, FIELD_BROKER_CONFIG_NAME));
+		}
+
+		if ( brokerNode == null ) {
+			config.m_mqttBrokerConfigName = (legacyName != null) ? legacyName : DEFAULT_BROKER_CONFIG_NAME;
+		}
+		else if ( brokerNode.isTextual() ) {
+			config.m_mqttBrokerConfigName = brokerNode.asText();
+		}
+		else if ( brokerNode.isObject() ) {
+			config.m_mqttBrokerConfig = MDTModelSerDe.readValue(brokerNode, MqttBrokerConfig.class);
+		}
+		else {
+			throw new IOException(String.format("invalid '%s' value: %s (expected: a name or an object)",
+												FIELD_BROKER_CONFIG, brokerNode));
+		}
 	}
 }

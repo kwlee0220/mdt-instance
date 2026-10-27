@@ -214,6 +214,7 @@ primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한
 각 구독은 `topic`과 `element`를 요구한다. 브로커 설정의 URL 기본값은 `tcp://localhost:1883`이며,
 timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용한다.
 현재 `MqttBrokerConfig`에는 사용자명·비밀번호·인증서 필드가 없다.
+지원하지 않는 필드(예: 오타인 `connectTimeout`)는 무시되며, 설정을 읽을 때 경고 로그를 남긴다.
 
 ### 4.2 수신 값 계약
 

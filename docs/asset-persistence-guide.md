@@ -334,22 +334,36 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 {
   "@type": "mdt:asset:mqtt",
   "element": "Telemetry:Measurements",
-  "mqttBrokerConfigName": "default",
+  "mqttBrokerConfig": "factory",
   "topic": "machines/machine01/measurements",
+  "qos": 1,
+  "retained": false,
+  "publishTimeout": "10s",
   "whenDisconnected": "skip"
 }
 ```
 
-연결은 인라인 `mqttBrokerConfig`가 우선하며, 없으면 전역 `mqttBrokers.<mqttBrokerConfigName>`을 사용한다. 이름 기본값은 `default`다. 이 변수는 구독하여 AAS 값을 갱신하는 기능을 제공하지 않는다.
+| 필드 | 기본값 | 설명 |
+| --- | --- | --- |
+| `mqttBrokerConfig` | `"default"` | 문자열이면 전역 `mqttBrokers`의 항목 이름, 객체면 broker 설정(`brokerUrl`, `connectionTimeout`, `keepAliveInterval`)이다. MQTT 수신 엔드포인트의 같은 필드와 형식이 같다. |
+| `topic` | (필수) | 발행 topic. 와일드카드(`+`, `#`)가 있거나 비어 있으면 설정 오류로 시작에 실패한다. |
+| `qos` | `1` | 0, 1, 2. QoS 0은 broker의 확인을 기다리지 않고, 1·2는 각각 PUBACK·PUBCOMP를 기다린다. |
+| `retained` | `false` | `true`이면 broker가 마지막 메시지를 보관했다가 새로 구독한 쪽에 바로 전달한다. 인스턴스를 없앤 뒤에도 broker에 마지막 값이 남는다. |
+| `publishTimeout` | `10s` | QoS 1·2에서 broker의 전달 확인을 기다리는 최대 시간. 양수여야 한다. |
+| `whenDisconnected` | `skip` | 메시지를 전달하지 못했을 때의 처리. 아래 표 참고. |
 
-`whenDisconnected`는 broker와 연결되어 있지 않을 때의 갱신 처리 방법이다. 연결은 비동기로 맺어지므로 인스턴스 시작 직후와 broker 장애 중에 이 정책이 적용된다.
+이전 형식의 `mqttBrokerConfigName`(전역 설정 이름)도 받지만, `mqttBrokerConfig`와 함께 쓰면 설정 오류다. 직렬화할 때는 `mqttBrokerConfig` 하나로 출력한다. broker 설정 객체에 지원하지 않는 필드(예: 오타인 `connectTimeout`)가 있으면 무시하고 경고 로그를 남긴다. 이 변수는 구독하여 AAS 값을 갱신하는 기능을 제공하지 않는다.
+
+`whenDisconnected`는 broker와 연결되어 있지 않거나, `publishTimeout` 안에 broker의 전달 확인을 받지 못했을 때의 갱신 처리 방법이다. 연결은 비동기로 맺어지므로 인스턴스 시작 직후와 broker 장애 중에 이 정책이 적용된다. 확인 시간 초과는 메시지가 실제로는 전달되었을 수도 있는 경우다.
 
 | 값 | 동작 |
 | --- | --- |
-| `skip` (기본값) | 발행을 건너뛰고 AAS 요소 값은 정상적으로 갱신한다. 연결이 끊긴 뒤 처음 건너뛸 때 경고 로그를 한 번 남기고, 다시 발행에 성공하면 INFO 로그를 남긴다. 건너뛴 값은 다시 연결되어도 재발행하지 않는다. |
+| `skip` (기본값) | 발행을 건너뛰고 AAS 요소 값은 정상적으로 갱신한다. 전달하지 못한 첫 갱신에서 경고 로그를 한 번 남기고, 다시 발행에 성공하면 INFO 로그를 남긴다. 건너뛴 값은 다시 연결되어도 재발행하지 않는다. |
 | `fail` | `AssetVariableException`으로 갱신을 실패시킨다. 요소 갱신과 Submodel 저장 모두 AAS 값도 바뀌지 않는다. |
 
-연결 확인 후 발행하는 사이에 연결이 끊어진 경우(Paho 오류 코드 32104·32109·32102·32111)도 연결되지 않은 경우와 같이 처리한다. 권한 오류 등 그 밖의 발행 실패와 값 변환 실패는 정책과 관계없이 예외를 던진다. 이 정책이 없던 이전 버전은 `fail`과 같이 동작했다.
+연결 확인 후 발행하는 사이에 연결이 끊어진 경우(Paho 오류 코드 32104·32109·32102·32111)도 연결되지 않은 경우와 같이 처리한다. 권한 오류 등 그 밖의 발행 실패와 값 변환 실패는 정책과 관계없이 예외를 던진다. 이 정책이 없던 이전 버전은 `fail`과 같이 동작했고, 확인 대기 시간에도 제한이 없었다.
+
+확인을 기다리는 동안에는 공유 연결의 lock을 잡지 않으므로, 한 변수의 발행이 느려도 같은 연결을 쓰는 다른 변수의 발행이나 구독이 막히지 않는다. 다만 `ConcurrentPersistence`를 사용하면 이 대기 시간 동안 인스턴스의 다른 요청은 기다리게 된다.
 
 하위 요소 갱신에는 제한이 있다. `Measurements.Temperature`만 갱신하면 영속성 계층이 기본 `updatePart()`를 호출하는데, MQTT의 `read()`는 미지원 예외를 던진다. 따라서 이 구성에서는 `Measurements` 전체를 갱신하거나, 발행 단위를 개별 Property에 연결해야 한다.
 
