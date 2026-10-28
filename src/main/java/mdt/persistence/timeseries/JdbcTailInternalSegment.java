@@ -104,7 +104,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 									.replace(SQL_GET_TAIL_SEGMENT_BY_TIME);
 
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setTimestamp(1, Timestamp.from(Instant.now().minus(duration)));
@@ -141,7 +141,7 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
                                     .failOnUndefinedVariable(false)
                                     .replace(SQL_GET_TAIL_SEGMENT_BY_COUNT);
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setInt(1, length);

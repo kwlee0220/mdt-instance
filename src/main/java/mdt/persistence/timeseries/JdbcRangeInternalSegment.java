@@ -75,7 +75,7 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 	""";
 	private List<DefaultRecord> readRecordsInRange(Range range) {
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = prepare(conn, range)) {

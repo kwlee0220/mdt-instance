@@ -2,29 +2,35 @@ package mdt.persistence.asset.jdbc;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.KeyValue;
-import utils.Throwables;
 import utils.func.Optionals;
+import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
-import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
 
 import mdt.ElementLocation;
-import mdt.persistence.asset.AssetVariableConfig;
 
 /**
+ * {@link MultiRowAssetVariable}의 설정.
+ * <ul>
+ *   <li>{@code readQuery} — 행마다 첫 컬럼에 key, 둘째 컬럼에 값을 돌려주는 {@code SELECT} (필수).</li>
+ *   <li>{@code updateQuery} — 첫 파라미터에 값, 둘째 파라미터에 key를 받는 {@code UPDATE} (선택, 없으면 읽기 전용).</li>
+ *   <li>{@code rows} — {@code [{"key": ..., "subPath": ...}, ...]} 형식의 key와 하위 경로 매핑 (필수, 1개 이상).
+ *       key는 중복될 수 없으며, 적힌 순서가 유지된다.</li>
+ * </ul>
+ * 직렬화 식별자는 {@value #SERIALIZATION_TYPE}이다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig implements AssetVariableConfig {
+public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:jdbc:multi-row";
 
 	private static final String FIELD_READ_QUERY = "readQuery";
@@ -32,6 +38,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 	private static final String FIELD_ROWS = "rows";
 	private static final String FIELD_KEY = "key";
 	private static final String FIELD_SUBPATH = "subPath";
+	private static final Set<String> FIELDS = Set.of(FIELD_READ_QUERY, FIELD_UPDATE_QUERY, FIELD_ROWS);
 	
 	private String m_readQuery;
 	private @Nullable String m_updateQuery;
@@ -46,7 +53,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		
 		m_readQuery = readQuery;
 		m_updateQuery = updateQuery;
-		m_mapping = keyToSubpathMappings;
+		m_mapping = new LinkedHashMap<>(keyToSubpathMappings);
 	}
 	
 	public String getReadQuery() {
@@ -83,27 +90,38 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		gen.writeEndArray();
 	}
 
+	/**
+	 * JSON 노드로부터 {@link MultiRowAssetVariableConfig} 객체를 생성한다.
+	 *
+	 * @param jnode	JSON 노드.
+	 * @return	생성된 설정 객체.
+	 * @throws IOException	역직렬화가 실패한 경우.
+	 * @throws JacksonDeserializationException	{@code readQuery}나 {@code rows}가 없거나 잘못된 경우,
+	 * 			key가 중복된 경우.
+	 */
 	public static MultiRowAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		MultiRowAssetVariableConfig config = new MultiRowAssetVariableConfig();
 		config.loadFields(jnode);
+		warnUnknownFields(jnode, FIELDS);
 		
-		config.m_readQuery = Optional.ofNullable(jnode.get(FIELD_READ_QUERY))
-										.map(JsonNode::asText)
-										.orElseThrow(() -> new IllegalArgumentException("missing '" + FIELD_READ_QUERY + "' field"));
-		config.m_updateQuery = Optionals.map(jnode.get(FIELD_UPDATE_QUERY), JsonNode::asText);
-		config.m_mapping = FStream.from(jnode.get("rows").elements())
-									.mapToKeyValue(rowNode -> {
-										try {
-											String key = JacksonUtils.getStringField(rowNode, FIELD_KEY);
-											String subPath = JacksonUtils.getStringField(rowNode, FIELD_SUBPATH);
-											return KeyValue.of(key, subPath);
-										}
-										catch ( IOException e ) {
-											Throwables.sneakyThrow(e);
-											throw new AssertionError("unreachable");
-										}
-									})
-									.toMap();
+		String where = "multi-row AssetVariable config";
+		config.m_readQuery = requireText(jnode, FIELD_READ_QUERY, where);
+		config.m_updateQuery = JacksonUtils.getStringFieldOrNull(jnode, FIELD_UPDATE_QUERY);
+
+		JsonNode rowsNode = jnode.get(FIELD_ROWS);
+		if ( rowsNode == null || !rowsNode.isArray() || rowsNode.isEmpty() ) {
+			throw new JacksonDeserializationException(String.format("'%s' must be a non-empty array: %s",
+																	FIELD_ROWS, jnode));
+		}
+		config.m_mapping = new LinkedHashMap<>();
+		for ( JsonNode rowNode: rowsNode ) {
+			String rowWhere = "'" + FIELD_ROWS + "' item " + rowNode;
+			String key = requireText(rowNode, FIELD_KEY, rowWhere);
+			String subPath = requireText(rowNode, FIELD_SUBPATH, rowWhere);
+			if ( config.m_mapping.put(key, subPath) != null ) {
+				throw new JacksonDeserializationException(String.format("duplicate key in '%s': %s", FIELD_ROWS, key));
+			}
+		}
 		
 		return config;
 	}

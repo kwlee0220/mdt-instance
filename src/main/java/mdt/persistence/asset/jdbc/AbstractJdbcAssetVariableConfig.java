@@ -2,8 +2,16 @@ package mdt.persistence.asset.jdbc;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,6 +20,7 @@ import utils.Preconditions;
 import utils.UnitUtils;
 import utils.func.Optionals;
 import utils.jdbc.JdbcConfiguration;
+import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 
 import mdt.ConnectionConfigRef;
@@ -42,8 +51,12 @@ import mdt.persistence.asset.AssetVariableConfig;
  * @author Kang-Woo Lee (ETRI)
  */
 public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableConfig {
+	private static final Logger s_logger = LoggerFactory.getLogger(AbstractJdbcAssetVariableConfig.class);
 	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";	// 이전 형식
 	private static final String FIELD_JDBC_CONFIG = "jdbcConfig";
+	/** 모든 JDBC AssetVariable 설정이 공통으로 받는 필드. */
+	private static final Set<String> COMMON_FIELDS = Set.of("@type", "element", "validPeriod",
+																FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME);
 
 	private ElementLocation m_elementLoc;
 	private ConnectionConfigRef<JdbcConfiguration> m_jdbcConfigRef;
@@ -146,6 +159,74 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
 	}
 	
+	/**
+	 * 설정에 이 타입이 사용하지 않는 필드가 있으면 경고 로그를 남긴다.
+	 * <p>
+	 * 철자가 틀린 필드나 다른 타입의 필드는 조용히 무시되어 설정 실수가 드러나지 않으므로 알린다.
+	 * 기존 설정과의 호환을 위해 거부하지는 않는다.
+	 *
+	 * @param jnode			설정 JSON 노드.
+	 * @param typeFields	이 타입이 공통 필드 외에 받는 필드들.
+	 */
+	protected static void warnUnknownFields(JsonNode jnode, Set<String> typeFields) {
+		List<String> unknown = new ArrayList<>();
+		for ( Map.Entry<String,JsonNode> field: jnode.properties() ) {
+			String name = field.getKey();
+			if ( !COMMON_FIELDS.contains(name) && !typeFields.contains(name) ) {
+				unknown.add(name);
+			}
+		}
+		if ( !unknown.isEmpty() ) {
+			s_logger.warn("ignored unknown fields in JDBC AssetVariable config: type={}, element={}, fields={}",
+							JacksonUtils.getStringFieldOrNull(jnode, "@type"),
+							JacksonUtils.getStringFieldOrNull(jnode, "element"), unknown);
+		}
+	}
+
+	/**
+	 * 비어 있지 않은 문자열 필드를 읽는다.
+	 *
+	 * @param jnode	설정 JSON 노드.
+	 * @param field	필드 이름.
+	 * @param where	오류 메시지에 쓸 위치 설명.
+	 * @return	필드 값.
+	 * @throws JacksonDeserializationException	필드가 없거나 문자열이 아니거나 비어 있는 경우.
+	 */
+	protected static String requireText(JsonNode jnode, String field, String where) {
+		JsonNode node = jnode.get(field);
+		if ( node == null || !node.isTextual() || node.asText().isBlank() ) {
+			throw new JacksonDeserializationException(String.format("'%s' must be a non-blank string in %s: %s",
+																	field, where, jnode));
+		}
+		return node.asText();
+	}
+
+	/**
+	 * 열거형 값을 갖는 문자열 필드를 읽는다. 값은 대소문자를 구분하지 않는다.
+	 *
+	 * @param <E>			열거형 타입.
+	 * @param enumCls		열거형 클래스.
+	 * @param jnode			설정 JSON 노드.
+	 * @param field			필드 이름.
+	 * @param defaultValue	필드가 없을 때 사용할 값.
+	 * @return	필드 값.
+	 * @throws JacksonDeserializationException	값이 열거형 상수가 아닌 경우.
+	 */
+	protected static <E extends Enum<E>> E parseEnum(Class<E> enumCls, JsonNode jnode, String field,
+														E defaultValue) {
+		String str = JacksonUtils.getStringFieldOrNull(jnode, field);
+		if ( str == null ) {
+			return defaultValue;
+		}
+		try {
+			return Enum.valueOf(enumCls, str.trim().toUpperCase(Locale.ROOT));
+		}
+		catch ( IllegalArgumentException e ) {
+			throw new JacksonDeserializationException(String.format("invalid '%s': %s (expected one of %s)",
+															field, str, Arrays.toString(enumCls.getEnumConstants())));
+		}
+	}
+
 	@Override
 	public String toString() {
 		// 인라인 설정의 URL에는 비밀번호가 포함될 수 있으므로 출력하지 않는다.

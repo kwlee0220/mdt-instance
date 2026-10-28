@@ -56,7 +56,7 @@ class JdbcRecordsReader {
 		// ({@link mdt.model.timeseries.DefaultRecord#getTimestamp()}와 동일한 규약)
 		m_tsColName = m_matches.values().iterator().next().dbColName();
 
-		m_jdbc = JdbcProcessor.builderFromFullJdbcUrl(tsConfig.getEndpoint()).build();
+		m_jdbc = JdbcProcessor.builderFromFullJdbcUrl(tsConfig.getEndpoint()).pooled().build();
 	}
 
 	/**

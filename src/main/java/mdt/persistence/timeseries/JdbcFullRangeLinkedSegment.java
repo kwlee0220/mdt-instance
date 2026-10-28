@@ -57,7 +57,7 @@ public class JdbcFullRangeLinkedSegment extends DefaultLinkedSegment implements 
 	
 	public void load() {
 		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
-		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).build();
+		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 
 		// Endpoint는 Submodel 조회 응답으로 클라이언트에 그대로 전달되므로,
 		// 설정의 endpoint에 포함된 사용자 이름과 비밀번호는 빼고 JDBC URL만 노출한다.

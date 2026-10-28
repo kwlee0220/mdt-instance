@@ -144,7 +144,7 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 }
 ```
 
-`endpoint`는 `JdbcConfiguration.parseString()` 계열로 해석한다. 현재 파서는 `?` 뒤에서 `user`, `password`, `maxPoolSize`를 추출하며 나머지 질의 파라미터를 JDBC URL에 보존하지 않는다. 따라서 DB 드라이버의 임의 URL 옵션이 그대로 전달된다고 가정해서는 안 된다. asset JDBC 변수의 `jdbcConfigName` 방식과도 다르다.
+`endpoint`는 `JdbcConfiguration.parseString()` 계열로 해석한다. 현재 파서는 `?` 뒤에서 `user`, `password`, `maxPoolSize`를 추출하며 나머지 질의 파라미터를 JDBC URL에 보존하지 않는다. `maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 따라서 DB 드라이버의 임의 URL 옵션이 그대로 전달된다고 가정해서는 안 된다. asset JDBC 변수의 `jdbcConfigName` 방식과도 다르다.
 
 설정 구현: [TimeSeriesSubmodelConfig.java](../src/main/java/mdt/persistence/timeseries/TimeSeriesSubmodelConfig.java), [AASOperationConfig.java](../src/main/java/mdt/config/AASOperationConfig.java).
 
@@ -238,6 +238,8 @@ DB에서 최신순으로 가져온 결과를 Java에서 뒤집어 시간 오름�
 Tail에 공통 캐시나 `validPeriod` 설정은 없다. `Segments.Tail.RecordCount`처럼 요약 필드만 요청해도 Tail 전체 레코드를 읽어 세그먼트를 만든 뒤 해당 필드를 추출한다.
 
 현재 타입 변환에도 경로 차이가 있다. 개수 기준 Tail은 각 JDBC 값을 Metadata의 `DataType.fromJdbcObject()`로 변환하지만, 기간 기준 Tail은 JDBC 원시 객체 목록을 `DefaultRecord`에 직접 전달한다. `DefaultRecord.getTimestamp()`가 `Instant`를 요구하므로 드라이버가 `Timestamp` 등을 반환하면 기간 기준 경로에서 타입 오류가 발생할 수 있다.
+
+어느 경로든 필드 값이 SQL `NULL`이면 레코드 Property의 값은 `null`(값 없음)이 된다. 숫자 필드라도 0으로 바꾸지 않는다. 원시 객체를 전달하는 경로는 값을 Property로 바꿀 때 `DataType.toValueString()`이 원시 객체를 직접 변환한다. 숫자 필드는 `NUMERIC` 컬럼의 `BigDecimal` 등 어떤 숫자 객체든 받는다. 정수 타입 필드에 소수 부분이 있는 값이 오면 변환에 실패한다.
 
 구현: [JdbcTailInternalSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcTailInternalSegment.java).
 
@@ -374,6 +376,8 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 범위 비교용 SQL 시각 리터럴은 `Instants.toUTCString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 공통 `DataTypes.DATE_TIME`의 변환을 따르므로 모든 출력에 `Z`가 붙는다고 가정하지 않는다.
 
 `JdbcRecordsReader`는 `executeQuery(query, true)`의 ResultSet을 try-with-resources로 닫아 연결도 함께 닫도록 한다. FullRange와 Tail 역시 Connection을 try-with-resources로 관리한다. 이 패키지는 여러 조회를 하나의 공통 Connection이나 트랜잭션으로 묶지 않는다.
+
+연결은 utils의 [JdbcConnectionPools](../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 관리하는 연결 풀에서 얻으며, 닫으면 물리 연결은 유지된 채 풀로 반환된다. 세그먼트는 조회할 때마다 `JdbcProcessor`를 새로 만들지만, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스)가 같으면 같은 풀을 공유하므로 Submodel 조회마다 DB 연결을 새로 맺지 않는다. 같은 DB를 쓰는 asset JDBC 변수와도 풀을 공유한다. 풀은 유휴 연결을 미리 만들지 않고 60초 동안 쓰이지 않은 연결은 닫는다. 연결이 모두 사용 중이거나 DB에 접속할 수 없으면 최대 5초를 기다린 뒤 `SQLException`으로 실패한다. 풀 크기와 인스턴스 수에 따른 전체 연결 수는 [asset 영속성 문서의 JDBC 공통 설명](asset-persistence-guide.md#공통-연결-설정과-캐시)을 따른다.
 
 ## 보조 조회 구현과 현재 사용 범위
 

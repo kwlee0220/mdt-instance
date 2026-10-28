@@ -2,6 +2,7 @@ package mdt.persistence.asset.jdbc;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Set;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.jetbrains.annotations.Nullable;
 
 import utils.func.Optionals;
+import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 
 import mdt.ElementLocation;
@@ -21,6 +23,8 @@ import mdt.ElementLocation;
  * <ul>
  *   <li>{@code readQuery} — 한 행·한 컬럼의 값을 반환하는 {@code SELECT} (필수).</li>
  *   <li>{@code updateQuery} — 단일 파라미터를 받는 갱신 질의 (선택, 없으면 읽기 전용).</li>
+ *   <li>{@code onNoRecord} — 조회 결과에 행이 없을 때의 동작 (선택, 기본값 {@code KEEP},
+ *       {@link NoRecordPolicy}).</li>
  * </ul>
  * element 위치, JDBC 접속 설정, 유효 기간 등 공통 항목은 {@link AbstractJdbcAssetVariableConfig}이 제공한다.
  * 직렬화 식별자는 {@value #SERIALIZATION_TYPE}이다.
@@ -31,9 +35,12 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	public static final String SERIALIZATION_TYPE = "mdt:asset:jdbc:simple";
 	static final String FIELD_READ_QUERY = "readQuery";
 	static final String FIELD_UPDATE_QUERY = "updateQuery";
+	static final String FIELD_ON_NO_RECORD = "onNoRecord";
+	private static final Set<String> FIELDS = Set.of(FIELD_READ_QUERY, FIELD_UPDATE_QUERY, FIELD_ON_NO_RECORD);
 
 	private String m_readQuery;
 	private @Nullable String m_updateQuery;
+	private NoRecordPolicy m_noRecordPolicy = NoRecordPolicy.KEEP;
 
 	private SimpleJdbcAssetVariableConfig()  { }
 
@@ -74,6 +81,15 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	}
 
 	/**
+	 * 조회 결과에 행이 없을 때의 동작을 반환한다.
+	 *
+	 * @return	동작. 설정되지 않았으면 {@link NoRecordPolicy#KEEP}.
+	 */
+	public NoRecordPolicy getNoRecordPolicy() {
+		return m_noRecordPolicy;
+	}
+
+	/**
 	 * 이 설정의 직렬화 식별자({@value #SERIALIZATION_TYPE})를 반환한다.
 	 *
 	 * @return 직렬화 식별자.
@@ -86,8 +102,8 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	/**
 	 * 이 설정의 필드들을 주어진 {@link JsonGenerator}로 직렬화한다.
 	 * <p>
-	 * 공통 필드는 상위 클래스가 직렬화하고, 여기서는 조회/갱신 질의를 추가로 기록한다.
-	 * 갱신 질의는 설정된 경우에만 기록된다.
+	 * 공통 필드는 상위 클래스가 직렬화하고, 여기서는 조회/갱신 질의와 onNoRecord를 추가로 기록한다.
+	 * 갱신 질의는 설정된 경우에만, onNoRecord는 기본값이 아닌 경우에만 기록된다.
 	 *
 	 * @param gen	직렬화에 사용할 JsonGenerator.
 	 * @throws IOException	직렬화가 실패한 경우.
@@ -97,6 +113,9 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 		super.serializeFields(gen);
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
 		Optionals.acceptThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
+		if ( m_noRecordPolicy != NoRecordPolicy.KEEP ) {
+			gen.writeStringField(FIELD_ON_NO_RECORD, m_noRecordPolicy.name());
+		}
 	}
 	
 	/**
@@ -104,14 +123,17 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	 * 
 	 * @param jnode	JSON 노드
 	 * @return	생성된 {@link SimpleJdbcAssetVariableConfig} 객체.
-	 * @throws IOException 
+	 * @throws IOException	역직렬화가 실패한 경우.
+	 * @throws JacksonDeserializationException	{@code readQuery}가 없거나 {@code onNoRecord} 값이 잘못된 경우.
 	 */
 	public static SimpleJdbcAssetVariableConfig deserializeFields(JsonNode jnode) throws IOException {
 		SimpleJdbcAssetVariableConfig config = new SimpleJdbcAssetVariableConfig();
 		config.loadFields(jnode);
+		warnUnknownFields(jnode, FIELDS);
 		
-		config.m_readQuery = JacksonUtils.getStringField(jnode, FIELD_READ_QUERY);
+		config.m_readQuery = requireText(jnode, FIELD_READ_QUERY, "simple JDBC AssetVariable config");
 		config.m_updateQuery = JacksonUtils.getStringFieldOrNull(jnode, FIELD_UPDATE_QUERY);
+		config.m_noRecordPolicy = parseEnum(NoRecordPolicy.class, jnode, FIELD_ON_NO_RECORD, NoRecordPolicy.KEEP);
 		
 		return config;
 	}

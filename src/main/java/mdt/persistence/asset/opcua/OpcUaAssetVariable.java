@@ -10,7 +10,7 @@ import utils.Throwables;
 import mdt.model.sm.SubmodelUtils;
 import mdt.persistence.MDTModelLookup;
 import mdt.persistence.asset.AssetVariableException;
-import mdt.persistence.asset.jdbc.SubmodelElementHandler;
+import mdt.persistence.asset.ElementValueSetter;
 
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 
@@ -27,7 +27,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializati
 public class OpcUaAssetVariable extends AbstractOpcUaAssetVariable<OpcUaAssetVariableConfig> {
 	private static final Logger s_logger = LoggerFactory.getLogger(OpcUaAssetVariable.class);
 
-	private SubmodelElementHandler m_handler;
+	private ElementValueSetter m_valueSetter;
 
 	public OpcUaAssetVariable(OpcUaAssetVariableConfig config) throws ConfigurationInitializationException {
 		super(config);
@@ -39,7 +39,7 @@ public class OpcUaAssetVariable extends AbstractOpcUaAssetVariable<OpcUaAssetVar
 	public void initialize(MDTModelLookup lookup) {
 		super.initialize(lookup);
 
-		m_handler = new SubmodelElementHandler(m_prototype);
+		m_valueSetter = new ElementValueSetter(m_prototype);
 	}
 
 	@Override
@@ -55,7 +55,7 @@ public class OpcUaAssetVariable extends AbstractOpcUaAssetVariable<OpcUaAssetVar
 			// 동시에 호출된 read()끼리 간섭하지 않도록 공유 prototype은 고치지 않고
 			// 복사본에 값을 반영해 반환한다.
 			SubmodelElement result = SubmodelUtils.duplicate(m_prototype);
-			m_handler.update(result, value);
+			m_valueSetter.update(result, value);
 
 			return result;
 		}
