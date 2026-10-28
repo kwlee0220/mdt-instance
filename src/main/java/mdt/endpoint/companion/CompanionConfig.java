@@ -17,6 +17,18 @@ import utils.async.command.ProgramServiceConfig;
  */
 public class CompanionConfig extends ProgramServiceConfig {
 	private boolean m_required = false;
+	
+	public CompanionConfig() { }
+	
+	/**
+	 * 주어진 설정의 복사본을 만든다. 명령행과 환경 변수 맵은 원본과 공유하지 않는다.
+	 *
+	 * @param other	복사할 설정.
+	 */
+	public CompanionConfig(CompanionConfig other) {
+		super(other);
+		m_required = other.m_required;
+	}
 
 	/**
 	 * 동반 프로그램이 인스턴스 시작에 반드시 필요한지 여부를 반환한다.

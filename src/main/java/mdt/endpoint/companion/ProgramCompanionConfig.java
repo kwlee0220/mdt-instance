@@ -34,8 +34,10 @@ public class ProgramCompanionConfig extends EndpointConfig<ProgramCompanion> {
 	/**
 	 * 인스턴스 설정의 동반 프로그램 항목으로 companion 설정을 만든다.
 	 * <p>
-	 * 인스턴스 변수({@code MDT_INSTANCE_ID} 등)에 동반 프로그램의 {@code environments}를
-	 * {@link ProgramCompanion#mergeEnvironments(Map, Map) 병합}하여 {@code companionConfig}에 다시 설정한다.
+	 * {@code companionConfig}의 복사본을 만들고, 인스턴스 변수({@code MDT_INSTANCE_ID} 등)에 동반 프로그램의
+	 * {@code environments}를 {@link ProgramCompanion#mergeEnvironments(Map, Map) 병합}하여 복사본에 설정한다.
+	 * 인자로 받은 {@code companionConfig}는 바꾸지 않으므로(실패한 경우 포함), 같은 설정으로 여러 번 호출해도
+	 * 각 호출의 인스턴스 변수가 그대로 들어간다.
 	 *
 	 * @param name				동반 프로그램 이름. {@code companions}의 키이며, 단일 {@code companion}이면 {@code null}.
 	 * @param companionConfig	동반 프로그램 실행 설정.
@@ -47,13 +49,14 @@ public class ProgramCompanionConfig extends EndpointConfig<ProgramCompanion> {
 												Map<String,String> instanceVars) {
 		Preconditions.checkNotNullArgument(companionConfig, "companionConfig is null");
 
-		companionConfig.setEnvironments(ProgramCompanion.mergeEnvironments(instanceVars,
-																			companionConfig.getEnvironments()));
-
 		ProgramCompanionConfig config = new ProgramCompanionConfig();
-		config.setName(name);
-		config.setProgramConfig(companionConfig);
-		config.setRequired(companionConfig.isRequired());
+		config.setName(name);		// 원본을 다루기 전에 이름을 먼저 검증한다.
+
+		CompanionConfig programConfig = new CompanionConfig(companionConfig);
+		programConfig.setEnvironments(ProgramCompanion.mergeEnvironments(instanceVars,
+																		companionConfig.getEnvironments()));
+		config.setProgramConfig(programConfig);
+		config.setRequired(programConfig.isRequired());
 		return config;
 	}
 

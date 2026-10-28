@@ -56,7 +56,12 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	private static final Duration START_WAIT_MARGIN = Duration.ofSeconds(1);
 
 	private ProgramCompanionConfig m_config;
+	// 아래 실행 값은 init() 시점에 확정한다. 이후 설정 객체가 바뀌어도 실행·대기·로그는 이 값을 따른다.
+	// (ProgramService도 생성 시점의 설정 복사본으로 동작한다.)
 	private String m_name;
+	private boolean m_required;
+	private Duration m_startTimeout;
+	private List<String> m_commandLine;
 	private ProgramService m_service;
 	private ServiceShutdownHook.Registration m_hookReg;
 	// stop()과 JVM 종료 hook이 프로그램 종료를 기다리는 시간. 두 경로가 같은 시간을 쓰도록 한 곳에서 정한다.
@@ -130,6 +135,9 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 		
 		m_config = config;
 		m_service = ProgramService.create(m_config.getProgramConfig());
+		m_required = config.isRequired();
+		m_startTimeout = config.getProgramConfig().getStartTimeout();
+		m_commandLine = List.copyOf(config.getProgramConfig().getCommandLine());
 
 		String instanceId = null;
 		if ( serviceContext instanceof MDTService mdtCtxt ) {
@@ -145,7 +153,7 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 			@Override
 			public void failed(State from, Throwable failure) {
 				s_logger.error("companion program failed: name={}, state={}, cause={}, program={}",
-								name, from, ""+failure, m_config.getProgramConfig().getCommandLine());
+								name, from, ""+failure, m_commandLine);
 			}
 		}, MoreExecutors.directExecutor());
 		
@@ -208,13 +216,13 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	@Override
 	public void start() throws EndpointException {
 		m_service.startAsync();
-		if ( m_config.isRequired() ) {
+		if ( m_required ) {
 			awaitRequiredStart();
 		}
 	}
 	
 	private void awaitRequiredStart() throws EndpointException {
-		Duration startTimeout = m_config.getProgramConfig().getStartTimeout();
+		Duration startTimeout = m_startTimeout;
 		try {
 			if ( startTimeout.isZero() ) {
 				m_service.awaitRunning();
@@ -238,14 +246,16 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	}
 
 	/**
-	 * 외부 프로그램을 중지시키고, 종료될 때까지 최대 {@link ServiceShutdownHook#DEFAULT_TERMINATION_TIMEOUT}
-	 * (3초) 기다린다.
+	 * 외부 프로그램을 중지시키고, 자식 프로세스 정리가 끝날 때까지 최대
+	 * {@link ServiceShutdownHook#DEFAULT_TERMINATION_TIMEOUT}(3초) 기다린다.
 	 * <p>
 	 * 자식 프로세스의 종료(SIGTERM 후 필요시 SIGKILL)는 {@code ProgramService}/{@code CommandExecution}의
-	 * 종료 절차를 따른다. 대기 시간은 {@link #init init}에서 등록한 JVM 종료 hook과 같다.
+	 * 종료 절차를 따른다. 정리 완료는 {@link ProgramService#awaitCleanup(Duration)}으로 판단하며, 대기 시간과
+	 * 판단 기준은 {@link #init init}에서 등록한 JVM 종료 hook과 같다. 서비스가 FAILED여도(예: 시작 제한 시간
+	 * 초과) 실행 정리가 끝나기 전에는 완료로 보지 않는다.
 	 * <p>
-	 * 프로그램이 종료되면(TERMINATED 또는 FAILED) JVM 종료 hook을 해제하여, JVM 종료 시점에 이미 끝난
-	 * service에 대해 중복으로 {@code stopAsync}가 호출되는 잡음을 방지한다. 대기 시간 안에 종료되지 않으면
+	 * 정리가 끝나면 JVM 종료 hook을 해제하여, JVM 종료 시점에 이미 끝난 service에 대해 중복으로
+	 * {@code stopAsync}가 호출되는 잡음을 방지한다. 대기 시간 안에 끝나지 않거나 대기 중 인터럽트되면
 	 * 경고 로그를 남기고 hook을 그대로 두어, JVM 종료 시 hook이 한 번 더 정리를 기다리게 한다.
 	 * JVM 종료와 본 메서드 호출이 거의 동시에 발생하는 경우에도
 	 * {@link ServiceShutdownHook.Registration#unregister()}가 race를 안전하게 처리한다.
@@ -253,16 +263,18 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	@Override
 	public void stop() {
 		m_service.stopAsync();
+		boolean cleanedUp;
 		try {
-			m_service.awaitTerminated(m_terminationTimeout.toNanos(), TimeUnit.NANOSECONDS);
+			cleanedUp = m_service.awaitCleanup(m_terminationTimeout);
 		}
-		catch ( TimeoutException e ) {
-			s_logger.warn("companion program did not terminate within {}, keeping the shutdown hook: {}",
-							m_terminationTimeout, m_service);
+		catch ( InterruptedException e ) {
+			Thread.currentThread().interrupt();
+			cleanedUp = false;
+		}
+		if ( !cleanedUp ) {
+			s_logger.warn("companion program was not cleaned up within {}, keeping the shutdown hook: name={}",
+							m_terminationTimeout, m_name);
 			return;
-		}
-		catch ( IllegalStateException e ) {
-			// 서비스가 FAILED로 끝난 경우. 이미 종료된 상태이므로 hook을 해제해도 된다.
 		}
 		
 		if ( m_hookReg != null ) {
