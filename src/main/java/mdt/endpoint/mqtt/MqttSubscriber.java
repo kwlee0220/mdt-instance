@@ -86,6 +86,10 @@ class MqttSubscriber implements MqttService.Subscriber {
 	String getTopic() {
 		return m_mapping.getTopic();
 	}
+	
+	int getQos() {
+		return m_mapping.getQos();
+	}
 
 	/**
 	 * {@link DeliveryMode#LATEST}에서 반영하지 못하고 버린 메시지 수를 반환한다.
@@ -119,7 +123,8 @@ class MqttSubscriber implements MqttService.Subscriber {
 			return;
 		}
 
-		Pending pending = new Pending(topic, new String(message.getPayload(), StandardCharsets.UTF_8));
+		String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
+		Pending pending = new Pending(topic, m_mapping.getFormat().toValueJson(payload));
 		switch ( m_mapping.getDelivery() ) {
 			case LATEST -> {
 				// 반영을 기다리는 값이 없었을 때만 반영 작업을 예약한다. 있었으면 그 값을 새 값으로 바꾼다(이전 값은 버림).

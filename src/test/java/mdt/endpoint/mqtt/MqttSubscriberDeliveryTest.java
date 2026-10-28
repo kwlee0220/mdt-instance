@@ -21,6 +21,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.PropertyValue;
+
 import mdt.ElementLocation;
 import mdt.ElementValueUpdater;
 
@@ -139,6 +141,7 @@ public class MqttSubscriberDeliveryTest {
 		ElementLocation loc = mapping.getElementLocation();
 		ElementValueUpdater updater = new ElementValueUpdater() {
 			@Override public ElementLocation getLocation() { return loc; }
+			@Override public Class<?> getValueType() { return PropertyValue.class; }
 			@Override public void update(String valueJson) {
 				if ( m_firstStarted.getCount() > 0 ) {
 					m_firstStarted.countDown();

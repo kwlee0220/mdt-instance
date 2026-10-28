@@ -22,6 +22,8 @@ import ch.qos.logback.core.read.ListAppender;
 
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.StatusCode;
 
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.PropertyValue;
+
 import mdt.ElementLocation;
 import mdt.ElementUpdateException;
 import mdt.ElementValueUpdater;
@@ -66,6 +68,21 @@ public class MqttSubscriberTest {
 		
 		assertEquals(List.of("23.5", "24.0"), received);
 		assertTrue(errors().isEmpty());
+	}
+
+	@Test
+	public void testTextPayloadIsQuoted() {
+		List<String> received = Lists.newArrayList();
+		MqttElementSubscriber mapping = new MqttElementSubscriber("factory/robot01/status", "State:Status", null, null,
+																	PayloadFormat.TEXT);
+		MqttSubscriber subscriber = new MqttSubscriber(mapping, updater(mapping.getElementLocation(), received::add),
+														MoreExecutors.directExecutor(), MqttSubscriber.DEFAULT_CAPACITY);
+		
+		subscriber.onMessage(mapping.getTopic(), message("running"));
+		subscriber.onMessage(mapping.getTopic(), message("say \"hi\"\\n"));
+		
+		// 일반 텍스트를 JSON 문자열로 감싸고, 따옴표와 역슬래시는 이스케이프한다.
+		assertEquals(List.of("\"running\"", "\"say \\\"hi\\\"\\\\n\""), received);
 	}
 
 	@Test
@@ -161,6 +178,7 @@ public class MqttSubscriberTest {
 	private static ElementValueUpdater updater(ElementLocation loc, java.util.function.Consumer<String> action) {
 		return new ElementValueUpdater() {
 			@Override public ElementLocation getLocation() { return loc; }
+			@Override public Class<?> getValueType() { return PropertyValue.class; }
 			@Override public void update(String valueJson) { action.accept(valueJson); }
 		};
 	}

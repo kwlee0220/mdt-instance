@@ -14,6 +14,7 @@ import org.junit.Test;
 
 import de.fraunhofer.iosb.ilt.faaast.service.Service;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.PropertyValue;
 import de.fraunhofer.iosb.ilt.faaast.service.config.ServiceConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.filestorage.memory.FileStorageInMemoryConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.messagebus.internal.MessageBusInternalConfig;
@@ -78,6 +79,18 @@ public class FaaastRuntimeValueUpdaterTest {
 		
 		m_runtime.newValueUpdater(location("Status")).update("\"running\"");
 		assertEquals("running", propertyValue("Status"));
+	}
+
+	@Test
+	public void testQuotedValueIsAcceptedForNumericProperty() {
+		// MQTT 구독의 format=text는 payload를 JSON 문자열로 감싸 넘기므로, 숫자 Property도 따옴표 값을 받아야 한다.
+		m_runtime.newValueUpdater(location("Temperature")).update("\"23.5\"");
+		assertEquals(23.5, Double.parseDouble(propertyValue("Temperature")), 0.0);
+	}
+
+	@Test
+	public void testValueType() {
+		assertEquals(PropertyValue.class, m_runtime.newValueUpdater(location("Temperature")).getValueType());
 	}
 
 	@Test

@@ -162,6 +162,11 @@ public class FaaastRuntime {
 			}
 
 			@Override
+			public Class<?> getValueType() {
+				return typeInfo.getType();
+			}
+
+			@Override
 			public void update(String valueJson) {
 				setSubmodelElementValueByPath(submodelId, path, valueJson, parser);
 			}

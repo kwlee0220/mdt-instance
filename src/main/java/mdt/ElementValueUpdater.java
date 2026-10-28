@@ -19,6 +19,14 @@ public interface ElementValueUpdater {
 	public ElementLocation getLocation();
 
 	/**
+	 * 대상 요소의 값 타입을 반환한다. FA³ST의 value 클래스이며, 예를 들어 Property이면
+	 * {@code PropertyValue}, SubmodelElementCollection이면 {@code SubmodelElementCollectionValue}이다.
+	 *
+	 * @return	값 타입.
+	 */
+	public Class<?> getValueType();
+
+	/**
 	 * AAS value-only JSON을 요소에 반영한다.
 	 *
 	 * @param valueJson	요소 타입에 맞는 value-only JSON (예: 숫자 Property는 {@code 23.5},

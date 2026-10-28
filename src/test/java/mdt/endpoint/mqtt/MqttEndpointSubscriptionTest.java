@@ -19,6 +19,9 @@ import ch.qos.logback.core.read.ListAppender;
 
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.StatusCode;
 
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.PropertyValue;
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.SubmodelElementCollectionValue;
+
 import mdt.ElementLocation;
 import mdt.ElementUpdateException;
 import mdt.ElementValueUpdater;
@@ -98,6 +101,35 @@ public class MqttEndpointSubscriptionTest {
 		assertEquals(1, errors().size());
 	}
 	
+	@Test
+	public void testTextFormatRequiresProperty() {
+		MqttElementSubscriber textToProperty = new MqttElementSubscriber("t/status", "State:Status", null, null,
+																		PayloadFormat.TEXT);
+		MqttElementSubscriber textToCollection = new MqttElementSubscriber("t/joints", "State:Joints", null, null,
+																		PayloadFormat.TEXT);
+		MqttElementSubscriber jsonToCollection = new MqttElementSubscriber("t/joints2", "State:Joints", null, null,
+																		null);
+		List<MqttSubscriber> subscribers = MqttEndpoint.createSubscribers(
+								List.of(textToProperty, textToCollection, jsonToCollection),
+								loc -> updaterOf(loc, loc.getElementPath().equals("Joints")
+															? SubmodelElementCollectionValue.class : PropertyValue.class),
+								MoreExecutors.directExecutor());
+		
+		// Collection에 text 형식을 쓴 구독만 빠진다. Collection이라도 json 형식은 그대로 둔다.
+		assertEquals(List.of("t/status", "t/joints2"), subscribers.stream().map(MqttSubscriber::getTopic).toList());
+		assertEquals(1, errors().size());
+		String msg = errors().get(0).getFormattedMessage();
+		assertTrue(msg, msg.contains("t/joints") && msg.contains("format 'text' requires a Property"));
+	}
+	
+	private static ElementValueUpdater updaterOf(ElementLocation loc, Class<?> valueType) {
+		return new ElementValueUpdater() {
+			@Override public ElementLocation getLocation() { return loc; }
+			@Override public Class<?> getValueType() { return valueType; }
+			@Override public void update(String valueJson) { }
+		};
+	}
+
 	// 요소 경로가 EXISTING에 있으면 갱신기를 만들고, 없으면 FaaastRuntime.newValueUpdater()처럼 실패한다.
 	private static ElementValueUpdater updaterOf(ElementLocation loc) {
 		if ( !EXISTING.contains(loc.getElementPath()) ) {
@@ -105,6 +137,7 @@ public class MqttEndpointSubscriptionTest {
 		}
 		return new ElementValueUpdater() {
 			@Override public ElementLocation getLocation() { return loc; }
+			@Override public Class<?> getValueType() { return PropertyValue.class; }
 			@Override public void update(String valueJson) { }
 		};
 	}

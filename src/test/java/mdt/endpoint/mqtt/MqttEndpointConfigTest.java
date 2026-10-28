@@ -2,6 +2,8 @@ package mdt.endpoint.mqtt;
 
 import static org.junit.Assert.*;
 
+import java.util.List;
+
 import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -113,6 +115,34 @@ public class MqttEndpointConfigTest {
 		assertTrue(e.getMessage(), e.getMessage().contains("newest"));
 	}
 	
+	@Test
+	public void testQosAndFormatOptions() throws Exception {
+		MqttEndpointConfig.MDTConfig conf = read("{ \"subscribers\": [ "
+					+ "{ \"topic\": \"a\", \"element\": \"State:A\" }, "
+					+ "{ \"topic\": \"b\", \"element\": \"State:B\", \"qos\": 0, \"format\": \"text\" }, "
+					+ "{ \"topic\": \"c\", \"element\": \"State:C\", \"qos\": 2, \"format\": \"JSON\" } ] }");
+		List<MqttElementSubscriber> subs = conf.getSubscribers();
+		assertEquals(1, subs.get(0).getQos());								// 기본값
+		assertEquals(PayloadFormat.JSON, subs.get(0).getFormat());			// 기본값
+		assertEquals(0, subs.get(1).getQos());
+		assertEquals(PayloadFormat.TEXT, subs.get(1).getFormat());
+		assertEquals(2, subs.get(2).getQos());
+		assertEquals(PayloadFormat.JSON, subs.get(2).getFormat());			// 대소문자 무시
+		
+		JsonNode json = MDTModelSerDe.getJsonMapper().valueToTree(conf);
+		assertEquals(0, json.get("subscribers").get(1).get("qos").asInt());
+		assertEquals("text", json.get("subscribers").get(1).get("format").asText());
+		assertEquals("b -> State:B, qos=0, format=text", subs.get(1).toString());
+	}
+
+	@Test
+	public void testInvalidQosAndFormatAreRejected() {
+		for ( String option: new String[] { "\"qos\": 3", "\"qos\": -1", "\"format\": \"xml\"" } ) {
+			assertThrows(option, Exception.class, () -> read("{ \"subscribers\": [ "
+						+ "{ \"topic\": \"a\", \"element\": \"State:A\", " + option + " } ] }"));
+		}
+	}
+
 	private static MqttEndpointConfig.MDTConfig read(String mqttJson) throws Exception {
 		ServiceEndpointConfigs configs = MDTModelSerDe.MAPPER.readerFor(ServiceEndpointConfigs.class)
 															.readValue("{ \"mqtt\": " + mqttJson + " }");

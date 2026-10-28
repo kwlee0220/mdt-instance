@@ -17,6 +17,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.PropertyValue;
 import de.fraunhofer.iosb.ilt.faaast.service.starter.InitializationException;
 
 import com.google.common.collect.Lists;
@@ -118,7 +119,7 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		// 공유 연결이 이미 맺어져 있을 수 있으므로, 갱신기를 모두 만든 뒤에 구독한다.
 		m_lease = MqttServicePool.acquire(m_brokerConfig);
 		for ( MqttSubscriber subscriber: subscribers ) {
-			m_lease.getService().subscribe(subscriber.getTopic(), 1, subscriber);
+			m_lease.getService().subscribe(subscriber.getTopic(), subscriber.getQos(), subscriber);
 			m_subscriptions.add(KeyValue.of(subscriber.getTopic(), subscriber));
 		}
     }
@@ -126,8 +127,8 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 	/**
 	 * 구독 설정마다 값 갱신기를 만들어 구독자를 생성한다.
 	 * <p>
-	 * 대상 요소 위치를 해석하지 못하거나 요소가 없어 갱신기를 만들지 못한 구독은 토픽·요소·원인을 담은 ERROR 로그를
-	 * 남기고 결과에서 제외한다.
+	 * 대상 요소 위치를 해석하지 못하거나 요소가 없어 갱신기를 만들지 못한 구독, 그리고 {@link PayloadFormat#TEXT}인데
+	 * 대상이 Property가 아닌 구독은 토픽·요소·원인을 담은 ERROR 로그를 남기고 결과에서 제외한다.
 	 *
 	 * @param mappings			구독 설정 목록.
 	 * @param updaterFactory	요소 위치로부터 값 갱신기를 만드는 함수. 실패하면 예외를 던진다.
@@ -141,11 +142,16 @@ public class MqttEndpoint implements Endpoint<MqttEndpointConfig> {
 		for ( MqttElementSubscriber mapping: mappings ) {
 			try {
 				ElementValueUpdater updater = updaterFactory.apply(mapping.getElementLocation());
+				if ( mapping.getFormat() == PayloadFormat.TEXT
+					&& !PropertyValue.class.isAssignableFrom(updater.getValueType()) ) {
+					throw new IllegalArgumentException("format 'text' requires a Property, but the element value type is "
+														+ updater.getValueType().getSimpleName());
+				}
 				subscribers.add(new MqttSubscriber(mapping, updater, workers, MqttSubscriber.DEFAULT_CAPACITY));
 			}
 			catch ( RuntimeException e ) {
-				s_logger.error("skipping MQTT subscription, target element is not available: topic={}, element={}, "
-								+ "cause={}", mapping.getTopic(), mapping.getElementLocationExpr(), ""+e);
+				s_logger.error("skipping MQTT subscription, cannot apply messages to the target element: topic={}, "
+								+ "element={}, cause={}", mapping.getTopic(), mapping.getElementLocationExpr(), ""+e);
 			}
 		}
 		return subscribers;
