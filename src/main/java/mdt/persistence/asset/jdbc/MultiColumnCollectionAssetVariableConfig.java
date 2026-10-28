@@ -8,6 +8,7 @@ import java.util.Set;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import utils.Preconditions;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
@@ -153,24 +154,66 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		}
 
 		if ( m_updateQuery == null ) {
+			List<ColumnToSubPath> writables = FStream.from(getWritableMappingIndices())
+													.map(m_columnToSubPathMappings::get)
+													.toList();
 			if ( m_updateMode == UpdateMode.APPEND ) {
-				var colCsv = FStream.from(m_columnToSubPathMappings)
+				var colCsv = FStream.from(writables)
 									.map(ColumnToSubPath::getColumnName)
 									.join(", ");
-				var valueHolderCsv = FStream.range(0, m_columnToSubPathMappings.size())
+				var valueHolderCsv = FStream.range(0, writables.size())
 											.map(i -> "?")
 											.join(", ");
 				m_updateQuery = String.format(INSERT_QUERY_FORMAT, m_table, colCsv, valueHolderCsv);
 			}
 			else {
-				String setClause = FStream.from(m_columnToSubPathMappings)
-											.map(mapping -> String.format("%s = ?", mapping.getColumnName()))
-											.join(", ");
-				m_updateQuery = String.format(UPDATE_QUERY_FORMAT, m_table, setClause,
-												m_rowSelection.getUpdateTail()).trim();
+				m_updateQuery = getUpdateQuery(getWritableMappingIndices());
 			}
 		}
 		return m_updateQuery;
+	}
+	
+	/**
+	 * 쓰기 질의에 포함되는 매핑({@code readOnly}가 아닌 매핑)의 위치 목록을 반환한다.
+	 * <p>
+	 * {@link #getUpdateQuery()}의 파라미터({@code ?}) 순서는 이 목록의 순서와 같다.
+	 *
+	 * @return	매핑 위치 목록.
+	 */
+	public List<Integer> getWritableMappingIndices() {
+		return FStream.range(0, m_columnToSubPathMappings.size())
+						.filter(idx -> m_columnToSubPathMappings.get(idx).isWritable())
+						.toList();
+	}
+	
+	/**
+	 * 쓰기 동작 방식을 반환한다.
+	 *
+	 * @return	쓰기 동작 방식.
+	 */
+	public UpdateMode getUpdateMode() {
+		return m_updateMode;
+	}
+	
+	/**
+	 * {@link UpdateMode#UPDATE} 모드에서 주어진 매핑의 컬럼만 갱신하는 질의를 반환한다.
+	 * <p>
+	 * 부분 갱신에서 바뀐 하위 요소에 해당하는 컬럼만 저장하여, 다른 컬럼의 값을 덮어쓰지 않기 위해 쓴다.
+	 * 파라미터({@code ?})의 순서는 {@code mappingIndices}의 순서와 같다.
+	 *
+	 * @param mappingIndices	갱신할 매핑의 위치 목록 (1개 이상).
+	 * @return	갱신 질의.
+	 * @throws IllegalStateException	{@link UpdateMode#UPDATE} 모드가 아닌 경우.
+	 */
+	public String getUpdateQuery(List<Integer> mappingIndices) {
+		Preconditions.checkState(m_updateMode == UpdateMode.UPDATE, "not UPDATE mode: %s", m_updateMode);
+		Preconditions.checkArgument(!mappingIndices.isEmpty(), "no column to update");
+		
+		String setClause = FStream.from(mappingIndices)
+									.map(idx -> String.format("%s = ?",
+																m_columnToSubPathMappings.get(idx).getColumnName()))
+									.join(", ");
+		return String.format(UPDATE_QUERY_FORMAT, m_table, setClause, m_rowSelection.getUpdateTail()).trim();
 	}
 
 	/**
@@ -231,6 +274,9 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		config.m_noRecordPolicy = parseEnum(NoRecordPolicy.class, jnode, FIELD_ON_NO_RECORD, NoRecordPolicy.KEEP);
 		config.m_columnToSubPathMappings = ColumnToSubPath.parseList(jnode, FIELD_COLUMNS);
 
+		if ( config.m_updateMode != UpdateMode.DISABLED ) {
+			checkWritableMappings(config.m_columnToSubPathMappings, jnode);
+		}
 		if ( config.m_updateMode == UpdateMode.UPDATE && !config.m_rowSelection.hasRowFilter() ) {
 			throw new JacksonDeserializationException(String.format(
 					"'%s' (or '%s') is required in UPDATE mode (otherwise every row is updated): %s",
@@ -238,5 +284,25 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		}
 
 		return config;
+	}
+	
+	/**
+	 * 쓰기를 사용하는 설정에서 각 매핑의 쓰기 컬럼을 확인한다.
+	 * <p>
+	 * 함수식이나 별칭이 있는 표현식에서는 쓰기 컬럼 이름을 얻을 수 없으므로 {@code writeColumn}이나
+	 * {@code readOnly}를 지정해야 한다. 쓰기에 포함되는 매핑이 하나도 없어도 설정 오류다.
+	 */
+	private static void checkWritableMappings(List<ColumnToSubPath> mappings, JsonNode jnode) {
+		for ( ColumnToSubPath mapping: mappings ) {
+			if ( mapping.isWritable() && !mapping.hasWriteColumn() ) {
+				throw new JacksonDeserializationException(String.format(
+						"cannot derive the column to write from '%s'; specify 'writeColumn' or set 'readOnly': %s",
+						mapping.getColumnExpr(), jnode));
+			}
+		}
+		if ( FStream.from(mappings).noneMatch(ColumnToSubPath::isWritable) ) {
+			throw new JacksonDeserializationException(String.format(
+					"every column is readOnly, but '%s' is not DISABLED: %s", FIELD_UPDATE_MODE, jnode));
+		}
 	}
 }

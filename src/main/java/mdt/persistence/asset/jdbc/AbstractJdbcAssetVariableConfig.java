@@ -55,12 +55,17 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";	// 이전 형식
 	private static final String FIELD_JDBC_CONFIG = "jdbcConfig";
 	/** 모든 JDBC AssetVariable 설정이 공통으로 받는 필드. */
+	private static final String FIELD_QUERY_TIMEOUT = "queryTimeout";
 	private static final Set<String> COMMON_FIELDS = Set.of("@type", "element", "validPeriod",
-																FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME);
+																FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME,
+																FIELD_QUERY_TIMEOUT);
+	/** {@code queryTimeout}이 지정되지 않은 경우의 SQL 실행 제한 시간. */
+	public static final Duration DEFAULT_QUERY_TIMEOUT = Duration.ofSeconds(30);
 
 	private ElementLocation m_elementLoc;
 	private ConnectionConfigRef<JdbcConfiguration> m_jdbcConfigRef;
 	private @Nullable Duration m_validPeriod;
+	private @Nullable Duration m_queryTimeout;	// SQL 실행 제한 시간. null이면 DEFAULT_QUERY_TIMEOUT.
 
 	/** 역직렬화 전용 기본 생성자. */
 	protected AbstractJdbcAssetVariableConfig() { }
@@ -113,6 +118,10 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 *
 	 * @return 유효 기간. 설정되지 않은 경우 {@link Duration#ZERO}(캐시하지 않음).
 	 */
+	public Duration getQueryTimeout() {
+		return (m_queryTimeout != null) ? m_queryTimeout : DEFAULT_QUERY_TIMEOUT;
+	}
+	
 	public Duration getValidPeriod() {
 		return (m_validPeriod != null) ? m_validPeriod : Duration.ZERO;
 	}
@@ -140,6 +149,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
 		m_jdbcConfigRef.serialize(gen, FIELD_JDBC_CONFIG);
 		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Optionals.acceptThrow(m_queryTimeout, timeout -> gen.writeStringField(FIELD_QUERY_TIMEOUT, timeout.toString()));
 	}
 
 	/**
@@ -157,6 +167,12 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		m_jdbcConfigRef = ConnectionConfigRef.load(jnode, FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME,
 													JdbcConfiguration.class);
 		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
+		m_queryTimeout = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, FIELD_QUERY_TIMEOUT),
+										UnitUtils::parseDuration);
+		if ( m_queryTimeout != null && (m_queryTimeout.isNegative() || m_queryTimeout.isZero()) ) {
+			throw new JacksonDeserializationException(String.format("'%s' must be positive: %s",
+																	FIELD_QUERY_TIMEOUT, m_queryTimeout));
+		}
 	}
 	
 	/**

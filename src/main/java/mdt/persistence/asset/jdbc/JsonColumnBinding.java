@@ -56,6 +56,11 @@ final class JsonColumnBinding extends AbstractJdbcColumnBinding {
 	}
 
 	@Override
+	public boolean isClearable() {
+		return false;
+	}
+
+	@Override
 	public void clear(SubmodelElement root) {
 		// JSON으로 주고받는 요소는 비울 값의 형태가 정해져 있지 않으므로 바꾸지 않는다.
 		getTarget(root);

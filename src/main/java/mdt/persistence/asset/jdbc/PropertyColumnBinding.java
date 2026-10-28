@@ -58,6 +58,11 @@ final class PropertyColumnBinding extends AbstractJdbcColumnBinding {
 	}
 
 	@Override
+	public boolean isClearable() {
+		return true;
+	}
+
+	@Override
 	public void clear(SubmodelElement root) {
 		getTargetProperty(root).setValue(null);
 	}

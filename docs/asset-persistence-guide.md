@@ -326,6 +326,10 @@ MDT 인스턴스는 각자 별도의 JVM이므로 풀도 인스턴스마다 따�
 
 SQL `NULL`은 Property 값 `null`(값 없음)로 반영한다. 숫자 타입이라도 0으로 바꾸지 않는다.
 
+SQL 하나의 실행 제한 시간은 공통 필드 `queryTimeout`으로 정하며, 생략하면 30초다(`"5s"`처럼 지정, 양수만 허용). 변수는 잠금을 잡은 채 SQL을 실행하므로 느린 질의가 같은 변수의 다른 요청까지 붙잡지 않도록 제한을 둔다. 제한 시간을 넘기면 드라이버가 실행을 취소하고 읽기·쓰기가 실패한다. JDBC 제한 시간은 초 단위이므로 1초 미만은 1초로 올린다. 연결 풀에서 연결을 얻는 대기(최대 5초)와는 별개다.
+
+로그와 예외 메시지에 JDBC URL을 출력할 때는 URL에 포함된 비밀번호(`password=`, `pwd=` 파라미터와 `//user:password@host` 형식)를 `****`로 가린다. 전역 설정 이름으로 지정한 변수는 `jdbcs.<이름>`으로 표시한다.
+
 `AbstractJdbcAssetVariable`은 변수마다 하나의 `Guard`를 두어 캐시를 읽거나 쓰는 작업이 동시에 실행되지 않도록 한다. 서로 다른 변수는 같은 DB를 사용하더라도 이 잠금을 공유하지 않는다.
 
 ```mermaid
@@ -350,7 +354,16 @@ sequenceDiagram
 
 `update()`는 하위 클래스의 저장(`saveBuffer()`)을 하나의 트랜잭션으로 실행한다. auto-commit을 끄고 저장이 끝나면 `commit`하고, 실패하면 `rollback`한 뒤 원래 auto-commit 설정을 복원한다. 따라서 여러 SQL 문으로 이루어진 저장(`MultiRowAssetVariable`)도 일부만 반영되지 않는다. 갱신 질의가 한 행도 바꾸지 못한 경우(예: `WHERE`에 맞는 행이나 MultiRow의 key 행이 없음)도 실패로 처리한다. 저장이 성공하면 입력 객체를 복사해 캐시에 보관하고 갱신 시각을 변경한다. 실패하면 갱신 시각을 초기값(`Instant.EPOCH`)으로 되돌려 다음 읽기에서 다시 조회하도록 한다. 각 DB 작업에 사용한 `Connection`은 try-with-resources로 닫아 풀에 반환한다.
 
-`updatePart()`는 전체 읽기·부분 변경·전체 쓰기를 같은 잠금으로 묶는다. 이로써 같은 변수 객체를 통해 들어온 부분 갱신끼리는 서로의 변경을 덮어쓰지 않게 한다. 다만 읽기에서 유효한 캐시를 사용할 수도 있고, DB 읽기와 쓰기는 서로 다른 연결로 실행될 수 있다. 다른 변수나 프로세스의 DB 쓰기까지 이 잠금으로 보호하지는 않는다. 읽기와 쓰기는 별도의 트랜잭션이므로, 그 사이 다른 프로세스가 같은 행을 바꾸면 그 변경을 덮어쓸 수 있다.
+`updatePart()`는 읽기·부분 변경·저장을 같은 잠금으로 묶어, 같은 변수 객체를 통해 들어온 부분 갱신끼리 서로의 변경을 덮어쓰지 않게 한다. 읽기는 `validPeriod`와 관계없이 항상 DB에서 다시 읽는다. 캐시를 쓰면 그 사이 다른 프로그램이 DB에 기록한 값을 캐시의 이전 값으로 되돌릴 수 있기 때문이다. 저장은 구현에 따라 바뀐 부분만 기록한다.
+
+| 구현 | 부분 갱신의 저장 범위 |
+| --- | --- |
+| multi-column, `updateMode: UPDATE` | 바뀐 하위 요소에 매핑된 컬럼만 `UPDATE` (매핑되지 않은 하위 요소이면 DB에 쓰지 않음) |
+| multi-column, `updateMode: APPEND` | 새 행에 모든 컬럼이 필요하므로 다시 읽은 값으로 전체를 `INSERT` |
+| multi-row | 바뀐 하위 요소에 매핑된 key의 행만 `UPDATE` |
+| simple | 컬럼이 하나이므로 전체를 저장 |
+
+다른 변수나 프로세스의 DB 쓰기까지 이 잠금으로 보호하지는 않는다. 다시 읽기와 저장은 별도의 트랜잭션이므로, 그 짧은 사이에 다른 프로세스가 같은 컬럼·행을 바꾸면 그 변경을 덮어쓸 수 있다.
 
 핵심 구현: [AbstractJdbcAssetVariable.java](../src/main/java/mdt/persistence/asset/jdbc/AbstractJdbcAssetVariable.java), [AbstractJdbcAssetVariableConfig.java](../src/main/java/mdt/persistence/asset/jdbc/AbstractJdbcAssetVariableConfig.java).
 
@@ -411,20 +424,33 @@ sequenceDiagram
 
 예를 들어 최신 행 하나는 `"orderBy": "id desc", "limit": 1`로 읽는다. `where`와 `orderBy`에는 `WHERE`, `ORDER BY` 키워드를 쓰지 않는다(쓰면 설정 오류). `LIMIT` 구문은 PostgreSQL·MariaDB·MySQL·H2에서 동작하며, 이를 지원하지 않는 DB에서는 `limit`을 쓸 수 없다.
 
-`UPDATE` 모드에서는 조건이 없으면 테이블 전체가 갱신되므로 `where`가 필수다. 갱신 SQL에는 `where`만 쓰이고 `orderBy`·`limit`은 쓰이지 않는다.
+`UPDATE` 모드에서는 조건이 없으면 테이블 전체가 갱신되므로 `where`가 필수다. 갱신 SQL에는 `where`만 쓰이고 `orderBy`·`limit`은 쓰이지 않는다. 이 변수는 Collection 하나를 한 행에 연결하므로, 갱신된 행이 없거나 두 행 이상이면 실패로 처리하고 트랜잭션을 되돌린다.
 
-이전 방식인 `whereClause`도 그대로 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회와 갱신 SQL 모두에 붙는다. `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다.
+이전 방식인 `whereClause`도 그대로 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회와 갱신 SQL 모두에 붙는다. `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다. `UPDATE` 모드에서 `whereClause`를 쓰면, SQL 주석(`/* */`, `--`)을 지운 뒤 `WHERE` 키워드가 있어야 한다. 예를 들어 `"order by id desc limit 1"`이나 주석만 있는 문자열은 조건이 아니므로 설정 오류다.
 
 값은 PreparedStatement로 바인딩하지만 테이블명, 컬럼 표현식, 조건·정렬 문자열은 직접 SQL 구문이 된다.
 
-결과 컬럼은 이름이 아니라 `SELECT` 목록의 위치(=`columns` 순서)로 읽으므로 `max(t.x)`, `x AS y` 같은 표현식도 쓸 수 있다. 쓰기 SQL(`INSERT`/`UPDATE`)에는 표현식에서 한정자를 뗀 컬럼 이름(`t.temperature` → `temperature`)을 쓰므로, 쓰기를 사용하는 매핑의 표현식은 (한정자가 붙을 수 있는) 컬럼 이름이어야 한다. 대상 하위 요소는 Property가 아니어도 되며, 이 경우 컬럼 값을 MDT 값 형식의 JSON으로 반영한다([값 변환](#값-변환)).
+결과 컬럼은 이름이 아니라 `SELECT` 목록의 위치(=`columns` 순서)로 읽으므로 `max(t.x)`, `x AS y` 같은 표현식도 쓸 수 있다. 쓰기 SQL(`INSERT`/`UPDATE`)에는 표현식에서 한정자를 뗀 컬럼 이름(`t.temperature` → `temperature`)을 쓴다. 단순 컬럼 이름은 점으로 이어진 이름들이며, 인용한 이름(`"Sensor Value"`, `` `my col` ``, `[col]`)도 쓸 수 있다. 인용한 이름 안의 공백과 점은 이름의 일부다(`t."a.b"` → `"a.b"`). 쓰기를 사용하는 설정(`updateMode`가 `DISABLED`가 아님)에서 표현식이 단순 컬럼 이름이 아니면 매핑에 다음 중 하나를 지정해야 하며, 없으면 설정 오류다.
+
+| 매핑 필드 | 의미 | 예 |
+| --- | --- | --- |
+| `writeColumn` | 쓰기에 쓸 컬럼 이름 | `{ "column": "round(temp, 1)", "subPath": "Temperature", "writeColumn": "temp" }` |
+| `readOnly: true` | 읽기에만 쓰고 쓰기 SQL에서 뺀다(계산 컬럼 등) | `{ "column": "avg(temp)", "subPath": "AvgTemp", "readOnly": true }` |
+
+두 필드는 함께 쓸 수 없고, 모든 매핑이 `readOnly`이면서 쓰기를 사용하는 설정도 오류다.
+
+`readOnly` 매핑의 값은 DB에 기록되지 않는다. 따라서 다음과 같이 처리한다.
+
+- `readOnly` 매핑의 하위 요소만 바꾸는 부분 갱신은 `AssetVariableException`으로 거부한다.
+- Collection 전체를 갱신할 때 포함된 `readOnly` 값은 무시하고 나머지 컬럼만 기록한다.
+- `readOnly` 매핑이 하나라도 있으면 저장에 성공한 뒤 캐시를 만료시킨다. 다음 조회는 `validPeriod`와 관계없이 DB에서 다시 읽으므로, 계산 컬럼은 다른 컬럼의 변경이 반영된 값을 돌려준다. 대상 하위 요소는 Property가 아니어도 되며, 이 경우 컬럼 값을 MDT 값 형식의 JSON으로 반영한다([값 변환](#값-변환)).
 
 조회 결과에 행이 없을 때의 동작은 `onNoRecord`로 정한다. simple도 같은 필드를 쓴다.
 
 | `onNoRecord` | 동작 |
 | --- | --- |
 | `KEEP` (기본) | 이전 값(처음이면 모델의 초기값)을 그대로 돌려준다. 경고 로그는 행이 없어진 뒤 첫 조회에서 한 번만 남기고, 행이 다시 조회되면 초기화한다 |
-| `CLEAR` | 매핑된 요소의 값을 비운다(Property는 `null`, JSON으로 주고받는 요소는 그대로) |
+| `CLEAR` | 매핑된 Property의 값을 `null`로 비운다. JSON으로 주고받는 요소(Collection 등)는 비울 형태가 정해져 있지 않으므로, 그런 요소가 매핑되어 있으면 변수 초기화 단계에서 설정 오류로 거부한다 |
 | `FAIL` | `AssetVariableException`으로 읽기를 실패시킨다 |
 
 ### 여러 행을 Collection 목록으로 매핑
@@ -436,7 +462,7 @@ sequenceDiagram
 행 원소의 구조는 모델의 List에 원소가 있는지에 따라 정해진다.
 
 - **원소가 하나 이상 있으면** 첫 원소를 템플릿으로 삼아 행마다 복제하고, 매핑된 하위 요소에 컬럼 값을 채운다. 값의 타입은 모델에 선언된 `valueType`을 따르고, 매핑하지 않은 하위 요소와 설명·의미 식별자 등은 템플릿을 그대로 가진다. `Info.Qty`처럼 중첩된 `subPath`도 쓸 수 있다.
-- **원소가 없으면** 매핑마다 `subPath`를 `idShort`로 하는 Property를 만들고, 타입은 결과 컬럼의 SQL 타입으로 정한다(대응하는 타입이 없으면 `xs:string`). 이 경우 중첩된 `subPath`는 쓸 수 없어 초기화 시 거부한다.
+- **원소가 없으면** 매핑마다 `subPath`를 `idShort`로 하는 Property를 만들고, 타입은 결과 컬럼의 SQL 타입으로 정한다(대응하는 타입이 없으면 `xs:string`). `NUMERIC`·`DECIMAL` 컬럼은 정밀도를 유지하도록 `xs:decimal`이 된다. 이 경우 중첩된 `subPath`는 쓸 수 없어 초기화 시 거부한다.
 
 원소가 없을 때는 조회할 때마다 결과 컬럼의 메타데이터로 임시 템플릿을 만든 뒤, 원소가 있을 때와 같은 방식으로 행마다 복제해 채운다. 따라서 두 경우의 값 변환 규칙은 같다([값 변환](#값-변환)).
 
@@ -461,7 +487,7 @@ List 원소(Collection)에는 AAS 규칙에 따라 `idShort`를 두지 않는다
 }
 ```
 
-`readQuery`와 `rows`(1개 이상)는 필수이며, `rows`의 키는 중복될 수 없고 적은 순서가 유지된다. 등록되지 않은 키는 건너뛰고, 조회되지 않은 키의 기존 값은 유지한다. 저장은 매핑별로 SQL을 실행하며 첫 번째 파라미터는 값, 두 번째는 키다. 모든 키를 하나의 트랜잭션으로 갱신하며, 어느 키의 행이라도 없거나 실패하면 전체를 되돌린다.
+`readQuery`와 `rows`(1개 이상)는 필수이며, `rows`의 키는 중복될 수 없고 적은 순서가 유지된다. 등록되지 않은 키는 건너뛰고, 조회되지 않은 키의 기존 값은 유지한다. 행이 없어진 키는 처음 한 번 경고 로그를 남기며, 그 키의 행이 다시 조회된 뒤 또 없어지면 다시 경고한다. 저장은 매핑별로 SQL을 실행하며 첫 번째 파라미터는 값, 두 번째는 키다. 모든 키를 하나의 트랜잭션으로 갱신하며, 어느 키의 행이라도 없거나 실패하면 전체를 되돌린다.
 
 ### 값 변환
 
@@ -470,7 +496,7 @@ List 원소(Collection)에는 AAS 규칙에 따라 `idShort`를 두지 않는다
 | 대상 요소 | 바인딩 | 읽기 | 쓰기 | SQL `NULL` / 비우기(`onNoRecord: CLEAR`) |
 |---|---|---|---|---|
 | Property (지원 valueType) | `PropertyColumnBinding` | `getObject()` → `DataType.fromJdbcObject()` → 값 문자열 | 값 문자열 → `DataType.toJdbcObject()` → `setObject()` | 값 `null` |
-| 그 밖의 요소, 지원하지 않는 valueType의 Property(예: `xs:integer`) | `JsonColumnBinding` | `getString()` → MDT 값 JSON으로 반영 | MDT 값 JSON → `setString()` | 바꾸지 않음 |
+| 그 밖의 요소, 지원하지 않는 valueType의 Property(예: `xs:integer`) | `JsonColumnBinding` | `getString()` → MDT 값 JSON으로 반영 | MDT 값 JSON → `setString()` | SQL `NULL`이면 바꾸지 않음. `CLEAR`와 함께 쓰면 설정 오류 |
 
 지원 valueType은 `xs:string`, `xs:boolean`, `xs:short`, `xs:int`, `xs:long`, `xs:float`, `xs:double`, `xs:decimal`, `xs:dateTime`, `xs:date`, `xs:time`, `xs:duration`이다.
 

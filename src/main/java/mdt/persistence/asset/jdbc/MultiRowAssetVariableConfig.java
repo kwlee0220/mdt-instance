@@ -2,6 +2,7 @@ package mdt.persistence.asset.jdbc;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -64,8 +65,13 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		return m_updateQuery;
 	}
 	
+	/**
+	 * key와 하위 경로 사이의 매핑을 반환한다. 설정에 적힌 순서를 유지하며, 바꿀 수 없다.
+	 *
+	 * @return	key → 하위 경로 매핑.
+	 */
 	public Map<String,String> getKeyToSubpathMapping() {
-		return m_mapping;
+		return Collections.unmodifiableMap(m_mapping);
 	}
 
 	@Override

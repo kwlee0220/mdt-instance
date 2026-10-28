@@ -1,8 +1,12 @@
 package mdt.persistence.asset.jdbc;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.LoggerFactory;
@@ -10,11 +14,14 @@ import org.slf4j.LoggerFactory;
 import utils.Preconditions;
 import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
+import utils.jdbc.JdbcUtils;
+import utils.stream.FStream;
 import utils.thread.Guard;
 
 import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.value.ElementValues;
 import mdt.persistence.asset.AbstractAssetVariable;
+import mdt.persistence.asset.AssetVariable;
 import mdt.persistence.asset.AssetVariableException;
 
 
@@ -42,6 +49,7 @@ import mdt.persistence.asset.AssetVariableException;
 public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVariableConfig>
 																			extends AbstractAssetVariable<T> {
 	private final JdbcProcessor m_jdbc;
+	private final String m_jdbcDisplay;		// 로그용 접속 정보 (비밀번호를 가린 URL 또는 전역 설정 이름)
 	private final Guard m_guard = Guard.create();
 	// 레코드가 없는 경우 반복해서 경고를 출력하지 않도록 정의한 flag. 캐시 잠금 안에서만 접근한다.
 	private boolean m_noRecordWarningReported = false;
@@ -85,6 +93,11 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 
 		JdbcConfiguration jdbcConf = config.getJdbcConfig();
 		m_jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
+
+		// toString()이 로그와 예외 메시지에 쓰이므로, 전역 설정 파일을 다시 읽지 않도록 미리 만들어 두고
+		// JDBC URL에 포함된 비밀번호는 가린다.
+		m_jdbcDisplay = config.getJdbcConfigRef()
+								.toDisplayString("jdbcs", cfg -> JdbcUtils.maskPassword(cfg.getJdbcUrl()));
 	}
 
 	/**
@@ -154,23 +167,8 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 		}
 
 		m_guard.lock();
-		try ( Connection conn = connect() ) {
-			// DB 저장이 성공하기 전에는 캐시를 바꾸지 않는다.
-			saveInTransaction(conn, sme);
-
-			// 호출자의 객체를 그대로 캐시로 쓰면 이후 DB에서 다시 읽을 때(loadOnBuffer) 호출자의 객체
-			// (예: base persistence가 보관하는 SubmodelElement)가 바뀌므로 복사본을 캐시로 삼는다.
-			m_prototype = SubmodelUtils.duplicate(sme);
-			setLastRefreshTime(Instant.now());
-		}
-		catch ( SQLException e ) {
-			invalidateCache();
-			String msg = String.format("Failed to update %s", this);
-			throw new AssetVariableException(msg, e);
-		}
-		catch ( RuntimeException e ) {
-			invalidateCache();
-			throw e;
+		try {
+			saveAndCache(sme, conn -> saveBuffer(conn, sme));
 		}
 		finally {
 			m_guard.unlock();
@@ -180,8 +178,15 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 	/**
 	 * 주어진 하위 요소의 값만 바꿔 저장한다.
 	 * <p>
+	 * 캐시의 유효 기간과 관계없이 DB에서 최신 값을 다시 읽어 하위 요소의 값을 바꾼 뒤
+	 * {@link #savePart(Connection, SubmodelElement, String)}로 저장한다. 캐시를 쓰면 그 사이 다른 프로그램이
+	 * DB에 기록한 값을 캐시의 이전 값으로 덮어쓰게 되기 때문이다.
+	 * 기본 구현은 전체를 저장하며, 컬럼이나 행 단위로 나누어 저장할 수 있는 구현은 바뀐 부분만 저장하도록
+	 * {@code savePart}를 재정의한다.
+	 * <p>
 	 * 읽기-수정-저장 전체를 {@link Guard}로 보호되는 하나의 임계 구역에서 수행하므로, 같은 변수에 대한
 	 * 다른 갱신({@link #update(SubmodelElement)}나 다른 부분 갱신)이 그 사이에 끼어들어 사라지지 않는다.
+	 * 다만 다른 프로그램이 다시 읽기와 저장 사이에 같은 값을 바꾸는 경쟁은 막지 않는다.
 	 *
 	 * @param relPath	하위 요소의 상대 idShort 경로.
 	 * @param part		하위 요소에 반영할 값을 가진 SubmodelElement.
@@ -195,24 +200,117 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 			throw new AssetVariableException("This AssetVariable is not updatable");
 		}
 
-		// Guard는 재진입이 가능하므로 read()/update()를 그대로 호출해도 임계 구역이 유지된다.
 		m_guard.lock();
 		try {
-			SubmodelElement whole = read();
+			SubmodelElement whole = (isReadable()) ? loadLatest() : SubmodelUtils.duplicate(m_prototype);
 			ElementValues.update(SubmodelUtils.traverse(whole, relPath), ElementValues.getValue(part));
-			update(whole);
+			saveAndCache(whole, conn -> savePart(conn, whole, relPath));
 		}
 		finally {
 			m_guard.unlock();
 		}
 	}
+	
+	/**
+	 * {@link #updatePart(String, SubmodelElement)}에서 하위 요소의 값이 바뀐 전체 값을 DBMS에 저장한다.
+	 * <p>
+	 * {@code whole}은 DB에서 다시 읽은 최신 값에 {@code relPath}의 하위 요소 값을 반영한 것이다.
+	 * 기본 구현은 {@link #saveBuffer(Connection, SubmodelElement)}로 전체를 저장한다. 컬럼이나 행 단위로
+	 * 저장할 수 있는 구현은 {@code relPath}와 관련된 부분만 저장하도록 재정의하여, 다른 프로그램이 바꾼
+	 * 다른 컬럼·행의 값을 덮어쓰지 않게 한다. 호출 규칙(트랜잭션, 예외)은 {@code saveBuffer}와 같다.
+	 *
+	 * @param conn		DBMS와 연결된 Connection 객체.
+	 * @param whole		저장할 전체 값.
+	 * @param relPath	값이 바뀐 하위 요소의 상대 경로.
+	 * @throws AssetVariableException	저장이 실패한 경우.
+	 */
+	protected void savePart(Connection conn, SubmodelElement whole, String relPath) throws AssetVariableException {
+		saveBuffer(conn, whole);
+	}
+	
+	/**
+	 * 매핑된 하위 경로 {@code subPath}의 값이 하위 요소 {@code relPath}의 갱신으로 바뀌는지 반환한다.
+	 * <p>
+	 * 두 경로 중 하나가 다른 하나를 포함하면 겹친다고 본다. 빈 {@code subPath}는 요소 전체를 뜻한다.
+	 *
+	 * @param subPath	매핑된 하위 경로.
+	 * @param relPath	갱신된 하위 요소의 상대 경로.
+	 * @return	겹치면 {@code true}.
+	 */
+	protected static boolean overlaps(String subPath, String relPath) {
+		return subPath.isEmpty() || relPath.isEmpty()
+				|| AssetVariable.isPathPrefix(subPath, relPath) || AssetVariable.isPathPrefix(relPath, subPath);
+	}
+	
+	/**
+	 * 캐시의 유효 기간과 관계없이 DB에서 최신 값을 읽어 캐시를 갱신하고, 그 복사본을 반환한다.
+	 * {@link Guard}를 잡은 상태에서 호출한다.
+	 */
+	private SubmodelElement loadLatest() {
+		Instant now = Instant.now();
+		try ( Connection conn = connect() ) {
+			SubmodelElement buffer = SubmodelUtils.duplicate(m_prototype);
+			loadOnBuffer(conn, buffer);
+			m_prototype = buffer;
+			setLastRefreshTime(now);
+			return SubmodelUtils.duplicate(buffer);
+		}
+		catch ( SQLException e ) {
+			String msg = String.format("Failed to read %s", this);
+			throw new AssetVariableException(msg, e);
+		}
+	}
+	
+	/** 하나의 트랜잭션 안에서 실행할 저장 작업. */
+	@FunctionalInterface
+	private interface SaveAction {
+		void save(Connection conn) throws SQLException;
+	}
+	
+	/**
+	 * {@code action}을 하나의 트랜잭션으로 실행하고, 성공하면 {@code value}의 복사본을 캐시로 삼는다.
+	 * 실패하면 캐시를 만료시킨다. {@link Guard}를 잡은 상태에서 호출한다.
+	 */
+	private void saveAndCache(SubmodelElement value, SaveAction action) {
+		try ( Connection conn = connect() ) {
+			// DB 저장이 성공하기 전에는 캐시를 바꾸지 않는다.
+			saveInTransaction(conn, action);
+
+			// 호출자의 객체를 그대로 캐시로 쓰면 이후 DB에서 다시 읽을 때(loadOnBuffer) 호출자의 객체
+			// (예: base persistence가 보관하는 SubmodelElement)가 바뀌므로 복사본을 캐시로 삼는다.
+			m_prototype = SubmodelUtils.duplicate(value);
+			if ( isReloadNeededAfterSave() ) {
+				// 저장한 값과 DB의 값이 다를 수 있으므로(읽기 전용·계산 컬럼 등) 다음 읽기에서 다시 조회한다.
+				invalidateCache();
+			}
+			else {
+				setLastRefreshTime(Instant.now());
+			}
+		}
+		catch ( SQLException e ) {
+			invalidateCache();
+			String msg = String.format("Failed to update %s", this);
+			throw new AssetVariableException(msg, e);
+		}
+		catch ( RuntimeException e ) {
+			invalidateCache();
+			throw e;
+		}
+	}
 
 	/**
-	 * DBMS에 대한 새 Connection을 연다.
+	 * 저장에 성공한 뒤 캐시를 만료시켜 다음 {@link #read()}에서 DB의 값을 다시 읽어야 하는지 반환한다.
+	 * <p>
+	 * 기본값은 {@code false}로, 저장한 값을 그대로 캐시로 삼는다. 저장한 값의 일부가 DB에 기록되지 않거나
+	 * DB가 값을 계산하는 구현(예: 읽기 전용 매핑이 있는 경우)은 {@code true}를 반환하여, 저장 요청의 값이
+	 * 아닌 DB의 실제 값이 반환되도록 한다.
 	 *
-	 * @return	Connection 객체. 호출자가 닫는다.
-	 * @throws SQLException	접속이 실패한 경우.
+	 * @return	저장 후 다시 읽어야 하면 {@code true}.
 	 */
+	protected boolean isReloadNeededAfterSave() {
+		return false;
+	}
+
 	/**
 	 * 조회 결과에 행이 있을 때 {@link #loadOnBuffer}에서 호출한다.
 	 * <p>
@@ -252,19 +350,88 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 		}
 	}
 
+	/**
+	 * DBMS와의 Connection을 연결 풀에서 얻는다.
+	 *
+	 * @return	Connection 객체. 호출자가 닫는다.
+	 * @throws SQLException	접속이 실패한 경우.
+	 */
+	/**
+	 * 조회 결과가 없을 때 값을 비우는 정책({@link NoRecordPolicy#CLEAR})을 모든 바인딩에 적용할 수 있는지 확인한다.
+	 * <p>
+	 * JSON으로 주고받는 요소는 비울 수 없으므로, 그런 요소가 있으면 {@code CLEAR}가 일부 요소에만 적용되어
+	 * 값이 섞이게 된다. 이를 시작 단계에서 거부한다. {@code initialize()}에서 바인딩을 만든 뒤 호출한다.
+	 *
+	 * @param policy	설정된 정책.
+	 * @param bindings	이 변수의 바인딩들.
+	 * @throws AssetVariableException	{@code CLEAR}인데 비울 수 없는 요소가 있는 경우.
+	 */
+	protected void checkNoRecordPolicy(NoRecordPolicy policy, Collection<JdbcColumnBinding> bindings) {
+		if ( policy != NoRecordPolicy.CLEAR ) {
+			return;
+		}
+		List<String> unclearable = FStream.from(bindings)
+										.filter(binding -> !binding.isClearable())
+										.map(binding -> binding.getSubPath().isEmpty() ? "(element)" : binding.getSubPath())
+										.toList();
+		if ( !unclearable.isEmpty() ) {
+			throw new AssetVariableException(String.format(
+					"'onNoRecord: CLEAR' cannot clear elements exchanged as JSON (use KEEP or FAIL): %s, subPaths=%s",
+					this, unclearable));
+		}
+	}
+
 	protected Connection connect() throws SQLException {
 		return m_jdbc.connect();
 	}
+	
+	/**
+	 * 설정의 실행 제한 시간({@code queryTimeout})을 적용한 {@link Statement}를 만든다.
+	 * <p>
+	 * 이 변수의 읽기·쓰기는 잠금을 잡은 채 SQL을 실행하므로, 실행이 끝나지 않으면 같은 변수의 다른 요청도
+	 * 함께 기다린다. 제한 시간을 넘기면 드라이버가 실행을 취소하고 {@link SQLException}을 던진다.
+	 * 연결 풀에서 연결을 얻는 대기 시간과는 별개다.
+	 *
+	 * @param conn	Connection 객체.
+	 * @return	Statement 객체. 호출자가 닫는다.
+	 * @throws SQLException	생성이 실패한 경우.
+	 */
+	protected Statement createStatement(Connection conn) throws SQLException {
+		Statement stmt = conn.createStatement();
+		stmt.setQueryTimeout(getQueryTimeoutSeconds());
+		return stmt;
+	}
+	
+	/**
+	 * 설정의 실행 제한 시간({@code queryTimeout})을 적용한 {@link PreparedStatement}를 만든다.
+	 *
+	 * @param conn	Connection 객체.
+	 * @param sql	SQL 문.
+	 * @return	PreparedStatement 객체. 호출자가 닫는다.
+	 * @throws SQLException	생성이 실패한 경우.
+	 * @see #createStatement(Connection)
+	 */
+	protected PreparedStatement prepareStatement(Connection conn, String sql) throws SQLException {
+		PreparedStatement pstmt = conn.prepareStatement(sql);
+		pstmt.setQueryTimeout(getQueryTimeoutSeconds());
+		return pstmt;
+	}
+	
+	private int getQueryTimeoutSeconds() {
+		// JDBC의 제한 시간은 초 단위이며 0은 '제한 없음'이므로 1초 미만은 1초로 올린다.
+		long seconds = getConfig().getQueryTimeout().toSeconds();
+		return (int)Math.max(1, Math.min(seconds, Integer.MAX_VALUE));
+	}
 
 	/**
-	 * {@link #saveBuffer(Connection, SubmodelElement)}를 하나의 트랜잭션으로 실행한다.
+	 * 저장 작업을 하나의 트랜잭션으로 실행한다.
 	 * 성공하면 commit, 실패하면 rollback하며, 원래의 auto-commit 설정을 복원한다.
 	 */
-	private void saveInTransaction(Connection conn, SubmodelElement sme) throws SQLException {
+	private void saveInTransaction(Connection conn, SaveAction action) throws SQLException {
 		boolean autoCommit = conn.getAutoCommit();
 		conn.setAutoCommit(false);
 		try {
-			saveBuffer(conn, sme);
+			action.save(conn);
 			conn.commit();
 		}
 		catch ( SQLException | RuntimeException e ) {
@@ -299,8 +466,6 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 	
 	@Override
 	public String toString() {
-		return String.format("%s[%s, jdbc=%s]",
-							getClass().getSimpleName(), getElementLocation(),
-							getConfig().getJdbcConfig());
+		return String.format("%s[%s, jdbc=%s]", getClass().getSimpleName(), getElementLocation(), m_jdbcDisplay);
 	}
 }

@@ -61,9 +61,19 @@ public interface JdbcColumnBinding {
 	public void bind(PreparedStatement ps, int index, SubmodelElement root) throws SQLException;
 
 	/**
+	 * 이 바인딩의 대상 요소를 비울 수 있는지 반환한다.
+	 * <p>
+	 * Property는 값을 {@code null}로 비울 수 있다. JSON으로 주고받는 요소는 비운 상태의 형태가 정해져 있지 않아
+	 * 비울 수 없으므로, 조회 결과가 없을 때 값을 비우는 설정({@link NoRecordPolicy#CLEAR})과 함께 쓸 수 없다.
+	 *
+	 * @return	비울 수 있으면 {@code true}.
+	 */
+	public boolean isClearable();
+
+	/**
 	 * {@code root} 아래 대상 요소의 값을 비운다.
 	 * <p>
-	 * Property이면 값을 {@code null}로 만들고, JSON으로 주고받는 요소는 바꾸지 않는다.
+	 * Property이면 값을 {@code null}로 만든다. 비울 수 없는 요소({@link #isClearable()})는 바꾸지 않는다.
 	 *
 	 * @param root	대상 요소를 찾을 루트 요소.
 	 * @throws AssetVariableException	대상 요소가 없는 경우.

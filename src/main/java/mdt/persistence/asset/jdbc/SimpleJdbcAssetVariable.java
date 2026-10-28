@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
@@ -52,6 +53,7 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 		super.initialize(lookup);
 
 		m_binding = JdbcColumnBinding.of(m_prototype, "");
+		checkNoRecordPolicy(getConfig().getNoRecordPolicy(), List.of(m_binding));
 	}
 
 	/**
@@ -87,7 +89,7 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 	protected void loadOnBuffer(Connection conn, SubmodelElement buffer) throws AssetVariableException {
 		Preconditions.checkNotNullArgument(conn, "Connection is null");
 
-		try ( Statement stmt = conn.createStatement();
+		try ( Statement stmt = createStatement(conn);
 				ResultSet rs = stmt.executeQuery(getConfig().getReadQuery())) {
 			if ( rs.next() ) {
 				onRecordFound();
@@ -114,7 +116,7 @@ public class SimpleJdbcAssetVariable extends AbstractJdbcAssetVariable<SimpleJdb
 	@Override
 	protected void saveBuffer(Connection conn, SubmodelElement value) throws AssetVariableException {
 		int count;
-		try ( PreparedStatement pstmt = conn.prepareStatement(getConfig().getUpdateQuery()) ) {
+		try ( PreparedStatement pstmt = prepareStatement(conn, getConfig().getUpdateQuery()) ) {
 			m_binding.bind(pstmt, 1, value);
 			count = pstmt.executeUpdate();
 		}

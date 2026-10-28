@@ -3,6 +3,7 @@ package mdt.persistence.asset.jdbc;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -35,6 +36,9 @@ final class RowSelection {
 	static final String FIELD_LIMIT = "limit";
 	static final Set<String> FIELDS = Set.of(FIELD_WHERE_CLAUSE, FIELD_WHERE, FIELD_ORDER_BY, FIELD_LIMIT);
 
+	private static final Pattern SQL_COMMENT = Pattern.compile("/\\*.*?\\*/|--[^\\n]*", Pattern.DOTALL);
+	private static final Pattern WHERE_KEYWORD = Pattern.compile("\\bwhere\\b", Pattern.CASE_INSENSITIVE);
+
 	private final String m_whereClause;		// 이전 방식. 쓰지 않으면 빈 문자열.
 	private final @Nullable String m_where;
 	private final @Nullable String m_orderBy;
@@ -52,11 +56,17 @@ final class RowSelection {
 	 * 행을 거르는 조건이 있는지 반환한다.
 	 * <p>
 	 * {@code UPDATE} 모드에서 조건이 없으면 모든 행이 갱신되므로 이를 막는 데 쓴다.
+	 * {@code whereClause}는 SQL 주석을 지운 뒤 {@code WHERE} 키워드가 있어야 조건으로 본다.
+	 * 예를 들어 {@code "order by id desc limit 1"}이나 주석만 있는 문자열은 조건이 아니다.
 	 *
-	 * @return	{@code where} 또는 {@code whereClause}가 지정되었으면 {@code true}.
+	 * @return	{@code where}가 지정되었거나, {@code whereClause}에 {@code WHERE} 절이 있으면 {@code true}.
 	 */
 	boolean hasRowFilter() {
-		return m_where != null || !m_whereClause.isEmpty();
+		if ( m_where != null ) {
+			return true;
+		}
+		String clause = SQL_COMMENT.matcher(m_whereClause).replaceAll(" ");
+		return WHERE_KEYWORD.matcher(clause).find();
 	}
 
 	/**

@@ -5,6 +5,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -93,7 +94,7 @@ public class MultiColumnCollectionListAssetVariable
 		List<SubmodelElement> rows = ((SubmodelElementList)buffer).getValue();
 		rows.clear();
 
-		try ( Statement stmt = conn.createStatement();
+		try ( Statement stmt = createStatement(conn);
 			ResultSet rs = stmt.executeQuery(getConfig().getReadQuery()) ) {
 			SubmodelElement template = m_template;
 			List<JdbcColumnBinding> bindings = m_templateBindings;
@@ -147,9 +148,15 @@ public class MultiColumnCollectionListAssetVariable
 	}
 
 	private static DataType<?> getColumnType(ResultSetMetaData meta, int column) throws SQLException {
+		int sqlType = meta.getColumnType(column);
+		if ( sqlType == Types.NUMERIC || sqlType == Types.DECIMAL ) {
+			// SQLDataTypes는 NUMERIC·DECIMAL을 DOUBLE로 다루므로 정밀도를 잃는다. xs:decimal로 직접 대응시킨다.
+			return DataTypes.DECIMAL;
+		}
+		
 		DataType<?> dtype;
 		try {
-			dtype = DataTypes.fromJavaClass(SQLDataTypes.fromSqlType(meta.getColumnType(column)).getJavaClass());
+			dtype = DataTypes.fromJavaClass(SQLDataTypes.fromSqlType(sqlType).getJavaClass());
 		}
 		catch ( IllegalArgumentException e ) {
 			dtype = null;
