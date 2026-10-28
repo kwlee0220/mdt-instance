@@ -147,16 +147,34 @@ public record ConnectionConfigRef<T>(@Nullable String name, @Nullable T inline) 
 			}
 			return ofName(legacyNode.asText());
 		}
-		if ( configNode == null ) {
+		return fromNode(configNode, field, configClass);
+	}
+
+	/**
+	 * 연결 설정 필드의 값 노드 하나를 참조로 해석한다.
+	 * <p>
+	 * 문자열이면 전역 설정 이름, 객체이면 인라인 연결 설정으로 해석하고, 값이 없으면({@code null} 또는 JSON
+	 * {@code null}) {@link #DEFAULT_NAME}을 가리킨다. Jackson bean의 setter처럼 필드 값만 받는 곳에서 사용한다.
+	 *
+	 * @param <T>			연결 설정 타입.
+	 * @param valueNode		필드 값 노드. {@code null}일 수 있다.
+	 * @param field			오류 메시지에 쓸 필드 이름.
+	 * @param configClass	연결 설정 클래스.
+	 * @return	참조 객체.
+	 * @throws IOException	값이 문자열도 객체도 아니거나, 객체를 연결 설정으로 읽지 못한 경우.
+	 */
+	public static <T> ConnectionConfigRef<T> fromNode(@Nullable JsonNode valueNode, String field,
+														Class<T> configClass) throws IOException {
+		if ( valueNode == null || valueNode.isNull() || valueNode.isMissingNode() ) {
 			return ofName(DEFAULT_NAME);
 		}
-		if ( configNode.isTextual() ) {
-			return ofName(configNode.asText());
+		if ( valueNode.isTextual() ) {
+			return ofName(valueNode.asText());
 		}
-		if ( configNode.isObject() ) {
-			return ofInline(MDTModelSerDe.readValue(configNode, configClass));
+		if ( valueNode.isObject() ) {
+			return ofInline(MDTModelSerDe.readValue(valueNode, configClass));
 		}
 		throw new IOException(String.format("invalid '%s' value: %s (expected: a name or an object)",
-											field, configNode));
+											field, valueNode));
 	}
 }
