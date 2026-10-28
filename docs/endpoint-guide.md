@@ -237,13 +237,18 @@ primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한
 | `topic` | (필수) | 구독할 토픽. `+`, `#` 와일드카드를 쓸 수 있다 |
 | `element` | (필수) | 값을 반영할 요소 위치(2.2절) |
 | `delivery` | `all` | `all`: 받은 메시지를 모두 순서대로 반영. `latest`: 반영이 밀리면 최신 값만 반영(4.3절) |
+| `qos` | `1` | broker 구독 QoS(0, 1, 2). 같은 토픽을 여러 곳(다른 구독, MQTT 자산 변수)에서 구독하면 broker 구독에는 그중 가장 큰 값이 쓰인다 |
+| `format` | `json` | `json`: payload가 AAS value-only JSON. `text`: payload 전체를 Property 값으로 사용(4.2절). `text`는 Property 대상에만 쓸 수 있다 |
 
 ```json
 "subscribers": [
   {"topic": "factory/robot01/events", "element": "RobotState:LastEvent"},
-  {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature", "delivery": "latest"}
+  {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature", "delivery": "latest"},
+  {"topic": "factory/robot01/status", "element": "RobotState:Status", "format": "text", "qos": 0}
 ]
 ```
+
+`qos`가 0·1·2가 아니거나 `delivery`·`format`이 알 수 없는 값이면 설정을 읽는 단계에서 거부된다. 세 옵션 모두 대소문자를 구분하지 않는다.
 
 브로커 설정의 URL 기본값은 `tcp://localhost:1883`이며,
 timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용한다.
@@ -262,11 +267,11 @@ timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용�
 4. 수신 payload를 UTF-8 문자열로 읽어 구독별 대기열에 넣고 MQTT 콜백을 바로 반환한다.
 5. 엔드포인트의 작업 쓰레드가 구독별로 순서대로 꺼내 갱신기로 넘긴다. 갱신기는 `PatchSubmodelElementValueByPathRequest`를 실행하고 응답 상태를 확인한다.
 
-설정한 요소가 모델에 없으면(경로 오타, 없는 Submodel·파라미터 등) 인스턴스는 정상적으로 시작하고, 그 구독만 빠진다.
-이때 다음과 같은 로그가 한 번 남는다.
+설정한 요소가 모델에 없거나(경로 오타, 없는 Submodel·파라미터 등) `format: "text"`인데 대상이 Property가 아니면,
+인스턴스는 정상적으로 시작하고 그 구독만 빠진다. 이때 다음과 같은 로그가 한 번 남는다.
 
 ```text
-skipping MQTT subscription, target element is not available: topic=factory/robot01/pressure, element=RobotState:Presure, cause=...
+skipping MQTT subscription, cannot apply messages to the target element: topic=factory/robot01/pressure, element=RobotState:Presure, cause=...
 ```
 
 시작 로그 `Starting service: MqttEndpoint[...], subscriptions=2/3`에서 실제로 등록된 구독 수와 설정된 구독 수를 비교할 수 있다.
@@ -288,7 +293,18 @@ payload는 대상 모델에 맞는 **AAS value-only JSON**이다.
 }
 ```
 
-Property 문자열은 JSON 문자열로 인코딩해야 한다. 완전한 AAS 요소 정의나 MDT의 타입 메타데이터가
+Property 문자열은 JSON 문자열로 인코딩해야 한다. 장치가 따옴표 없는 일반 텍스트(`running`)를 보낸다면 구독에 `"format": "text"`를 지정한다.
+그러면 payload 전체를 JSON 문자열로 감싸(따옴표·역슬래시 이스케이프 포함) 반영하며, 값은 Property의 데이터 타입에 맞게 해석된다.
+예를 들어 숫자 Property에 `23.5`, 불리언 Property에 `true`를 그대로 보내도 된다.
+
+| payload | `format: "json"` (기본) | `format: "text"` |
+| --- | --- | --- |
+| `23.5` → 숫자 Property | 반영 | 반영 |
+| `"running"` → 문자열 Property | 반영 | 따옴표까지 포함한 `"running"`이 값이 됨 |
+| `running` → 문자열 Property | JSON 형식 오류 | 반영 |
+| `{"Joint1": 0.25}` → Collection | 반영 | 사용 불가(시작 시 구독 제외) |
+
+완전한 AAS 요소 정의나 MDT의 타입 메타데이터가
 붙은 직렬화 형식은 이 입력 계약과 다르다. 값의 해석은 미리 존재하는 AAS 요소 타입에 의존한다.
 캐시된 타입 정보는 메시지마다 다시 조회하지 않는다.
 
@@ -305,7 +321,7 @@ MQTT 자산 변수(`mdt:asset:mqtt`)와 공유한다. 처음 연결을 얻는 �
 Paho 자동 재연결을 사용한다. 공유 연결의 서비스 자체가 실패하면 `MqttServicePool`이 ERROR 로그를 남긴다.
 연결 옵션은 clean session과 Paho 자동 재연결을 사용하고, 연결 완료 callback에서 모든 토픽을 재구독한다.
 `MqttService`는 topic별 QoS(같은 topic에 요청된 QoS 중 최댓값)를 보관하여 재구독할 때도 같은 QoS를 사용하며,
-일부 topic의 재구독이 실패해도 나머지 topic은 계속 구독한다. 엔드포인트는 QoS 1로 구독한다.
+일부 topic의 재구독이 실패해도 나머지 topic은 계속 구독한다. 엔드포인트는 구독의 `qos`(기본 1)로 구독한다.
 같은 topic을 여러 구독자가 구독하면 broker 구독은 하나만 유지되고, 마지막 구독자가 해제될 때 broker 구독도 해제된다.
 
 `+`, `#` 토픽 패턴을 지원하는 로컬 분배 로직이 있다. 중복·겹치는 구독은 같은 메시지를 여러 대상에
@@ -315,6 +331,9 @@ FA³ST는 요청 처리 중의 실패(값 파싱 실패, 요소 없음, 저장 �
 갱신기는 응답 상태를 확인해 실패를 `ElementUpdateException`으로 알리고, 구독자는 이를
 `failed to update element from MQTT message: topic=..., element=..., cause=...` ERROR 로그로 남긴 뒤 다음 메시지를 계속 처리한다.
 `cause`에는 응답 상태 코드와 FA³ST 메시지가 들어가며, payload 원문은 비밀 값이 있을 수 있어 남기지 않는다.
+자산 변수의 쓰기 실패(`AssetVariableException`)나 `PersistenceException`도 같은 로그로 드러난다.
+다만 FA³ST 1.3.0의 값 갱신 처리기는 persistence의 `update()`가 던진 `IllegalArgumentException`을 일부러 무시하고 성공으로 응답한다.
+따라서 저장 계층이 값 검증 등으로 `IllegalArgumentException`을 던지면 값이 저장되지 않아도 실패 로그가 남지 않는다.
 요소가 없는 구독은 시작할 때 빠지므로 메시지 처리 중에는 이 로그가 나오지 않는다.
 
 장치가 잘못된 형식을 계속 보내도 로그가 넘치지 않도록, 구독마다 연속 실패를 다음과 같이 기록한다.
