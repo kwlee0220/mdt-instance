@@ -16,16 +16,16 @@
 
 | ID | 구분 | 중요도 | 제목 | 관련 | 상태 | 반영 commit |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 문제 | 중 | 사용자가 적은 `environments`가 조용히 사라짐 | B | ✅ 완료 | (commit 전) |
+| 1 | 문제 | 중 | 사용자가 적은 `environments`가 조용히 사라짐 | B | ✅ 완료 | 211f843 |
 | 2 | 문제 | 중 | 동반 프로그램이 실패해도 인스턴스는 정상으로 보임 | C | ⬜ 미반영 | |
-| 3 | 문제 | 하 | `stop()`이 종료를 기다리지 않고 종료 hook부터 해제 | D | ✅ 완료 | (commit 전) |
+| 3 | 문제 | 하 | `stop()`이 종료를 기다리지 않고 종료 hook부터 해제 | D | ✅ 완료 | 211f843 |
 | 4 | 문제 | 하 | 동반 프로그램을 하나만 둘 수 있음 | A | ⬜ 미반영 | |
 | 5 | 문제 | 하 | `programConfig`가 null일 때 원인을 알기 어려운 NPE | | ⬜ 미반영 | |
 | 6 | 문제 | 하 | hook 이름 형식과 문서의 정리 범위 설명이 실제와 다름 | | ⬜ 미반영 | |
 | A | 제안 | | 여러 동반 프로그램 지원 (`companions` 맵) | 4 | ⬜ 미반영 | |
-| B | 제안 | | 인스턴스 변수와 사용자 `environments` 병합 | 1 | ✅ 완료 | (commit 전) |
+| B | 제안 | | 인스턴스 변수와 사용자 `environments` 병합 | 1 | ✅ 완료 | 211f843 |
 | C | 제안 | | 필수 동반 프로그램 지정(`required`)과 실패 로그 | 2 | ⬜ 미반영 | |
-| D | 제안 | | `stop()`에서 종료 대기 | 3 | ✅ 완료 | (commit 전) |
+| D | 제안 | | `stop()`에서 종료 대기 | 3 | ✅ 완료 | 211f843 |
 
 권장 처리 순서: **1+B → 3+D, 5, 6 → 2+C → 4+A**
 
@@ -131,5 +131,5 @@
 
 | 날짜 | 항목 | commit | 요약 |
 | --- | --- | --- | --- |
-| 2026-10-28 | 1, B | (commit 전) | `ProgramCompanion.mergeEnvironments()` 추가. 로더가 인스턴스 변수에 사용자 `environments`를 병합(사용자 값 우선, 덮어쓰면 변수 이름만 경고). 테스트 `ProgramCompanionTest` 5개, endpoint-guide §7 갱신 |
-| 2026-10-28 | 3, D | (commit 전) | `stop()`이 hook과 같은 시간(3초)까지 종료를 기다린 뒤 hook 해제. 시간 안에 끝나지 않으면 WARN 로그를 남기고 hook을 유지해 JVM 종료 시 다시 정리. hook 등록에도 같은 대기 시간을 명시. 테스트 `ProgramCompanionStopTest` 3개(실제 자식 프로세스 사용), endpoint-guide §7 갱신 |
+| 2026-10-28 | 1, B | 211f843 | `ProgramCompanion.mergeEnvironments()` 추가. 로더가 인스턴스 변수에 사용자 `environments`를 병합(사용자 값 우선, 덮어쓰면 변수 이름만 경고). 테스트 `ProgramCompanionTest` 5개, endpoint-guide §7 갱신 |
+| 2026-10-28 | 3, D | 211f843 | `stop()`이 hook과 같은 시간(3초)까지 종료를 기다린 뒤 hook 해제. 시간 안에 끝나지 않으면 WARN 로그를 남기고 hook을 유지해 JVM 종료 시 다시 정리. hook 등록에도 같은 대기 시간을 명시. 테스트 `ProgramCompanionStopTest` 3개(실제 자식 프로세스 사용), endpoint-guide §7 갱신 |
