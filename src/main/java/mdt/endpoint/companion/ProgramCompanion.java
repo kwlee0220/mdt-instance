@@ -39,8 +39,10 @@ import mdt.config.MDTService;
  * 모두 {@link ProgramService}의 동작에 위임된다.
  * <p>
  * 또한 {@link #init init} 시점에 내부 {@link ProgramService}를 JVM 종료 hook
- * ({@link ServiceShutdownHook})에 등록하므로, FA³ST 서비스가 비정상 종료되더라도
- * 자식 프로세스가 함께 정리된다.
+ * ({@link ServiceShutdownHook})에 등록하므로, {@link #stop stop}이 호출되지 않은 채 JVM이 종료되더라도
+ * 자식 프로세스가 함께 정리된다. 단, 이는 JVM이 종료 hook을 실행하는 경우(정상 종료, {@code System.exit},
+ * SIGTERM·SIGINT 등)에 한한다. {@code kill -9}나 JVM 충돌처럼 hook이 실행되지 않으면 자식 프로세스는
+ * 정리되지 않고 남으며, 프로세스 그룹 단위로 함께 종료시키는 장치도 없다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -87,8 +89,8 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	 * 설정의 {@link ProgramCompanionConfig#getProgramConfig() programConfig}로
 	 * {@link ProgramService}를 생성하고, JVM 종료 시 외부 프로그램이 정리되도록
 	 * {@link ServiceShutdownHook}에 등록한다.
-	 * {@code serviceContext}가 {@link MDTService}인 경우 instance id를 prefix로 한
-	 * 이름(예: {@code <instanceId>Companion})으로 등록되어 로그 추적을 쉽게 한다.
+	 * Hook 이름은 {@link #toHookName(String)}이 정하며, {@code serviceContext}가 {@link MDTService}이면
+	 * instance id를 앞에 붙여(예: {@code robot-01-companion}) 로그 추적을 쉽게 한다.
 	 * <p>
 	 * 본 메서드는 인스턴스당 정확히 한 번만 호출되어야 한다.
 	 * Guava {@link com.google.common.util.concurrent.Service Service}는 한 번
@@ -98,6 +100,7 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	 * @param coreConfig     FA³ST 서비스의 코어 설정 (본 구현에서는 사용하지 않음).
 	 * @param config         이 companion의 설정.
 	 * @param serviceContext FA³ST 서비스 컨텍스트. {@link MDTService}이면 instance id를 이름에 반영한다.
+	 * @throws IllegalArgumentException {@code config}가 null이거나 {@code programConfig}가 설정되지 않은 경우.
 	 * @throws IllegalStateException 이미 초기화된 상태에서 재호출된 경우.
 	 */
 	@Override
@@ -105,19 +108,33 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 		if ( m_service != null ) {
 			throw new IllegalStateException("ProgramCompanion is already initialized");
 		}
+		Preconditions.checkNotNullArgument(config, "ProgramCompanionConfig is null");
+		Preconditions.checkArgument(config.getProgramConfig() != null,
+									"companion programConfig is not set: the program to run is unknown");
+		
 		m_config = config;
 		m_service = ProgramService.create(m_config.getProgramConfig());
 
-		String companionName = "Companion";
+		String instanceId = null;
 		if ( serviceContext instanceof MDTService mdtCtxt ) {
-			String instanceId = FOption.ofNullable(mdtCtxt.getInstanceConfig())
-										.map(MDTInstanceConfig::getId)
-										.getOrElse("");
-			if ( !instanceId.isEmpty() ) {
-				companionName = instanceId + companionName;
-			}
+			instanceId = FOption.ofNullable(mdtCtxt.getInstanceConfig())
+								.map(MDTInstanceConfig::getId)
+								.getOrNull();
 		}
-		m_hookReg = ServiceShutdownHook.register(companionName, m_service, m_terminationTimeout);
+		m_hookReg = ServiceShutdownHook.register(toHookName(instanceId), m_service, m_terminationTimeout);
+	}
+	
+	/**
+	 * JVM 종료 hook의 이름을 만든다.
+	 * <p>
+	 * instance id가 있으면 {@code <instanceId>-companion}, 없으면 {@code companion}이다.
+	 * 실제 hook 쓰레드 이름은 여기에 {@code -ShutdownHook}이 붙는다(예: {@code robot-01-companion-ShutdownHook}).
+	 *
+	 * @param instanceId	MDT 인스턴스 id. {@code null}이거나 빈 문자열이면 없는 것으로 본다.
+	 * @return	hook 이름.
+	 */
+	static String toHookName(@Nullable String instanceId) {
+		return (instanceId == null || instanceId.isEmpty()) ? "companion" : instanceId + "-companion";
 	}
 
 	/**

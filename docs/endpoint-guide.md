@@ -528,6 +528,9 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 엔드포인트는 `init()`에서 shutdown hook을 등록하고, `start()`에서 프로그램 서비스를 비동기로 시작한다.
 `stop()`은 서비스 중지를 요청한 뒤 프로그램이 종료될 때까지 hook과 같은 시간(3초)만큼 기다린다.
 그 안에 종료되면 hook을 해제하고, 종료되지 않으면 경고 로그를 남기고 hook을 남겨 JVM 종료 시 한 번 더 정리하게 한다.
+hook 쓰레드 이름은 `<instanceId>-companion-ShutdownHook`이다(instance id가 없으면 `companion-ShutdownHook`).
+hook은 JVM이 종료 hook을 실행하는 경우(정상 종료, `System.exit`, SIGTERM·SIGINT 등)에만 자식 프로세스를 정리한다.
+`kill -9`나 JVM 충돌에서는 hook이 실행되지 않아 자식 프로세스가 남으며, 프로세스 그룹 단위로 함께 종료시키는 장치는 없다.
 프로세스 시작과 외부 프로그램의 업무 준비 완료를 판별하는 별도의 readiness probe는 없다.
 
 근거: [ProgramCompanion](../src/main/java/mdt/endpoint/companion/ProgramCompanion.java),

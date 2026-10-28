@@ -1,5 +1,7 @@
 package mdt.endpoint.companion;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 import utils.async.command.ProgramServiceConfig;
@@ -24,6 +26,6 @@ public class ProgramCompanionConfig extends EndpointConfig<ProgramCompanion> {
 	
 	@Override
 	public String toString() {
-		return m_programConfig.toString();
+		return Objects.toString(m_programConfig, "ProgramCompanionConfig[programConfig=null]");
 	}
 }

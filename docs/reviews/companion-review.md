@@ -20,8 +20,8 @@
 | 2 | 문제 | 중 | 동반 프로그램이 실패해도 인스턴스는 정상으로 보임 | C | ⬜ 미반영 | |
 | 3 | 문제 | 하 | `stop()`이 종료를 기다리지 않고 종료 hook부터 해제 | D | ✅ 완료 | 211f843 |
 | 4 | 문제 | 하 | 동반 프로그램을 하나만 둘 수 있음 | A | ⬜ 미반영 | |
-| 5 | 문제 | 하 | `programConfig`가 null일 때 원인을 알기 어려운 NPE | | ⬜ 미반영 | |
-| 6 | 문제 | 하 | hook 이름 형식과 문서의 정리 범위 설명이 실제와 다름 | | ⬜ 미반영 | |
+| 5 | 문제 | 하 | `programConfig`가 null일 때 원인을 알기 어려운 NPE | | ✅ 완료 | (commit 전) |
+| 6 | 문제 | 하 | hook 이름 형식과 문서의 정리 범위 설명이 실제와 다름 | | ✅ 완료 | (commit 전) |
 | A | 제안 | | 여러 동반 프로그램 지원 (`companions` 맵) | 4 | ⬜ 미반영 | |
 | B | 제안 | | 인스턴스 변수와 사용자 `environments` 병합 | 1 | ✅ 완료 | 211f843 |
 | C | 제안 | | 필수 동반 프로그램 지정(`required`)과 실패 로그 | 2 | ⬜ 미반영 | |
@@ -133,3 +133,5 @@
 | --- | --- | --- | --- |
 | 2026-10-28 | 1, B | 211f843 | `ProgramCompanion.mergeEnvironments()` 추가. 로더가 인스턴스 변수에 사용자 `environments`를 병합(사용자 값 우선, 덮어쓰면 변수 이름만 경고). 테스트 `ProgramCompanionTest` 5개, endpoint-guide §7 갱신 |
 | 2026-10-28 | 3, D | 211f843 | `stop()`이 hook과 같은 시간(3초)까지 종료를 기다린 뒤 hook 해제. 시간 안에 끝나지 않으면 WARN 로그를 남기고 hook을 유지해 JVM 종료 시 다시 정리. hook 등록에도 같은 대기 시간을 명시. 테스트 `ProgramCompanionStopTest` 3개(실제 자식 프로세스 사용), endpoint-guide §7 갱신 |
+| 2026-10-28 | 5 | (commit 전) | `init()`이 `config`·`programConfig`가 없으면 NPE 대신 `IllegalArgumentException`("companion programConfig is not set")을 던지고, 검사가 상태 변경보다 먼저 일어나 실패 후 재초기화 가능. `ProgramCompanionConfig.toString()`은 null을 허용. 테스트 `ProgramCompanionInitTest` 3개 |
+| 2026-10-28 | 6 | (commit 전) | hook 이름을 `<instanceId>-companion`(없으면 `companion`)으로 변경(`toHookName()`). 클래스 Javadoc과 endpoint-guide §7에 hook이 정리하는 범위(정상 종료·`System.exit`·SIGTERM 등)와 한계(`kill -9`·JVM 충돌, 프로세스 그룹 정리 없음)를 기재. 테스트 `testHookName` 추가 |
