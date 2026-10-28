@@ -4,8 +4,10 @@
 MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,
 외부 동반 프로세스 실행과 요소 값의 JDBC 기록 기능을 제공한다.
 
-이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 17일의 작업 트리를 기준으로
+이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 28일의 작업 트리를 기준으로
 설정 로더, 엔드포인트 구현, 관련 `mdt-client`·`utils` 코드를 함께 검토했다.
+이번 개정에서는 Companion(7절)의 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그,
+종료 시 프로세스 정리 방식을 반영했다.
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
 RobotTwin 조회와 Audit 등록처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
 
@@ -22,7 +24,7 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | `mqtt` / `MqttEndpoint` | MQTT 메시지 → AAS 요소 값 갱신 | `serviceEndpoints.mqtt` |
 | `ros2` / `Ros2Endpoint` | rosbridge WebSocket 메시지 → AAS 관절 위치 갱신 | `serviceEndpoints.ros2` |
 | `rt` / `RobotTwinEndpoint` | RobotTwin REST 상태 조회용 코드 | `serviceEndpoints.robotTwin`; **조회 루프는 비활성** |
-| `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료 | `serviceEndpoints.companion` |
+| `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
 | `audit` / `PeriodicElementAudit` | 요소 값 변경을 JDBC 테이블에 기록 | **기본 로더에 등록 경로 없음** |
 
 연산 호출은 [mdt.assetconnection](assetconnection-guide.md), 저장 계층의 값 접근은
@@ -55,8 +57,8 @@ HTTP 엔드포인트의 포트는 `instanceEndpoint`에서 추출하며, 인증�
 | `init(CoreConfig, C, ServiceContext)` | 설정 보관, 클라이언트·실행 객체 준비 | 모델 위치 해석을 `start()`까지 미루는 구현이 있음 |
 | `asConfig()` | 현재 엔드포인트 설정 반환 | FA³ST 설정 래퍼와 인스턴스 JSON DTO를 구분해야 함 |
 | `getProfiles()` | 설정의 서비스 프로파일 반환 | 외부 연결 성공 여부를 나타내는 상태 API는 아님 |
-| `start()` | 작업 시작 | 대부분 `startAsync()` 또는 비동기 실행을 호출하며 연결 완료를 기다리지 않음 |
-| `stop()` | 중지 요청 | 완료 대기·자원 정리 범위가 구현마다 다름 |
+| `start()` | 작업 시작 | 대부분 `startAsync()` 또는 비동기 실행을 호출하며 연결 완료를 기다리지 않음. Companion의 `required=true`만 프로세스 시작을 확인함 |
+| `stop()` | 중지 요청 | 완료 대기·자원 정리 범위가 구현마다 다름. Companion은 자식 프로세스 정리를 최대 3초 기다림 |
 
 `start()` 반환이나 시작 로그만으로 브로커 연결, WebSocket 구독, 자식 프로그램의 업무 준비가
 완료되었다고 판단할 수 없다. 또한 메시지 갱신은 `FaaastRuntime`을 통해 FA³ST 요청으로 실행되므로,
@@ -224,8 +226,8 @@ timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용�
 1. `init()`에서 broker 설정을 해석한다.
 2. `start()`에서 요소 위치를 활성화한 뒤 `MqttServicePool`에서 broker 연결을 얻어 구독을 등록한다.
 3. 수신 payload를 UTF-8 문자열로 읽는다.
-4. 최초 메시지에서 대상 요소의 FA³ST `TypeInfo`를 조회하고 값 파서를 캐시한다.
-5. `PatchSubmodelElementValueByPathRequest`를 실행하여 값을 갱신한다.
+4. 최초 메시지에서 `FaaastRuntime.newValueUpdater()`로 대상 요소의 값 갱신기를 만든다. 이때 요소의 FA³ST `TypeInfo`를 조회해 두고, 이후 메시지에서 재사용한다.
+5. 갱신기가 `PatchSubmodelElementValueByPathRequest`를 실행하고 응답 상태를 확인한다.
 
 payload는 대상 모델에 맞는 **AAS value-only JSON**이다.
 예를 들어 숫자 Property인 `Temperature`로 보내는 메시지는 다음과 같다.
@@ -266,12 +268,18 @@ Paho 자동 재연결을 사용한다. 공유 연결의 서비스 자체가 실�
 `+`, `#` 토픽 패턴을 지원하는 로컬 분배 로직이 있다. 중복·겹치는 구독은 같은 메시지를 여러 대상에
 반영할 수 있다. 엔드포인트에는 중복 제거, 수신 시각 비교, 메시지 저장·재처리 큐가 없다.
 
-값 변경 중 예외는 로그에 기록한다. 최초 타입 파서 생성은 해당 try/catch 밖에 있으며, 여기서 발생한 예외는
-상위 `MqttService`가 경고 로그로 남기고 같은 topic의 다른 구독자에게는 계속 전달한다.
+FA³ST는 요청 처리 중의 실패(값 파싱 실패, 요소 없음, 저장 계층의 쓰기 실패 등)를 예외 대신 오류 상태의 응답으로 돌려준다.
+갱신기는 응답 상태를 확인해 실패를 `ElementUpdateException`으로 알리고, 구독자는 이를
+`failed to update element from MQTT message: topic=..., element=..., cause=...` ERROR 로그로 남긴 뒤 다음 메시지를 계속 처리한다.
+`cause`에는 응답 상태 코드와 FA³ST 메시지가 들어가며, payload 원문은 비밀 값이 있을 수 있어 남기지 않는다.
+요소 경로가 잘못되어 갱신기를 만들지 못한 경우도 같은 로그(`element not found: ...`)로 남는다. 다만 지금은 시작 단계에서
+요소를 확인하지 않으므로, 이런 오류는 첫 메시지를 받을 때 드러나고 메시지마다 반복된다. 실패 로그에도 아직 빈도 제한이 없다.
 구독자 호출은 `MqttService`의 lock 밖에서 수행되므로, 메시지 처리 중에도 다른 구독·발행이 막히지 않는다.
 서비스의 RUNNING 상태는 실제 브로커 접속 완료와 동일하지 않다.
 
 근거: [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java),
+[MqttSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttSubscriber.java),
+[FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java),
 [MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java),
 [MqttElementSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttElementSubscriber.java),
 [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
@@ -475,14 +483,59 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 
 ## 7. Companion 외부 프로그램
 
-`ProgramCompanion`은 인스턴스와 함께 유지할 외부 프로그램을 `utils.async.command.ProgramService`로 실행한다.
-각 AAS Operation 호출마다 프로그램을 실행하는 `ProgramOperationProvider`와 생명주기가 다르다.
+Companion은 MDT 인스턴스가 떠 있는 동안 **함께 실행해 두어야 하는 외부 프로그램**을 관리한다.
+센서 데이터를 가공해 AAS에 써 넣는 Python 스크립트, 예측 결과를 MQTT로 내보내는 보조 프로세스처럼
+인스턴스와 수명을 같이하는 프로그램이 대상이다. 인스턴스가 시작되면 프로그램을 띄우고, 프로그램이 죽으면
+정책에 따라 다시 띄우며, 인스턴스가 끝나면 프로그램도 정리한다.
+
+AAS Operation이 호출될 때마다 프로그램을 한 번씩 실행하는 `ProgramOperationProvider`와는 쓰임새가 다르다.
+
+| 구분 | Companion (`ProgramCompanion`) | Operation 프로그램 (`ProgramOperationProvider`) |
+| --- | --- | --- |
+| 실행 시점 | 인스턴스 시작 시 한 번 시작해 계속 실행 | Operation 호출마다 실행 후 종료 |
+| 종료 후 동작 | 재시작 정책에 따라 다시 실행 | 결과를 Operation 출력으로 반환 |
+| 입출력 | 없음(프로그램이 직접 MDT·MQTT·DB에 접근) | Operation 입력·출력 인자 |
+| 설정 위치 | `serviceEndpoints.companion` / `companions` | `operations.programs` |
+
+### 7.1 구성 요소와 등록 흐름
+
+```mermaid
+flowchart LR
+    CFG["config.json<br/>serviceEndpoints.companion<br/>serviceEndpoints.companions"] --> L["MDTInstanceMain<br/>loadEndpointConfigs()"]
+    L -->|"프로그램마다<br/>ProgramCompanionConfig.from()"| PC["ProgramCompanionConfig<br/>이름 검증·설정 복사·환경 변수 병합"]
+    PC --> E["ProgramCompanion<br/>(FA³ST Endpoint)"]
+    E --> PS["ProgramService<br/>(utils, 재시작 감독)"]
+    PS --> CE["CommandExecution<br/>(utils, 실행 1회)"]
+    CE --> P(("자식 프로세스"))
+    E -.->|init에서 등록| H["ServiceShutdownHook<br/>(JVM 종료 hook)"]
+    H -.->|JVM 종료 시 정리| PS
+```
+
+| 구성 요소 | 위치 | 역할 |
+| --- | --- | --- |
+| `CompanionConfig` | `mdt.endpoint.companion` | 설정 파일의 항목 하나. utils `ProgramServiceConfig`에 `required`를 더한 형태 |
+| `ProgramCompanionConfig` | `mdt.endpoint.companion` | FA³ST endpoint 설정. 이름, 실행 설정, `required`를 담는다. 로더가 `from()`으로 만든다 |
+| `ProgramCompanion` | `mdt.endpoint.companion` | FA³ST 생명주기(`init`·`start`·`stop`)와 프로그램 서비스를 연결한다 |
+| `ProgramService` | `utils.async.command` | 자식 프로세스 실행, 재시작 정책, 시작 제한 시간, 정리 완료 대기 |
+| `CommandExecution` | `utils.async.command` | 프로세스 한 번의 실행. 출력 기록, SIGTERM 후 SIGKILL 종료 |
+| `ServiceShutdownHook` | `utils.async.command` | JVM이 종료될 때 서비스를 멈추고 정리를 기다리는 hook |
+
+동반 프로그램 하나에 `ProgramCompanion` 하나가 만들어진다. 따라서 여러 프로그램을 등록하면 각각 따로 시작·재시작·중지되고,
+한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT·ROS2·RobotTwin
+엔드포인트 다음에 놓이며, 단일 `companion`이 먼저, 이어서 `companions`가 설정 파일에 적힌 순서대로 시작된다.
+
+### 7.2 설정 방법
+
+#### 단일 프로그램
+
+프로그램이 하나뿐이면 `serviceEndpoints.companion`에 실행 설정을 바로 적는다.
+`programConfig` 같은 감싸는 항목은 넣지 않는다.
 
 ```json
 {
   "serviceEndpoints": {
     "companion": {
-      "commandLine": ["python3", "bridge.py"],
+      "commandLine": ["python3", "bridge.py", "--instance", "${MDT_INSTANCE_ID}"],
       "workingDirectory": "/opt/mdt/robot-bridge",
       "environmentFile": "/opt/mdt/robot-bridge/bridge.env",
       "restartDelay": "5s"
@@ -491,84 +544,285 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 }
 ```
 
-예제 경로와 프로그램·환경 파일은 배포 환경에 맞게 준비해야 한다.
-`serviceEndpoints.companion`의 값은 `ProgramServiceConfig`에 `required` 하나를 더한 `CompanionConfig`이며 `programConfig` 래퍼를 넣지 않는다.
-래퍼 `ProgramCompanionConfig`는 로더가 내부에서 생성한다.
+#### 여러 프로그램
 
-동반 프로그램이 여럿이면 `companions`에 이름을 키로 하여 적는다. 프로그램마다 companion 엔드포인트가 하나씩 만들어지고,
-각자 따로 시작·재시작·중지된다. 단일 `companion`(이름 없음)과 함께 쓸 수 있으며, 시작 순서는 `companion` 다음
-`companions`의 작성 순서이다.
+프로그램이 여럿이면 `serviceEndpoints.companions`에 이름을 키로 하여 적는다.
+단일 `companion`과 함께 써도 된다.
 
 ```json
 {
   "serviceEndpoints": {
     "companions": {
-      "inspect": {
-        "commandLine": ["uv", "run", "python", "inspect_waveform.py", "--instance", "${env:MDT_INSTANCE_ID}"],
+      "inspect-waveform": {
+        "commandLine": ["uv", "run", "python", "inspect_waveform.py", "--instance", "${MDT_INSTANCE_ID}"],
         "workingDirectory": "${env:MDT_INSTANCE_HOME}/welder",
         "restartDelay": "10s"
       },
-      "predict": {
-        "commandLine": ["java", "-cp", "${env:MDT_HOME}/share/mdt-apps-all.jar", "welder.PredictTotalQuantity"],
-        "workingDirectory": "companion"
+      "predict-throughput": {
+        "commandLine": ["uv", "run", "--directory", "${env:MDT_INSTANCE_HOME}/welder",
+                        "python", "predict_throughput.py", "--instance", "${MDT_INSTANCE_ID}"],
+        "workingDirectory": "${env:MDT_INSTANCE_HOME}/companion",
+        "required": true
       }
     }
   }
 }
 ```
 
-이름은 영문자·숫자로 시작하고 영문자·숫자·`_`·`-`만 쓸 수 있다. 규칙에 맞지 않으면 설정을 읽는 단계에서 실패한다.
-이름은 hook 이름(`<instanceId>-companion-<name>`)과 logger 이름(`mdt.endpoint.companion.ProgramCompanion.<instanceId>-companion-<name>`),
-실패 로그의 `name=`에 쓰인다. 여러 프로그램이 같은 작업 디렉터리를 쓰면 `application.log`를 함께 이어 쓰므로 디렉터리를 나누는 것이 좋다.
+이름은 영문자나 숫자로 시작하고 영문자·숫자·`_`·`-`로만 이루어져야 한다(`.`, 공백, 한글 불가).
+규칙에 맞지 않으면 설정을 읽는 단계에서 `IllegalArgumentException`으로 인스턴스 시작이 실패한다.
+이름은 hook과 logger 이름, 실패 로그에 들어가므로 프로그램을 알아보기 쉬운 이름을 쓴다.
 
-| 필드 | 기본값 / 동작 |
+| 설정 형태 | 이름 | hook 쓰레드 이름 | logger 이름 |
+| --- | --- | --- | --- |
+| `companion` | 없음 | `<id>-companion-ShutdownHook` | `mdt.endpoint.companion.ProgramCompanion.<id>-companion` |
+| `companions.<name>` | `<name>` | `<id>-companion-<name>-ShutdownHook` | `mdt.endpoint.companion.ProgramCompanion.<id>-companion-<name>` |
+
+`<id>`는 인스턴스 ID다. 인스턴스 ID를 알 수 없으면 `<id>-` 부분이 빠진다(예: `companion-ShutdownHook`).
+
+모든 프로그램은 표준 출력과 표준 오류를 작업 디렉터리의 `application.log`에 이어 쓴다.
+두 프로그램이 같은 작업 디렉터리를 쓰면 로그가 한 파일에 섞이므로 작업 디렉터리를 나누는 것이 좋다.
+위 예제의 `predict-throughput`처럼 프로그램은 다른 디렉터리에서 실행해야 한다면, 작업 디렉터리는 로그용으로 따로 두고
+`uv run --directory`나 `sh -c "cd ...; exec ..."`로 실행 위치를 옮기면 된다.
+
+#### 설정 항목
+
+| 필드 | 기본값 | 설명 |
+| --- | --- | --- |
+| `commandLine` | (필수) | 실행 파일과 인자 목록. 셸을 거치지 않으므로 파이프나 리다이렉션이 필요하면 `["sh", "-c", "..."]`로 적는다 |
+| `workingDirectory` | 인스턴스의 현재 디렉터리 | 프로그램 실행 위치이자 `application.log`가 생기는 위치. 상대 경로는 인스턴스의 현재 디렉터리 기준 |
+| `environmentFile` | 없음 | `KEY=VALUE` 형식의 환경 변수 파일. 파일이 없으면 무시한다 |
+| `environments` | 빈 맵 | 자식 프로세스에 줄 환경 변수. 로더가 인스턴스 변수와 병합한다(7.3) |
+| `restartPolicy` | `ALWAYS` | `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO`. `on-completed`처럼 소문자·하이픈 표기도 된다(7.5) |
+| `restartDelay` | `5s` | 재시작 전에 기다리는 시간 |
+| `maxRestartDelay` | `1m` | 짧은 실행이 이어질 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 지연을 늘리지 않는다 |
+| `stableRunTime` | `10s` | 이보다 짧게 끝난 실행을 "짧은 실행"으로 본다 |
+| `restartLimit` | `0` (제한 없음) | 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스를 FAILED로 만든다 |
+| `restartLimitInterval` | `1m` | `restartLimit`을 세는 구간 |
+| `startTimeout` | `30s` | 첫 실행이 이 시간 안에 시작되지 못하면 서비스를 FAILED로 만든다. `0s`이면 제한 없음 |
+| `required` | `false` | `true`이면 프로그램이 시작되지 못할 때 인스턴스 시작도 실패시킨다(7.4) |
+
+시간 값은 `"5s"`, `"1m"`, `"PT5S"` 형식을 모두 받는다.
+
+### 7.3 변수 치환과 환경 변수
+
+Companion 설정에서 값을 바꿔 넣는 방법은 두 가지이고, 적용 시점이 다르다.
+
+| 방법 | 적용 시점 | 쓰는 곳 | 예 |
+| --- | --- | --- | --- |
+| 설정 문자열 치환 | 인스턴스가 `config.json`을 읽을 때 | `commandLine`, `workingDirectory` 등 설정 파일의 모든 문자열 | `${MDT_INSTANCE_ID}`, `${env:MDT_HOST}`, `${sys:user.home}` |
+| 자식 프로세스 환경 변수 | 프로그램이 실행될 때 | 프로그램 내부에서 `os.environ` 등으로 읽음 | `MDT_INSTANCE_ID`, `environments`의 값 |
+
+**설정 문자열 치환**에서 `${MDT_INSTANCE_ID}`처럼 접두어가 없는 참조는 아래 인스턴스 변수에서 찾고,
+`${env:...}`는 인스턴스 JVM의 환경 변수, `${sys:...}`는 Java 시스템 속성에서 찾는다.
+찾지 못한 참조는 오류 없이 글자 그대로 남으므로, 치환 결과는 인스턴스 로그의
+`Register Companion endpoint` 줄에서 확인한다. 인스턴스 ID는 Manager가 띄우든 직접 띄우든 항상 정해지므로
+`${env:MDT_INSTANCE_ID}`보다 `${MDT_INSTANCE_ID}`를 쓰는 편이 안전하다.
+
+**자식 프로세스 환경 변수**로는 로더가 다음 인스턴스 변수를 항상 넣어 준다.
+
+| 변수 | 값 |
 | --- | --- |
-| `commandLine` | 실행 파일과 인자 목록. 필수 |
-| `workingDirectory` | 현재 작업 디렉터리 |
-| `environmentFile` | 선택적 환경 변수 파일 |
-| `environments` | 기본 빈 Map. 자식 프로세스에 추가로 전달할 환경 변수. 표준 로더가 인스턴스 환경 변수와 병합한다 |
-| `restartPolicy` | 기본 `ALWAYS`. `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO` (`on-completed`처럼 소문자·하이픈 표기도 허용) |
-| `restartDelay` | 기본 5초. 재시작 실행에 적용 |
-| `maxRestartDelay` | 기본 1분. 짧은 실행이 연달아 일어날 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 backoff 없음 |
-| `stableRunTime` | 기본 10초. 이보다 짧게 끝난 실행을 backoff 대상으로 본다 |
-| `restartLimit` | 기본 0(제한 없음). 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스 `FAILED` |
-| `restartLimitInterval` | 기본 1분 |
-| `startTimeout` | 기본 `30s`. 첫 실행이 이 시간 안에 시작(RUNNING)되지 못하면 서비스 `FAILED`. `0s`이면 제한 없음 |
-| `required` | 기본 `false`. `true`이면 `start()`가 프로그램이 시작(RUNNING)될 때까지 `startTimeout`만큼 기다리고, 시작되지 못하면 `EndpointException`으로 FA³ST 서비스 시작을 실패시킨다. 이때 인스턴스 프로세스는 ERROR 로그를 남기고 종료 코드 255로 끝난다. 시작 이후의 실패는 ERROR 로그만 남는다 |
+| `MDT_INSTANCE_ID` | 인스턴스 ID |
+| `MDT_INSTANCE_ENDPOINT` | 인스턴스의 AAS API 주소 |
+| `MDT_URL` | MDT Manager 주소 |
+| `MDT_INSTANCE_PORT` | 인스턴스 포트. 설정에 없으면 `instanceEndpoint`에서 뽑은 값 |
+| `MDT_INSTANCE_DIR` | 인스턴스 JVM의 현재 디렉터리 |
 
-로더가 주입하는 환경 변수는 `MDT_INSTANCE_ID`, `MDT_INSTANCE_ENDPOINT`, `MDT_URL`,
-`MDT_INSTANCE_PORT`, `MDT_INSTANCE_DIR`이다. `MDT_INSTANCE_PORT`는 설정의 `port`가 없으면 빈 문자열이다.
-로더는 이 변수들에 사용자가 작성한 `environments`를 병합한다. 같은 이름이 있으면 사용자 값이 우선하며,
-인스턴스 변수를 덮어쓰면 변수 이름(값은 출력하지 않음)을 담은 경고 로그를 남긴다.
-설정 파일의 문자열에서는 `${MDT_INSTANCE_ID}`처럼 인스턴스 변수를 참조할 수 있으므로, 대개 `MDT_*`를 다시 적을 필요는 없다.
-`CommandExecution`은 전달받은 Map에 없는 키를 환경 파일에서 보충하고, 이를 부모 프로세스 환경에 추가한다.
+자식 프로세스가 받는 환경은 다음 순서로 만들어진다. 아래쪽이 위쪽을 덮어쓴다.
 
-`ProgramService`는 실행 종료 결과에 따라 재시작 정책을 적용한다.
-`ALWAYS`는 성공·실패 종료 후 재시작하고, `ON_COMPLETED`는 성공 종료, `ON_FAILED`는 실패 종료에 적용한다.
-명시적 중지 요청에는 재시작하지 않는다. 실행 timeout은 현재 `null`로 지정되어 전체 실행 시간 제한이 없다.
-첫 실행이 시작되지 못하고 끝나면 재시작 정책과 무관하게 서비스가 `FAILED`가 된다.
-실행이 `stableRunTime`보다 짧게 끝나는 일이 연달아 일어나면 두 번째 재시작부터 지연을 두 배씩 늘려
-`maxRestartDelay`까지 키우고(시작값은 `restartDelay`와 1초 중 큰 값), 한 번이라도 오래 실행되면 원래 지연으로 돌아간다.
-표준 오류는 표준 출력과 병합되어 작업 디렉터리의 `application.log` 뒤에 이어 기록된다.
-재시작해도 이전 실행의 로그가 남지만, 파일 크기를 제한하지 않으므로 필요하면 외부에서 정리해야 한다.
+1. 인스턴스 JVM의 환경 변수(부모 프로세스 환경)
+2. `environmentFile`의 값 중 3에 없는 이름
+3. 인스턴스 변수 위에 사용자의 `environments`를 병합한 값
 
-엔드포인트는 `init()`에서 shutdown hook을 등록하고, `start()`에서 프로그램 서비스를 비동기로 시작한다.
-`stop()`은 서비스 중지를 요청한 뒤 프로그램이 종료될 때까지 hook과 같은 시간(3초)만큼 기다린다.
-그 안에 종료되면 hook을 해제하고, 종료되지 않으면 경고 로그를 남기고 hook을 남겨 JVM 종료 시 한 번 더 정리하게 한다.
-hook 쓰레드 이름은 `<instanceId>-companion-ShutdownHook`이다(instance id가 없으면 `companion-ShutdownHook`).
-`ProgramService`의 로그는 `mdt.endpoint.companion.ProgramCompanion.<instanceId>-companion` logger로 기록되므로 companion의 로그 수준 설정을 따른다.
-프로그램 서비스가 FAILED가 되면(시작 실패, 재시작 한도 초과, 재시작하지 않는 정책에서 실패 종료 등) `ProgramCompanion` logger로
-`companion program failed: name=..., state=..., cause=..., program=...` ERROR 로그를 남긴다. 인스턴스는 계속 실행되며 Manager에 보이는 상태도 바뀌지 않는다.
-`restartLimit` 기본값은 0(무제한)이므로 `ALWAYS` 정책에서 계속 죽는 프로그램은 FAILED가 되지 않고 재시작 간격만 늘어난다. 실패를 드러내려면 `restartLimit`을 설정한다.
-hook은 JVM이 종료 hook을 실행하는 경우(정상 종료, `System.exit`, SIGTERM·SIGINT 등)에만 자식 프로세스를 정리한다.
-`kill -9`나 JVM 충돌에서는 hook이 실행되지 않아 자식 프로세스가 남으며, 프로세스 그룹 단위로 함께 종료시키는 장치는 없다.
-프로세스 시작과 외부 프로그램의 업무 준비 완료를 판별하는 별도의 readiness probe는 없다.
+같은 이름이 인스턴스 변수와 `environments`에 모두 있으면 사용자 값이 이긴다. 이때 인스턴스 변수를 다른 값으로
+덮어쓰면 `companion environment 'MDT_URL' overrides the MDT instance variable` 같은 WARN 로그가 남는다.
+값에는 비밀 정보가 있을 수 있어 로그에는 변수 이름만 나온다.
+
+병합은 설정의 복사본에서 이루어지므로 원래 설정 객체는 바뀌지 않는다. 같은 설정으로 companion을 여러 번 만들어도
+각자의 인스턴스 변수가 들어간다.
+
+> **비밀 값은 `commandLine`에 쓰지 않는다.** 명령행은 `Register Companion endpoint`, JVM 종료 시의
+> `Shutting down Service ...`, 실행 취소 시의 `cancelled: ...` 로그에 그대로 찍힌다. DB 비밀번호 같은 값은
+> `environments`나 `environmentFile`로 넘기고 프로그램이 환경 변수에서 읽게 한다.
+
+### 7.4 생명주기
+
+```mermaid
+sequenceDiagram
+    participant F as FA³ST Service
+    participant C as ProgramCompanion
+    participant S as ProgramService
+    participant H as ShutdownHook
+    F->>C: init(config)
+    C->>C: 실행 값 확정(이름, required, startTimeout, 명령행)
+    C->>S: 생성, 실패 리스너 등록
+    C->>H: hook 등록
+    F->>C: start()
+    C->>S: startAsync()
+    alt required = true
+        C->>S: RUNNING까지 대기 (startTimeout + 1초)
+        S-->>C: RUNNING 또는 실패
+        C-->>F: 실패하면 EndpointException
+    end
+    Note over S: 실행 중: 종료되면 재시작 정책 적용
+    alt stop() 호출
+        F->>C: stop()
+        C->>S: stopAsync(), 정리 완료 대기(3초)
+        C->>H: 정리되면 hook 해제
+    else JVM 종료
+        H->>S: stopAsync(), 정리 완료 대기(3초)
+    end
+```
+
+| 단계 | 동작 |
+| --- | --- |
+| `init()` | 설정을 검사한다(`programConfig`가 없으면 `IllegalArgumentException`). 이름, `required`, `startTimeout`, 명령행을 이때 확정하고, `ProgramService`를 만들고, JVM 종료 hook을 등록한다. 이후 설정 객체를 바꿔도 실행·대기·로그에는 반영되지 않는다 |
+| `start()` | `ProgramService`를 시작한다. `required=false`면 바로 반환하고, `true`면 7.4.1처럼 시작을 확인한다 |
+| 실행 중 | 프로그램이 끝날 때마다 재시작 정책을 적용한다(7.5) |
+| `stop()` | 중지를 요청하고 자식 프로세스 정리가 끝날 때까지 최대 3초 기다린다(7.6) |
+
+`ProgramService`의 상태는 다음과 같이 바뀐다. FAILED로 가는 모든 경로에서 companion은 ERROR 로그를 남긴다(7.7).
+
+```mermaid
+stateDiagram-v2
+    [*] --> STARTING: start()
+    STARTING --> RUNNING: 첫 프로세스 생성
+    STARTING --> FAILED: 실행 파일·작업 디렉터리 없음<br/>startTimeout 초과
+    RUNNING --> RUNNING: 종료 후 재시작
+    RUNNING --> FAILED: restartLimit 초과<br/>재시작하지 않는 정책에서 실패 종료
+    RUNNING --> TERMINATED: 재시작하지 않는 정책에서 정상 종료
+    RUNNING --> STOPPING: stop() 또는 JVM 종료
+    STOPPING --> TERMINATED
+```
+
+여기서 **RUNNING은 자식 프로세스가 생성되었다는 뜻일 뿐**, 프로그램이 일할 준비를 마쳤다는 뜻이 아니다.
+실행하자마자 스크립트 오류로 죽는 프로그램도 일단 RUNNING이 되고, 그다음부터는 재시작 정책을 따른다.
+
+#### 7.4.1 필수 프로그램(`required`)
+
+프로그램이 없으면 인스턴스가 제 역할을 못 하는 경우 `required`를 `true`로 둔다.
+
+| 상황 | `required = false` (기본) | `required = true` |
+| --- | --- | --- |
+| `start()` | 시작만 요청하고 바로 반환 | RUNNING이 될 때까지 `startTimeout` + 1초 기다림(`startTimeout`이 0이면 제한 없이) |
+| 실행 파일 없음, `startTimeout` 초과 등 시작 실패 | ERROR 로그만 남기고 인스턴스는 계속 실행 | `EndpointException`으로 FA³ST 서비스 시작이 실패하고 인스턴스 프로세스가 종료 코드 255로 끝남 |
+| 시작한 뒤의 실패(재시작 한도 초과 등) | ERROR 로그만 남김 | ERROR 로그만 남김(인스턴스를 멈추지 않음) |
+
+`required` 프로그램의 시작이 실패하면 인스턴스는 다음 순서로 끝난다. `runService()`가 ERROR 로그를 남기므로
+Manager는 인스턴스 출력에서 `ERROR`를 보고 시작 실패로 판단한다. 이미 시작된 다른 companion은 JVM 종료 hook이 정리한다.
+
+```mermaid
+flowchart LR
+    A["required companion<br/>시작 실패"] --> B["start()가<br/>EndpointException"]
+    B --> C["FA³ST Service.start() 중단"]
+    C --> D["runService()<br/>ERROR 로그"]
+    D --> E["System.exit(-1)<br/>(종료 코드 255)"]
+    E --> F["종료 hook이<br/>시작된 companion 정리"]
+```
+
+`required`는 프로세스가 생성되는지만 확인한다. 포트가 열렸는지, 모델을 다 읽었는지 같은 업무 준비 상태는 확인하지 않으며,
+여러 companion을 적은 순서대로 시작해도 앞 프로그램의 준비가 끝난 뒤 다음 프로그램이 시작된다는 보장은 없다.
+
+### 7.5 재시작 정책
+
+프로그램이 스스로 끝났을 때 서비스가 어떻게 되는지는 `restartPolicy`가 정한다.
+`stop()`이나 JVM 종료로 멈춘 경우에는 정책과 관계없이 재시작하지 않는다.
+
+| 정책 | 정상 종료(종료 코드 0) | 실패 종료 |
+| --- | --- | --- |
+| `ALWAYS` (기본) | 재시작 | 재시작 |
+| `ON_COMPLETED` | 재시작 | FAILED |
+| `ON_FAILED` | TERMINATED (재시작 안 함) | 재시작 |
+| `NO` | TERMINATED | FAILED |
+
+첫 실행이 RUNNING에 이르지 못하고 끝나면 정책과 관계없이 시작 실패로 보고 FAILED가 된다.
+
+**재시작 지연(backoff).** `stableRunTime`(기본 10초)보다 짧게 끝나는 실행이 연달아 일어나면, 두 번째 재시작부터
+지연을 두 배씩 늘려 `maxRestartDelay`(기본 1분)까지 키운다. 늘어나는 지연의 시작값은 `restartDelay`와 1초 중 큰 값이다.
+한 번이라도 `stableRunTime` 이상 실행되면 원래 지연으로 돌아간다. 시작하자마자 죽는 프로그램이 쉬지 않고 재시작되며
+CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
+
+**재시작 한도.** `restartLimit` 기본값은 0(제한 없음)이다. 이 경우 `ALWAYS` 정책에서 계속 죽는 프로그램은 FAILED가 되지 않고
+재시작 간격만 늘어나므로, 실패 로그도 남지 않는다. 계속 죽는 상황을 실패로 드러내려면 예를 들어
+`"restartLimit": 5, "restartLimitInterval": "10m"`처럼 한도를 둔다. 한도를 넘으면
+`restart limit exceeded: ...` 원인으로 FAILED가 되고 ERROR 로그가 남는다.
+
+### 7.6 종료와 프로세스 정리
+
+자식 프로세스를 정리하는 경로는 두 가지다. 두 경로 모두 같은 기준으로 정리 완료를 판단한다.
+
+| 경로 | 호출되는 때 | 하는 일 | 3초 안에 정리되지 않으면 |
+| --- | --- | --- | --- |
+| `ProgramCompanion.stop()` | FA³ST 서비스를 `stop()`으로 멈출 때 | 중지 요청 후 정리 완료 대기, 정리되면 hook 해제 | WARN 로그를 남기고 hook을 유지 |
+| JVM 종료 hook | 정상 종료, `System.exit`, SIGTERM·SIGINT | 중지 요청 후 정리 완료 대기 | WARN 로그를 남기고 JVM 종료를 계속 진행 |
+
+현재 mdt-instance에는 FA³ST 서비스의 `stop()`을 부르는 종료 경로가 없다. Manager가 인스턴스를 멈추거나
+`kill`로 종료하면 **JVM 종료 hook이 정리를 맡는다.**
+
+"정리 완료"는 서비스가 끝난 상태(TERMINATED 또는 FAILED)가 된 것만으로 판단하지 않는다.
+시작 제한 시간을 넘긴 경우처럼 서비스가 먼저 FAILED가 되고 실행 취소와 프로세스 종료가 그 뒤에 진행되는 경우가 있기 때문이다.
+그래서 utils의 `ProgramService.awaitCleanup()`으로 **마지막 실행의 프로세스 정리까지 끝났는지**를 확인한다.
+프로세스 종료는 SIGTERM을 보내고 1초 안에 끝나지 않으면 SIGKILL로 마무리한다.
+
+다음 경우에는 자식 프로세스가 남을 수 있다.
+
+- `kill -9`나 JVM 충돌처럼 JVM이 종료 hook을 실행하지 못한 경우
+- 자식 프로세스가 스스로 데몬이 되어 부모와의 관계를 끊은 경우. 하위 프로세스는 부모-자식 관계를 따라가며 찾기 때문에
+  그 사이에 떨어져 나간 프로세스는 놓칠 수 있고, 프로세스 그룹 단위로 함께 종료하는 장치는 없다.
+
+### 7.7 로그와 문제 확인
+
+| 위치 | 내용 |
+| --- | --- |
+| `<workingDirectory>/application.log` | 프로그램의 표준 출력과 표준 오류. 재시작해도 뒤에 이어 쓰며 크기 제한이나 순환은 없다 |
+| 인스턴스 로그, logger `mdt.endpoint.companion.ProgramCompanion.<hook 이름>` | `ProgramService`의 시작·재시작·중지 기록 |
+| 인스턴스 로그, logger `mdt.endpoint.companion.ProgramCompanion` | 실패 ERROR, 환경 변수 덮어쓰기 WARN, 정리 지연 WARN |
+
+자주 보게 되는 로그는 다음과 같다.
+
+| 로그 | 의미 |
+| --- | --- |
+| `Register Companion endpoint: <name>: command=[...], workingDirectory=...` | 로더가 companion을 등록함. 변수 치환 결과를 여기서 확인한다 |
+| `command output will be redirected to <file>` | 프로그램 출력이 기록될 파일 |
+| `the command is started` | 첫 프로세스가 생성되어 서비스가 RUNNING이 됨 |
+| `restarting the command after PT10S` | 재시작 지연 후 다시 실행함(시간은 ISO-8601 형식) |
+| `the command exited after ... backing off: restart in ...` | 짧은 실행이 이어져 재시작 지연을 늘림 |
+| `companion program failed: name=..., state=..., cause=..., program=[...]` | 서비스가 FAILED가 됨. `state`가 `STARTING`이면 시작 실패, `RUNNING`이면 실행 중 실패 |
+| `companion environment '<name>' overrides the MDT instance variable` | `environments`가 인스턴스 변수를 덮어씀 |
+| `Shutting down Service due to JVM shutdown: ...` | JVM 종료 hook이 정리를 시작함 |
+| `Failed to cleanly shutdown ... within PT3S` | JVM 종료 hook이 3초 안에 정리를 확인하지 못함 |
+| `companion program was not cleaned up within PT3S, keeping the shutdown hook: name=...` | `stop()`이 3초 안에 정리를 확인하지 못함 |
+
+증상별로는 다음을 먼저 본다.
+
+| 증상 | 확인할 것 |
+| --- | --- |
+| 프로그램이 아예 뜨지 않음 | `companion program failed ... state=STARTING` 로그, `commandLine`의 실행 파일 경로, `workingDirectory` 존재 여부 |
+| 인자에 `${...}`가 그대로 들어감 | `Register Companion endpoint` 줄. 치환하지 못한 참조는 글자 그대로 남는다(7.3) |
+| 프로그램이 계속 재시작됨 | `application.log`의 마지막 출력, `backing off` 로그. 실패로 드러내려면 `restartLimit` 설정 |
+| 두 프로그램의 출력이 섞임 | 두 companion의 `workingDirectory`가 같은지 |
+| 인스턴스 종료 후 프로세스가 남음 | 인스턴스를 `kill -9`로 끝냈는지, 프로그램이 데몬으로 떨어져 나가는지(7.6) |
+
+### 7.8 제약
+
+- 프로그램의 업무 준비 상태를 확인하는 readiness 검사는 없다. `required`도 프로세스 생성까지만 확인한다.
+- Companion의 실패는 로그로만 드러난다. Manager에 보이는 인스턴스 상태는 바뀌지 않고, 실행 중 실패로 인스턴스를 멈추지도 않는다.
+- 실행 값은 `init()` 시점에 확정된다. `asConfig()`는 설정 객체를 그대로 돌려주므로, 초기화 뒤 설정 객체를 바꾸면
+  `asConfig()`로 보이는 값과 실제 실행 값이 달라질 수 있다.
+- 실행 시간 전체에 대한 제한은 없다(실행 timeout 없음).
+- `application.log`는 크기 제한과 순환이 없으므로 장기 운영 시 외부에서 정리해야 한다.
 
 근거: [ProgramCompanion](../src/main/java/mdt/endpoint/companion/ProgramCompanion.java),
 [ProgramCompanionConfig](../src/main/java/mdt/endpoint/companion/ProgramCompanionConfig.java),
+[CompanionConfig](../src/main/java/mdt/endpoint/companion/CompanionConfig.java),
+[ServiceEndpointConfigs](../src/main/java/mdt/config/ServiceEndpointConfigs.java),
+[MDTInstanceMain](../src/main/java/mdt/MDTInstanceMain.java),
 [ProgramServiceConfig](../../../common/utils/src/main/java/utils/async/command/ProgramServiceConfig.java),
 [ProgramService](../../../common/utils/src/main/java/utils/async/command/ProgramService.java),
-[CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java).
+[CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java),
+[ServiceShutdownHook](../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
+utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide.md).
 
 ## 8. 주기적 JDBC Audit
 
@@ -643,9 +897,10 @@ ROS2 메시지 타입 확장은 `Ros2MessageHandler<T>`의 `getTopic`, `initiali
 | MQTT | 값 형식·대상 타입 불일치, 첫 타입 조회 실패, 중복 메시지, 브로커 재연결 후 재구독 |
 | ROS2 | 매핑·배열 길이, 미등록 topic·상태 프레임, 오래된 메시지, 동시 값 갱신, 연결 종료·재연결 |
 | RobotTwin | polling 활성화와 실제 호출 경로를 먼저 구현한 뒤 카탈로그 변경·빈 목록·오류·quality 처리 |
-| Companion | 실행 경로와 환경 변수, 성공·실패 종료별 재시작, 인스턴스 중지 시 자식 프로세스 정리 |
+| Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
 | Audit | 등록 코드, JDBC 타입 대응, 첫 기록·변경 없음·변경 있음, DB 오류와 재시작 시 중복 기록 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
-실제 Manager·MQTT broker·rosbridge·RobotTwin·DB에 대한 연결 시험이나 Companion 프로그램 실행 결과를
-검증 완료로 제시하는 문서는 아니다.
+실제 Manager·MQTT broker·rosbridge·RobotTwin·DB에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
+시작·로그 분리·종료 후 프로세스 정리를 확인했다.
