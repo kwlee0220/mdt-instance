@@ -119,7 +119,14 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 		}
 
 		public void setSubscribers(List<MqttElementSubscriber> subscribers) {
-			m_subscribers = (subscribers != null) ? subscribers : List.of();
+			if ( subscribers == null ) {
+				m_subscribers = List.of();
+				return;
+			}
+			for ( int i = 0; i < subscribers.size(); ++i ) {
+				Preconditions.checkArgument(subscribers.get(i) != null, "subscribers[%s] is null", i);
+			}
+			m_subscribers = subscribers;
 		}
 
 		/**

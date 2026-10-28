@@ -116,7 +116,7 @@ public class MqttSubscriberDeliveryTest {
 		assertFalse(callback.isAlive());
 		awaitApplied(2);
 		assertEquals(List.of("1", "2"), m_applied);
-		assertEquals(1, warnings().stream().filter(msg -> msg.contains("backlog is full")).count());
+		assertEquals(1, warnings().stream().filter(msg -> msg.contains("in-flight limit (1) reached, waiting")).count());
 	}
 
 	@Test(timeout = 10_000)
@@ -136,8 +136,81 @@ public class MqttSubscriberDeliveryTest {
 		assertEquals("only the update in progress completes", List.of("1"), m_applied);
 	}
 
+	@Test(timeout = 10_000)
+	public void testCloseWakesWaitingCallback() throws Exception {
+		// MQTT-01: 상한 때문에 기다리던 콜백 쓰레드는 close()로 깨어나 메시지를 버려야 한다.
+		MqttSubscriber subscriber = subscriber(DeliveryMode.ALL, 1);
+		subscriber.onMessage(TOPIC, message("1"));
+		assertTrue(m_firstStarted.await(5, TimeUnit.SECONDS));
+		
+		Thread callback = new Thread(() -> subscriber.onMessage(TOPIC, message("2")));
+		callback.start();
+		callback.join(300);
+		assertTrue("the callback must be waiting for a slot", callback.isAlive());
+		
+		subscriber.close();
+		callback.join(2_000);
+		assertFalse("close() must wake the waiting callback", callback.isAlive());
+		
+		m_release.countDown();
+		m_workers.shutdown();
+		assertTrue(m_workers.awaitTermination(5, TimeUnit.SECONDS));
+		assertEquals("the message woken by close() must not be applied", List.of("1"), m_applied);
+	}
+
+	@Test(timeout = 10_000)
+	public void testDropPolicyDropsWithoutWaiting() throws Exception {
+		MqttSubscriber subscriber = subscriber(new MqttElementSubscriber(TOPIC, "State:Temperature", DeliveryMode.ALL,
+																		null, null, 1, OverflowPolicy.DROP), 1);
+		subscriber.onMessage(TOPIC, message("1"));
+		assertTrue(m_firstStarted.await(5, TimeUnit.SECONDS));
+		
+		// 자리가 없으면 기다리지 않고 버린다.
+		subscriber.onMessage(TOPIC, message("2"));
+		subscriber.onMessage(TOPIC, message("3"));
+		assertEquals(2, subscriber.getDroppedCount());
+		assertEquals(1, warnings().stream().filter(msg -> msg.contains("in-flight limit (1) reached, dropped")).count());
+		
+		m_release.countDown();
+		awaitApplied(1);
+		subscriber.onMessage(TOPIC, message("4"));		// 자리가 나면 다시 받는다.
+		awaitApplied(2);
+		assertEquals(List.of("1", "4"), m_applied);
+	}
+
+	@Test(timeout = 10_000)
+	public void testRejectedExecutionReleasesSlot() {
+		// 작업 쓰레드가 이미 정리되어 제출이 거절되어도 자리와 대기 값이 남지 않아야 한다.
+		java.util.concurrent.Executor rejecting = task -> {
+			throw new java.util.concurrent.RejectedExecutionException("shut down");
+		};
+		MqttElementSubscriber allMapping = new MqttElementSubscriber(TOPIC, "State:Temperature", DeliveryMode.ALL);
+		MqttSubscriber all = new MqttSubscriber(allMapping, recordingUpdater(allMapping), rejecting, 1);
+		all.onMessage(TOPIC, message("1"));
+		all.onMessage(TOPIC, message("2"));		// 자리가 반환되지 않았다면 여기서 영원히 기다린다.
+		
+		MqttElementSubscriber latestMapping = new MqttElementSubscriber(TOPIC, "State:Temperature", DeliveryMode.LATEST);
+		MqttSubscriber latest = new MqttSubscriber(latestMapping, recordingUpdater(latestMapping), rejecting, 1);
+		latest.onMessage(TOPIC, message("1"));
+		latest.onMessage(TOPIC, message("2"));
+		assertEquals("a rejected value must not stay pending and be counted as replaced", 0, latest.getDroppedCount());
+		assertTrue(m_applied.isEmpty());
+	}
+	
+	private ElementValueUpdater recordingUpdater(MqttElementSubscriber mapping) {
+		ElementLocation loc = mapping.getElementLocation();
+		return new ElementValueUpdater() {
+			@Override public ElementLocation getLocation() { return loc; }
+			@Override public Class<?> getValueType() { return PropertyValue.class; }
+			@Override public void update(String valueJson) { m_applied.add(valueJson); }
+		};
+	}
+	
 	private MqttSubscriber subscriber(DeliveryMode delivery, int capacity) {
-		MqttElementSubscriber mapping = new MqttElementSubscriber(TOPIC, "State:Temperature", delivery);
+		return subscriber(new MqttElementSubscriber(TOPIC, "State:Temperature", delivery), capacity);
+	}
+	
+	private MqttSubscriber subscriber(MqttElementSubscriber mapping, int capacity) {
 		ElementLocation loc = mapping.getElementLocation();
 		ElementValueUpdater updater = new ElementValueUpdater() {
 			@Override public ElementLocation getLocation() { return loc; }

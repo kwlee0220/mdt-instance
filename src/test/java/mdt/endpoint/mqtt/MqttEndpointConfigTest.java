@@ -143,6 +143,42 @@ public class MqttEndpointConfigTest {
 		}
 	}
 
+	@Test
+	public void testInvalidTopicIsRejectedWhenReading() {
+		// MQTT-02: 잘못된 topic 필터는 broker 연결 전, 설정을 읽는 단계에서 위치와 함께 거부된다.
+		for ( String topic: new String[] { "", "a/#/b", "a+" } ) {
+			Exception e = assertThrows(topic, Exception.class, () -> read("{ \"subscribers\": [ "
+						+ "{ \"topic\": \"ok\", \"element\": \"State:A\" }, "
+						+ "{ \"topic\": \"" + topic + "\", \"element\": \"State:B\" } ] }"));
+			assertTrue(e.getMessage(), e.getMessage().contains("invalid MQTT topic filter"));
+			assertTrue("the message must point to the entry: " + e.getMessage(), e.getMessage().contains("[1]"));
+		}
+	}
+
+	@Test
+	public void testNullSubscriberIsRejected() {
+		Exception e = assertThrows(Exception.class, () -> read("{ \"subscribers\": [ null ] }"));
+		assertTrue(e.getMessage(), e.getMessage().contains("subscribers[0] is null"));
+	}
+
+	@Test
+	public void testInFlightOptions() throws Exception {
+		MqttEndpointConfig.MDTConfig conf = read("{ \"subscribers\": [ "
+					+ "{ \"topic\": \"a\", \"element\": \"State:A\" }, "
+					+ "{ \"topic\": \"b\", \"element\": \"State:B\", \"maxInFlightMessages\": 50, \"overflowPolicy\": \"DROP\" } ] }");
+		List<MqttElementSubscriber> subs = conf.getSubscribers();
+		assertEquals(1000, subs.get(0).getMaxInFlightMessages());
+		assertEquals(OverflowPolicy.WAIT, subs.get(0).getOverflowPolicy());
+		assertEquals(50, subs.get(1).getMaxInFlightMessages());
+		assertEquals(OverflowPolicy.DROP, subs.get(1).getOverflowPolicy());
+		assertEquals("b -> State:B, maxInFlightMessages=50, overflowPolicy=drop", subs.get(1).toString());
+		
+		for ( String option: new String[] { "\"maxInFlightMessages\": 0", "\"overflowPolicy\": \"block\"" } ) {
+			assertThrows(option, Exception.class, () -> read("{ \"subscribers\": [ "
+						+ "{ \"topic\": \"a\", \"element\": \"State:A\", " + option + " } ] }"));
+		}
+	}
+
 	private static MqttEndpointConfig.MDTConfig read(String mqttJson) throws Exception {
 		ServiceEndpointConfigs configs = MDTModelSerDe.MAPPER.readerFor(ServiceEndpointConfigs.class)
 															.readValue("{ \"mqtt\": " + mqttJson + " }");
