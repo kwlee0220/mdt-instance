@@ -19,11 +19,11 @@
 | 1 | 문제 | 중 | 사용자가 적은 `environments`가 조용히 사라짐 | B | ✅ 완료 | 211f843 |
 | 2 | 문제 | 중 | 동반 프로그램이 실패해도 인스턴스는 정상으로 보임 | C | ✅ 완료 | 808f6dd |
 | 3 | 문제 | 하 | `stop()`이 종료를 기다리지 않고 종료 hook부터 해제 | D | ✅ 완료 | 211f843 |
-| 4 | 문제 | 하 | 동반 프로그램을 하나만 둘 수 있음 | A | ⬜ 미반영 | |
+| 4 | 문제 | 하 | 동반 프로그램을 하나만 둘 수 있음 | A | ✅ 완료 | (commit 전) |
 | 5 | 문제 | 하 | `programConfig`가 null일 때 원인을 알기 어려운 NPE | | ✅ 완료 | d68d22a |
 | 6 | 문제 | 하 | hook 이름 형식과 문서의 정리 범위 설명이 실제와 다름 | | ✅ 완료 | d68d22a |
 | 7 | 문제 | 중 | 인스턴스 시작 실패 시 `main()`이 JVM을 종료하지 않음 | | ➖ 해당 없음 | |
-| A | 제안 | | 여러 동반 프로그램 지원 (`companions` 맵) | 4 | ⬜ 미반영 | |
+| A | 제안 | | 여러 동반 프로그램 지원 (`companions` 맵) | 4 | ✅ 완료 | (commit 전) |
 | B | 제안 | | 인스턴스 변수와 사용자 `environments` 병합 | 1 | ✅ 완료 | 211f843 |
 | C | 제안 | | 필수 동반 프로그램 지정(`required`)과 실패 로그 | 2 | ✅ 완료 | 808f6dd |
 | D | 제안 | | `stop()`에서 종료 대기 | 3 | ✅ 완료 | 211f843 |
@@ -116,9 +116,9 @@
 ```
 
 - 기존 단일 `companion`도 계속 받는다.
-- **정할 사항**:
-  - `companion`과 `companions`를 함께 쓸 수 있게 할지
-  - 함께 쓸 수 있다면 단일 `companion`의 이름을 무엇으로 할지
+- **정한 사항**(2026-10-28):
+  - `companion`과 `companions`를 함께 쓸 수 있다.
+  - 단일 `companion`은 이름이 없다(hook 이름 `<instanceId>-companion`). `companions` 항목은 `<instanceId>-companion-<name>`이므로 겹치지 않는다.
 
 ### B. 인스턴스 변수와 사용자 `environments` 병합 (#1)
 
@@ -132,7 +132,7 @@
   - `true`: `start()`에서 프로그램이 RUNNING이 될 때까지(`startTimeout`) 기다리고, 실패하면 인스턴스 시작도 실패시킨다.
   - `false`(기본값 후보): 지금처럼 비동기로 시작한다.
 - `required` 값과 관계없이, 서비스가 `FAILED`가 되면 companion에서 동반 프로그램 이름과 인스턴스 ID를 담은 ERROR 로그를 남긴다.
-- **정할 사항**: `required`의 기본값. 기존 동작을 유지하려면 `false`.
+- **정한 사항**(2026-10-28): `required` 기본값은 `false`. `required`여도 시작 이후의 실패는 ERROR 로그만 남긴다.
 
 ### D. `stop()`에서 종료 대기 (#3)
 
@@ -152,3 +152,4 @@
 | 2026-10-28 | 2, C (1단계) | 808f6dd | 서비스 FAILED 시 `ProgramCompanion` logger로 ERROR 로그(이름·직전 상태·원인·명령). `ProgramService` logger를 `mdt.endpoint.companion.ProgramCompanion.<hook 이름>`으로 지정. 테스트 `ProgramCompanionFailureTest` 3개, endpoint-guide §7 갱신. 2단계(`required`, 시작 실패 시 `main()` 종료 처리)는 정할 사항이 남아 미반영 |
 | 2026-10-28 | 2, C (2단계) | 808f6dd | `CompanionConfig extends ProgramServiceConfig`에 `required`(기본 `false`) 추가, `ServiceEndpointConfigs.companion` 타입 변경. `required`이면 `start()`가 `startTimeout`+1초까지 RUNNING을 기다리고 실패 시 `EndpointException`. 시작 이후 실패는 1단계의 ERROR 로그만. 테스트 `ProgramCompanionRequiredTest` 4개, endpoint-guide §7 갱신. `main()` 종료 처리는 #7로 분리 |
 | 2026-10-28 | 7 | — | 재검토 결과 문제 아님. `HomeDirPicocliCommand.run()`이 `run(homeDir)`의 예외에 `System.exit(-1)`을 하므로 시작 실패 시 JVM이 종료된다(빈 홈 디렉터리로 실행해 종료 코드 255 확인). 코드 변경 없음 |
+| 2026-10-28 | 4, A | (commit 전) | `serviceEndpoints.companions`(이름→`CompanionConfig`, 작성 순서 유지) 추가. 단일 `companion`과 함께 사용 가능하며 단일 항목은 이름 없음. 프로그램마다 `ProgramCompanionConfig`(새 `name` 필드, 영문자·숫자·`_`·`-`)를 만들어 독립 실행. hook·logger 이름은 `<instanceId>-companion-<name>`. 로더 조립을 `ProgramCompanionConfig.from()`으로 이동. 테스트 `ProgramCompanionMultipleTest` 4개, endpoint-guide §7 갱신 |

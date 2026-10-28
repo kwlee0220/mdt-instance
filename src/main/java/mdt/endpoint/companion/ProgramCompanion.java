@@ -96,8 +96,9 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	 * 설정의 {@link ProgramCompanionConfig#getProgramConfig() programConfig}로
 	 * {@link ProgramService}를 생성하고, JVM 종료 시 외부 프로그램이 정리되도록
 	 * {@link ServiceShutdownHook}에 등록한다.
-	 * Hook 이름은 {@link #toHookName(String)}이 정하며, {@code serviceContext}가 {@link MDTService}이면
-	 * instance id를 앞에 붙여(예: {@code robot-01-companion}) 로그 추적을 쉽게 한다.
+	 * Hook 이름은 {@link #toHookName(String, String)}이 정하며, {@code serviceContext}가 {@link MDTService}이면
+	 * instance id를 앞에, 동반 프로그램 이름이 있으면 뒤에 붙여(예: {@code robot-01-companion},
+	 * {@code robot-01-companion-inspect}) 로그 추적을 쉽게 한다.
 	 * <p>
 	 * 같은 이름으로 다음 두 가지도 설정하여, 어느 인스턴스의 동반 프로그램인지 로그에서 바로 알 수 있게 한다.
 	 * <ul>
@@ -136,7 +137,7 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 								.map(MDTInstanceConfig::getId)
 								.getOrNull();
 		}
-		String name = toHookName(instanceId);
+		String name = toHookName(instanceId, m_config.getName());
 		m_name = name;
 		
 		m_service.setLogger(LoggerFactory.getLogger(ProgramCompanion.class.getName() + "." + name));
@@ -154,14 +155,17 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	/**
 	 * JVM 종료 hook의 이름을 만든다.
 	 * <p>
-	 * instance id가 있으면 {@code <instanceId>-companion}, 없으면 {@code companion}이다.
+	 * instance id가 있으면 {@code <instanceId>-companion}, 없으면 {@code companion}이고,
+	 * 동반 프로그램 이름이 있으면 뒤에 {@code -<name>}을 붙인다(예: {@code robot-01-companion-inspect}).
 	 * 실제 hook 쓰레드 이름은 여기에 {@code -ShutdownHook}이 붙는다(예: {@code robot-01-companion-ShutdownHook}).
 	 *
 	 * @param instanceId	MDT 인스턴스 id. {@code null}이거나 빈 문자열이면 없는 것으로 본다.
+	 * @param companionName	동반 프로그램 이름({@code companions}의 키). 단일 {@code companion}이면 {@code null}.
 	 * @return	hook 이름.
 	 */
-	static String toHookName(@Nullable String instanceId) {
-		return (instanceId == null || instanceId.isEmpty()) ? "companion" : instanceId + "-companion";
+	static String toHookName(@Nullable String instanceId, @Nullable String companionName) {
+		String base = (instanceId == null || instanceId.isEmpty()) ? "companion" : instanceId + "-companion";
+		return (companionName != null) ? base + "-" + companionName : base;
 	}
 
 	/**

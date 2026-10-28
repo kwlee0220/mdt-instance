@@ -75,7 +75,6 @@ import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTService;
 import mdt.config.MDTServiceConfig;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
-import mdt.endpoint.companion.ProgramCompanion;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
@@ -548,17 +547,17 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				getLogger().info("Register RobotTwin endpoint: {}", epConfig);
 			});
 			
+			// 동반 프로그램 설정이 있으면 프로그램마다 companion endpoint를 추가한다.
+			// 단일 'companion'(이름 없음)과 이름을 붙인 'companions'를 함께 쓸 수 있다.
+			// 인스턴스 변수(MDT_INSTANCE_ID 등)에 각 프로그램의 environments를 병합한다(사용자 값 우선).
 			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
-				// 인스턴스 변수(MDT_INSTANCE_ID 등)에 사용자가 설정한 environments를 병합한다
-				// (사용자 값 우선).
-				companionConfig.setEnvironments(ProgramCompanion.mergeEnvironments(m_instanceEnvVars,
-																					companionConfig.getEnvironments()));
-				
-				ProgramCompanionConfig c = new ProgramCompanionConfig();
-				c.setProgramConfig(companionConfig);
-				c.setRequired(companionConfig.isRequired());
+				ProgramCompanionConfig c = ProgramCompanionConfig.from(null, companionConfig, m_instanceEnvVars);
 				configs.add(c);
-				
+				getLogger().info("Register Companion endpoint: {}", c);
+			});
+			instConf.getServiceEndpoints().getCompanions().forEach((name, companionConfig) -> {
+				ProgramCompanionConfig c = ProgramCompanionConfig.from(name, companionConfig, m_instanceEnvVars);
+				configs.add(c);
 				getLogger().info("Register Companion endpoint: {}", c);
 			});
 		}

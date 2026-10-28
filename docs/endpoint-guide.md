@@ -495,6 +495,32 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 `serviceEndpoints.companion`의 값은 `ProgramServiceConfig`에 `required` 하나를 더한 `CompanionConfig`이며 `programConfig` 래퍼를 넣지 않는다.
 래퍼 `ProgramCompanionConfig`는 로더가 내부에서 생성한다.
 
+동반 프로그램이 여럿이면 `companions`에 이름을 키로 하여 적는다. 프로그램마다 companion 엔드포인트가 하나씩 만들어지고,
+각자 따로 시작·재시작·중지된다. 단일 `companion`(이름 없음)과 함께 쓸 수 있으며, 시작 순서는 `companion` 다음
+`companions`의 작성 순서이다.
+
+```json
+{
+  "serviceEndpoints": {
+    "companions": {
+      "inspect": {
+        "commandLine": ["uv", "run", "python", "inspect_waveform.py", "--instance", "${env:MDT_INSTANCE_ID}"],
+        "workingDirectory": "${env:MDT_INSTANCE_HOME}/welder",
+        "restartDelay": "10s"
+      },
+      "predict": {
+        "commandLine": ["java", "-cp", "${env:MDT_HOME}/share/mdt-apps-all.jar", "welder.PredictTotalQuantity"],
+        "workingDirectory": "companion"
+      }
+    }
+  }
+}
+```
+
+이름은 영문자·숫자로 시작하고 영문자·숫자·`_`·`-`만 쓸 수 있다. 규칙에 맞지 않으면 설정을 읽는 단계에서 실패한다.
+이름은 hook 이름(`<instanceId>-companion-<name>`)과 logger 이름(`mdt.endpoint.companion.ProgramCompanion.<instanceId>-companion-<name>`),
+실패 로그의 `name=`에 쓰인다. 여러 프로그램이 같은 작업 디렉터리를 쓰면 `application.log`를 함께 이어 쓰므로 디렉터리를 나누는 것이 좋다.
+
 | 필드 | 기본값 / 동작 |
 | --- | --- |
 | `commandLine` | 실행 파일과 인자 목록. 필수 |

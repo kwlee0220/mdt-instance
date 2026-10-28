@@ -40,9 +40,11 @@ public class ProgramCompanionInitTest {
 
 	@Test
 	public void testHookName() {
-		assertEquals("robot-01-companion", ProgramCompanion.toHookName("robot-01"));
-		assertEquals("companion", ProgramCompanion.toHookName(""));
-		assertEquals("companion", ProgramCompanion.toHookName(null));
+		assertEquals("robot-01-companion", ProgramCompanion.toHookName("robot-01", null));
+		assertEquals("companion", ProgramCompanion.toHookName("", null));
+		assertEquals("companion", ProgramCompanion.toHookName(null, null));
+		assertEquals("robot-01-companion-inspect", ProgramCompanion.toHookName("robot-01", "inspect"));
+		assertEquals("companion-inspect", ProgramCompanion.toHookName(null, "inspect"));
 	}
 
 	@Test
