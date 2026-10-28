@@ -500,7 +500,7 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 | `commandLine` | 실행 파일과 인자 목록. 필수 |
 | `workingDirectory` | 현재 작업 디렉터리 |
 | `environmentFile` | 선택적 환경 변수 파일 |
-| `environments` | 기본 빈 Map. 표준 로더에서 인스턴스 환경 변수 Map으로 교체 |
+| `environments` | 기본 빈 Map. 자식 프로세스에 추가로 전달할 환경 변수. 표준 로더가 인스턴스 환경 변수와 병합한다 |
 | `restartPolicy` | 기본 `ALWAYS`. `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO` (`on-completed`처럼 소문자·하이픈 표기도 허용) |
 | `restartDelay` | 기본 5초. 재시작 실행에 적용 |
 | `maxRestartDelay` | 기본 1분. 짧은 실행이 연달아 일어날 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 backoff 없음 |
@@ -511,7 +511,9 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 
 로더가 주입하는 환경 변수는 `MDT_INSTANCE_ID`, `MDT_INSTANCE_ENDPOINT`, `MDT_URL`,
 `MDT_INSTANCE_PORT`, `MDT_INSTANCE_DIR`이다. `MDT_INSTANCE_PORT`는 설정의 `port`가 없으면 빈 문자열이다.
-사용자가 작성한 `environments`와 병합하지 않고 교체한다는 점에 유의해야 한다.
+로더는 이 변수들에 사용자가 작성한 `environments`를 병합한다. 같은 이름이 있으면 사용자 값이 우선하며,
+인스턴스 변수를 덮어쓰면 변수 이름(값은 출력하지 않음)을 담은 경고 로그를 남긴다.
+설정 파일의 문자열에서는 `${MDT_INSTANCE_ID}`처럼 인스턴스 변수를 참조할 수 있으므로, 대개 `MDT_*`를 다시 적을 필요는 없다.
 `CommandExecution`은 전달받은 Map에 없는 키를 환경 파일에서 보충하고, 이를 부모 프로세스 환경에 추가한다.
 
 `ProgramService`는 실행 종료 결과에 따라 재시작 정책을 적용한다.
@@ -524,7 +526,8 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 재시작해도 이전 실행의 로그가 남지만, 파일 크기를 제한하지 않으므로 필요하면 외부에서 정리해야 한다.
 
 엔드포인트는 `init()`에서 shutdown hook을 등록하고, `start()`에서 프로그램 서비스를 비동기로 시작한다.
-`stop()`은 서비스 중지를 요청하고 hook을 해제하며, 종료 완료까지 기다리지는 않는다.
+`stop()`은 서비스 중지를 요청한 뒤 프로그램이 종료될 때까지 hook과 같은 시간(3초)만큼 기다린다.
+그 안에 종료되면 hook을 해제하고, 종료되지 않으면 경고 로그를 남기고 hook을 남겨 JVM 종료 시 한 번 더 정리하게 한다.
 프로세스 시작과 외부 프로그램의 업무 준비 완료를 판별하는 별도의 readiness probe는 없다.
 
 근거: [ProgramCompanion](../src/main/java/mdt/endpoint/companion/ProgramCompanion.java),

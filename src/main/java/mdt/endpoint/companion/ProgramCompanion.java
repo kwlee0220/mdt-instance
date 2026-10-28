@@ -1,12 +1,24 @@
 package mdt.endpoint.companion;
 
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.util.concurrent.Service;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
 import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
 
+import utils.Preconditions;
 import utils.async.command.ProgramService;
 import utils.async.command.ServiceShutdownHook;
 import utils.func.FOption;
@@ -16,7 +28,8 @@ import mdt.config.MDTService;
 
 
 /**
- * MDT instance에 부속되어 외부 프로그램(자식 프로세스)을 함께 기동·종료시키는 FA³ST {@link Endpoint} companion.
+ * MDT instance에 부속되어 외부 프로그램(자식 프로세스)을 함께 기동·종료시키는
+ * FA³ST {@link Endpoint} companion.
  * <p>
  * 이름은 {@code Endpoint}이지만 실제 통신 endpoint를 제공하지 않고,
  * {@link ProgramCompanionConfig#getProgramConfig()}에 기술된 외부 프로그램을
@@ -32,9 +45,41 @@ import mdt.config.MDTService;
  * @author Kang-Woo Lee (ETRI)
  */
 public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
+	private static final Logger s_logger = LoggerFactory.getLogger(ProgramCompanion.class);
+
 	private ProgramCompanionConfig m_config;
 	private ProgramService m_service;
 	private ServiceShutdownHook.Registration m_hookReg;
+	// stop()과 JVM 종료 hook이 프로그램 종료를 기다리는 시간. 두 경로가 같은 시간을 쓰도록 한 곳에서 정한다.
+	private Duration m_terminationTimeout = ServiceShutdownHook.DEFAULT_TERMINATION_TIMEOUT;
+
+	/**
+	 * 동반 프로그램에 전달할 환경 변수를 만든다.
+	 * <p>
+	 * MDT 인스턴스 변수({@code MDT_INSTANCE_ID}, {@code MDT_URL} 등)를 기본으로 하고, 사용자가 설정의
+	 * {@code environments}에 적은 변수를 그 위에 더한다. 같은 이름이 있으면 사용자 값이 우선하며,
+	 * 이때 인스턴스 변수를 덮어썼다는 경고 로그를 남긴다. 값에는 비밀 정보가 있을 수 있으므로 로그에는
+	 * 변수 이름만 출력한다. 두 인자는 변경하지 않는다.
+	 *
+	 * @param instanceVars	MDT 인스턴스 변수.
+	 * @param userVars		사용자가 설정한 환경 변수. {@code null}이면 없는 것으로 본다.
+	 * @return	병합한 새 환경 변수 맵.
+	 */
+	public static Map<String,String> mergeEnvironments(Map<String,String> instanceVars,
+														@Nullable Map<String,String> userVars) {
+		Preconditions.checkNotNullArgument(instanceVars, "instanceVars is null");
+
+		Map<String,String> merged = new LinkedHashMap<>(instanceVars);
+		if ( userVars != null ) {
+			userVars.forEach((name, value) -> {
+				String previous = merged.put(name, value);
+				if ( previous != null && !previous.equals(value) ) {
+					s_logger.warn("companion environment '{}' overrides the MDT instance variable", name);
+				}
+			});
+		}
+		return merged;
+	}
 
 	/**
 	 * Companion을 초기화한다.
@@ -72,7 +117,7 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 				companionName = instanceId + companionName;
 			}
 		}
-		m_hookReg = ServiceShutdownHook.register(companionName, m_service);
+		m_hookReg = ServiceShutdownHook.register(companionName, m_service, m_terminationTimeout);
 	}
 
 	/**
@@ -109,23 +154,51 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	}
 
 	/**
-	 * 외부 프로그램을 비동기로 중지시킨다.
+	 * 외부 프로그램을 중지시키고, 종료될 때까지 최대 {@link ServiceShutdownHook#DEFAULT_TERMINATION_TIMEOUT}
+	 * (3초) 기다린다.
 	 * <p>
-	 * 내부적으로 {@link ProgramService#stopAsync()}를 호출하므로 본 메서드는 즉시 반환한다.
-	 * 실제 자식 프로세스의 종료(SIGTERM 후 필요시 SIGKILL)는 {@code ProgramService}/
-	 * {@code CommandExecution}의 종료 절차를 따른다.
+	 * 자식 프로세스의 종료(SIGTERM 후 필요시 SIGKILL)는 {@code ProgramService}/{@code CommandExecution}의
+	 * 종료 절차를 따른다. 대기 시간은 {@link #init init}에서 등록한 JVM 종료 hook과 같다.
 	 * <p>
-	 * {@link #init init}에서 등록한 JVM shutdown hook도 함께 해제하여,
-	 * JVM 종료 시점에 이미 TERMINATED 상태인 service에 대해 중복으로 {@code stopAsync}가
-	 * 호출되는 잡음을 방지한다. JVM 종료와 본 메서드 호출이 거의 동시에 발생하는 경우에도
+	 * 프로그램이 종료되면(TERMINATED 또는 FAILED) JVM 종료 hook을 해제하여, JVM 종료 시점에 이미 끝난
+	 * service에 대해 중복으로 {@code stopAsync}가 호출되는 잡음을 방지한다. 대기 시간 안에 종료되지 않으면
+	 * 경고 로그를 남기고 hook을 그대로 두어, JVM 종료 시 hook이 한 번 더 정리를 기다리게 한다.
+	 * JVM 종료와 본 메서드 호출이 거의 동시에 발생하는 경우에도
 	 * {@link ServiceShutdownHook.Registration#unregister()}가 race를 안전하게 처리한다.
 	 */
 	@Override
 	public void stop() {
 		m_service.stopAsync();
+		try {
+			m_service.awaitTerminated(m_terminationTimeout.toNanos(), TimeUnit.NANOSECONDS);
+		}
+		catch ( TimeoutException e ) {
+			s_logger.warn("companion program did not terminate within {}, keeping the shutdown hook: {}",
+							m_terminationTimeout, m_service);
+			return;
+		}
+		catch ( IllegalStateException e ) {
+			// 서비스가 FAILED로 끝난 경우. 이미 종료된 상태이므로 hook을 해제해도 된다.
+		}
+		
 		if ( m_hookReg != null ) {
 			m_hookReg.unregister();
 			m_hookReg = null;
 		}
+	}
+	
+	// 아래는 테스트용 package-private 메서드이다.
+	
+	void setTerminationTimeout(Duration timeout) {
+		Preconditions.checkNotNullArgument(timeout, "timeout is null");
+		m_terminationTimeout = timeout;
+	}
+	
+	Service.State getProgramState() {
+		return m_service.state();
+	}
+	
+	boolean isShutdownHookRegistered() {
+		return m_hookReg != null;
 	}
 }

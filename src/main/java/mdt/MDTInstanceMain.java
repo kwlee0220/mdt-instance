@@ -75,6 +75,7 @@ import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTService;
 import mdt.config.MDTServiceConfig;
 import mdt.endpoint.MDTManagerHealthMonitorConfig;
+import mdt.endpoint.companion.ProgramCompanion;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
@@ -548,7 +549,10 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			});
 			
 			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
-				companionConfig.setEnvironments(m_instanceEnvVars);
+				// 인스턴스 변수(MDT_INSTANCE_ID 등)에 사용자가 설정한 environments를 병합한다
+				// (사용자 값 우선).
+				companionConfig.setEnvironments(ProgramCompanion.mergeEnvironments(m_instanceEnvVars,
+																					companionConfig.getEnvironments()));
 				
 				ProgramCompanionConfig c = new ProgramCompanionConfig();
 				c.setProgramConfig(companionConfig);
