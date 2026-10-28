@@ -11,11 +11,14 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.Service;
+import com.google.common.util.concurrent.Service.State;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.config.CoreConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.Endpoint;
+import de.fraunhofer.iosb.ilt.faaast.service.exception.EndpointException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.ServiceSpecificationProfile;
 
 import utils.Preconditions;
@@ -48,8 +51,12 @@ import mdt.config.MDTService;
  */
 public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	private static final Logger s_logger = LoggerFactory.getLogger(ProgramCompanion.class);
+	// 필수 동반 프로그램의 시작을 기다릴 때 startTimeout에 더하는 여유 시간.
+	// ProgramService가 startTimeout으로 먼저 실패를 판정하도록(원인이 TimeoutException으로 남도록) 조금 더 기다린다.
+	private static final Duration START_WAIT_MARGIN = Duration.ofSeconds(1);
 
 	private ProgramCompanionConfig m_config;
+	private String m_name;
 	private ProgramService m_service;
 	private ServiceShutdownHook.Registration m_hookReg;
 	// stop()과 JVM 종료 hook이 프로그램 종료를 기다리는 시간. 두 경로가 같은 시간을 쓰도록 한 곳에서 정한다.
@@ -92,6 +99,14 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	 * Hook 이름은 {@link #toHookName(String)}이 정하며, {@code serviceContext}가 {@link MDTService}이면
 	 * instance id를 앞에 붙여(예: {@code robot-01-companion}) 로그 추적을 쉽게 한다.
 	 * <p>
+	 * 같은 이름으로 다음 두 가지도 설정하여, 어느 인스턴스의 동반 프로그램인지 로그에서 바로 알 수 있게 한다.
+	 * <ul>
+	 *   <li>{@link ProgramService}의 logger를 {@code mdt.endpoint.companion.ProgramCompanion.<hook 이름>}으로
+	 *       바꾼다. 이 companion의 logger 아래에 놓이므로 companion의 로그 수준 설정을 함께 따른다.</li>
+	 *   <li>{@link ProgramService}가 FAILED가 되면(시작 실패, 재시작 한도 초과 등) companion logger로
+	 *       ERROR 로그를 남긴다. 인스턴스는 계속 실행된다.</li>
+	 * </ul>
+	 * <p>
 	 * 본 메서드는 인스턴스당 정확히 한 번만 호출되어야 한다.
 	 * Guava {@link com.google.common.util.concurrent.Service Service}는 한 번
 	 * 종료되면 재시작할 수 없는 비가역적 lifecycle을 가지므로 재초기화는 의미가 없으며,
@@ -121,7 +136,19 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 								.map(MDTInstanceConfig::getId)
 								.getOrNull();
 		}
-		m_hookReg = ServiceShutdownHook.register(toHookName(instanceId), m_service, m_terminationTimeout);
+		String name = toHookName(instanceId);
+		m_name = name;
+		
+		m_service.setLogger(LoggerFactory.getLogger(ProgramCompanion.class.getName() + "." + name));
+		m_service.addListener(new Service.Listener() {
+			@Override
+			public void failed(State from, Throwable failure) {
+				s_logger.error("companion program failed: name={}, state={}, cause={}, program={}",
+								name, from, ""+failure, m_config.getProgramConfig().getCommandLine());
+			}
+		}, MoreExecutors.directExecutor());
+		
+		m_hookReg = ServiceShutdownHook.register(name, m_service, m_terminationTimeout);
 	}
 	
 	/**
@@ -160,14 +187,50 @@ public class ProgramCompanion implements Endpoint<ProgramCompanionConfig> {
 	}
 
 	/**
-	 * 외부 프로그램을 비동기로 기동시킨다.
+	 * 외부 프로그램을 기동시킨다.
 	 * <p>
-	 * 내부적으로 {@link ProgramService#startAsync()}를 호출하므로 본 메서드는 즉시 반환하며,
+	 * 내부적으로 {@link ProgramService#startAsync()}를 호출한다.
+	 * {@link ProgramCompanionConfig#isRequired() required}가 {@code false}(기본값)이면 즉시 반환하며,
 	 * 자식 프로세스의 RUNNING 진입은 {@code ProgramService}에서 관리된다.
+	 * <p>
+	 * {@code required}가 {@code true}이면 프로그램이 RUNNING(자식 프로세스 생성)이 될 때까지
+	 * {@code startTimeout}(0이면 제한 없이)만큼 기다린다. 그 안에 시작되지 못하면(실행 파일이나 작업 디렉터리가
+	 * 없거나, {@code startTimeout}이 지난 경우 등) {@link EndpointException}을 던져 FA³ST 서비스의 시작을
+	 * 실패시킨다. RUNNING은 프로세스가 생성되었다는 뜻일 뿐 프로그램이 업무를 처리할 준비가 되었다는 뜻은
+	 * 아니며, 시작 이후의 실패에는 {@code required}가 영향을 주지 않는다(ERROR 로그만 남는다).
+	 *
+	 * @throws EndpointException	{@code required}인 동반 프로그램이 시작되지 못한 경우.
 	 */
 	@Override
-	public void start() {
+	public void start() throws EndpointException {
 		m_service.startAsync();
+		if ( m_config.isRequired() ) {
+			awaitRequiredStart();
+		}
+	}
+	
+	private void awaitRequiredStart() throws EndpointException {
+		Duration startTimeout = m_config.getProgramConfig().getStartTimeout();
+		try {
+			if ( startTimeout.isZero() ) {
+				m_service.awaitRunning();
+			}
+			else {
+				m_service.awaitRunning(startTimeout.plus(START_WAIT_MARGIN).toNanos(), TimeUnit.NANOSECONDS);
+			}
+		}
+		catch ( IllegalStateException e ) {
+			// RUNNING에 이르지 못하고 FAILED(또는 TERMINATED)가 된 경우.
+			Throwable cause = (m_service.state() == State.FAILED) ? m_service.failureCause() : e;
+			throw new EndpointException("required companion program failed to start: name=" + m_name
+										+ ", cause=" + cause, cause);
+		}
+		catch ( TimeoutException e ) {
+			// ProgramService가 startTimeout으로 실패시키기 전에 여유 시간까지 지난 경우. 시작을 포기시킨다.
+			m_service.stopAsync();
+			throw new EndpointException("required companion program did not start within " + startTimeout
+										+ ": name=" + m_name, e);
+		}
 	}
 
 	/**

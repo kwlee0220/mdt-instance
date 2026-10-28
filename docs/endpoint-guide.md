@@ -492,7 +492,7 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 ```
 
 예제 경로와 프로그램·환경 파일은 배포 환경에 맞게 준비해야 한다.
-`serviceEndpoints.companion`의 값은 `ProgramServiceConfig` 자체이며 `programConfig` 래퍼를 넣지 않는다.
+`serviceEndpoints.companion`의 값은 `ProgramServiceConfig`에 `required` 하나를 더한 `CompanionConfig`이며 `programConfig` 래퍼를 넣지 않는다.
 래퍼 `ProgramCompanionConfig`는 로더가 내부에서 생성한다.
 
 | 필드 | 기본값 / 동작 |
@@ -508,6 +508,7 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 | `restartLimit` | 기본 0(제한 없음). 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스 `FAILED` |
 | `restartLimitInterval` | 기본 1분 |
 | `startTimeout` | 기본 `30s`. 첫 실행이 이 시간 안에 시작(RUNNING)되지 못하면 서비스 `FAILED`. `0s`이면 제한 없음 |
+| `required` | 기본 `false`. `true`이면 `start()`가 프로그램이 시작(RUNNING)될 때까지 `startTimeout`만큼 기다리고, 시작되지 못하면 `EndpointException`으로 FA³ST 서비스 시작을 실패시킨다. 이때 인스턴스 프로세스는 ERROR 로그를 남기고 종료 코드 255로 끝난다. 시작 이후의 실패는 ERROR 로그만 남는다 |
 
 로더가 주입하는 환경 변수는 `MDT_INSTANCE_ID`, `MDT_INSTANCE_ENDPOINT`, `MDT_URL`,
 `MDT_INSTANCE_PORT`, `MDT_INSTANCE_DIR`이다. `MDT_INSTANCE_PORT`는 설정의 `port`가 없으면 빈 문자열이다.
@@ -529,6 +530,10 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 `stop()`은 서비스 중지를 요청한 뒤 프로그램이 종료될 때까지 hook과 같은 시간(3초)만큼 기다린다.
 그 안에 종료되면 hook을 해제하고, 종료되지 않으면 경고 로그를 남기고 hook을 남겨 JVM 종료 시 한 번 더 정리하게 한다.
 hook 쓰레드 이름은 `<instanceId>-companion-ShutdownHook`이다(instance id가 없으면 `companion-ShutdownHook`).
+`ProgramService`의 로그는 `mdt.endpoint.companion.ProgramCompanion.<instanceId>-companion` logger로 기록되므로 companion의 로그 수준 설정을 따른다.
+프로그램 서비스가 FAILED가 되면(시작 실패, 재시작 한도 초과, 재시작하지 않는 정책에서 실패 종료 등) `ProgramCompanion` logger로
+`companion program failed: name=..., state=..., cause=..., program=...` ERROR 로그를 남긴다. 인스턴스는 계속 실행되며 Manager에 보이는 상태도 바뀌지 않는다.
+`restartLimit` 기본값은 0(무제한)이므로 `ALWAYS` 정책에서 계속 죽는 프로그램은 FAILED가 되지 않고 재시작 간격만 늘어난다. 실패를 드러내려면 `restartLimit`을 설정한다.
 hook은 JVM이 종료 hook을 실행하는 경우(정상 종료, `System.exit`, SIGTERM·SIGINT 등)에만 자식 프로세스를 정리한다.
 `kill -9`나 JVM 충돌에서는 hook이 실행되지 않아 자식 프로세스가 남으며, 프로세스 그룹 단위로 함께 종료시키는 장치는 없다.
 프로세스 시작과 외부 프로그램의 업무 준비 완료를 판별하는 별도의 readiness probe는 없다.

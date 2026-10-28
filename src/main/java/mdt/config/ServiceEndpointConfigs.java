@@ -1,7 +1,6 @@
 package mdt.config;
 
-import utils.async.command.ProgramServiceConfig;
-
+import mdt.endpoint.companion.CompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.ros2.Ros2EndpointConfig;
 import mdt.endpoint.rt.RobotTwinEndpointConfig;
@@ -15,7 +14,7 @@ public class ServiceEndpointConfigs {
 	private MqttEndpointConfig.MDTConfig m_mqtt;
 	private Ros2EndpointConfig.MDTConfig m_ros2;
 	private RobotTwinEndpointConfig.RobotTwinConfig m_robotTwin;
-	private ProgramServiceConfig m_companion;
+	private CompanionConfig m_companion;
 	
 	public MqttEndpointConfig.MDTConfig getMqtt() {
 		return m_mqtt;
@@ -38,10 +37,10 @@ public class ServiceEndpointConfigs {
 		m_robotTwin = robotTwin;
 	}
 	
-	public ProgramServiceConfig getCompanion() {
+	public CompanionConfig getCompanion() {
 		return m_companion;
 	}
-	public void setCompanion(ProgramServiceConfig companion) {
+	public void setCompanion(CompanionConfig companion) {
 		m_companion = companion;
 	}
 }

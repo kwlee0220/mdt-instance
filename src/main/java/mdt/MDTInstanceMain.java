@@ -556,6 +556,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				
 				ProgramCompanionConfig c = new ProgramCompanionConfig();
 				c.setProgramConfig(companionConfig);
+				c.setRequired(companionConfig.isRequired());
 				configs.add(c);
 				
 				getLogger().info("Register Companion endpoint: {}", c);
