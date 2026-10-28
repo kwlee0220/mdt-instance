@@ -17,7 +17,7 @@
 | ID | 구분 | 중요도 | 제목 | 관련 | 상태 | 반영 commit |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 문제 | 중 | 사용자가 적은 `environments`가 조용히 사라짐 | B | ✅ 완료 | 211f843 |
-| 2 | 문제 | 중 | 동반 프로그램이 실패해도 인스턴스는 정상으로 보임 | C | ✅ 완료 | (commit 전) |
+| 2 | 문제 | 중 | 동반 프로그램이 실패해도 인스턴스는 정상으로 보임 | C | ✅ 완료 | 808f6dd |
 | 3 | 문제 | 하 | `stop()`이 종료를 기다리지 않고 종료 hook부터 해제 | D | ✅ 완료 | 211f843 |
 | 4 | 문제 | 하 | 동반 프로그램을 하나만 둘 수 있음 | A | ⬜ 미반영 | |
 | 5 | 문제 | 하 | `programConfig`가 null일 때 원인을 알기 어려운 NPE | | ✅ 완료 | d68d22a |
@@ -25,7 +25,7 @@
 | 7 | 문제 | 중 | 인스턴스 시작 실패 시 `main()`이 JVM을 종료하지 않음 | | ➖ 해당 없음 | |
 | A | 제안 | | 여러 동반 프로그램 지원 (`companions` 맵) | 4 | ⬜ 미반영 | |
 | B | 제안 | | 인스턴스 변수와 사용자 `environments` 병합 | 1 | ✅ 완료 | 211f843 |
-| C | 제안 | | 필수 동반 프로그램 지정(`required`)과 실패 로그 | 2 | ✅ 완료 | (commit 전) |
+| C | 제안 | | 필수 동반 프로그램 지정(`required`)과 실패 로그 | 2 | ✅ 완료 | 808f6dd |
 | D | 제안 | | `stop()`에서 종료 대기 | 3 | ✅ 완료 | 211f843 |
 
 권장 처리 순서: **1+B → 3+D, 5, 6 → 2+C → 4+A** (#7은 해당 없음)
@@ -149,6 +149,6 @@
 | 2026-10-28 | 3, D | 211f843 | `stop()`이 hook과 같은 시간(3초)까지 종료를 기다린 뒤 hook 해제. 시간 안에 끝나지 않으면 WARN 로그를 남기고 hook을 유지해 JVM 종료 시 다시 정리. hook 등록에도 같은 대기 시간을 명시. 테스트 `ProgramCompanionStopTest` 3개(실제 자식 프로세스 사용), endpoint-guide §7 갱신 |
 | 2026-10-28 | 5 | d68d22a | `init()`이 `config`·`programConfig`가 없으면 NPE 대신 `IllegalArgumentException`("companion programConfig is not set")을 던지고, 검사가 상태 변경보다 먼저 일어나 실패 후 재초기화 가능. `ProgramCompanionConfig.toString()`은 null을 허용. 테스트 `ProgramCompanionInitTest` 3개 |
 | 2026-10-28 | 6 | d68d22a | hook 이름을 `<instanceId>-companion`(없으면 `companion`)으로 변경(`toHookName()`). 클래스 Javadoc과 endpoint-guide §7에 hook이 정리하는 범위(정상 종료·`System.exit`·SIGTERM 등)와 한계(`kill -9`·JVM 충돌, 프로세스 그룹 정리 없음)를 기재. 테스트 `testHookName` 추가 |
-| 2026-10-28 | 2, C (1단계) | (commit 전) | 서비스 FAILED 시 `ProgramCompanion` logger로 ERROR 로그(이름·직전 상태·원인·명령). `ProgramService` logger를 `mdt.endpoint.companion.ProgramCompanion.<hook 이름>`으로 지정. 테스트 `ProgramCompanionFailureTest` 3개, endpoint-guide §7 갱신. 2단계(`required`, 시작 실패 시 `main()` 종료 처리)는 정할 사항이 남아 미반영 |
-| 2026-10-28 | 2, C (2단계) | (commit 전) | `CompanionConfig extends ProgramServiceConfig`에 `required`(기본 `false`) 추가, `ServiceEndpointConfigs.companion` 타입 변경. `required`이면 `start()`가 `startTimeout`+1초까지 RUNNING을 기다리고 실패 시 `EndpointException`. 시작 이후 실패는 1단계의 ERROR 로그만. 테스트 `ProgramCompanionRequiredTest` 4개, endpoint-guide §7 갱신. `main()` 종료 처리는 #7로 분리 |
+| 2026-10-28 | 2, C (1단계) | 808f6dd | 서비스 FAILED 시 `ProgramCompanion` logger로 ERROR 로그(이름·직전 상태·원인·명령). `ProgramService` logger를 `mdt.endpoint.companion.ProgramCompanion.<hook 이름>`으로 지정. 테스트 `ProgramCompanionFailureTest` 3개, endpoint-guide §7 갱신. 2단계(`required`, 시작 실패 시 `main()` 종료 처리)는 정할 사항이 남아 미반영 |
+| 2026-10-28 | 2, C (2단계) | 808f6dd | `CompanionConfig extends ProgramServiceConfig`에 `required`(기본 `false`) 추가, `ServiceEndpointConfigs.companion` 타입 변경. `required`이면 `start()`가 `startTimeout`+1초까지 RUNNING을 기다리고 실패 시 `EndpointException`. 시작 이후 실패는 1단계의 ERROR 로그만. 테스트 `ProgramCompanionRequiredTest` 4개, endpoint-guide §7 갱신. `main()` 종료 처리는 #7로 분리 |
 | 2026-10-28 | 7 | — | 재검토 결과 문제 아님. `HomeDirPicocliCommand.run()`이 `run(homeDir)`의 예외에 `System.exit(-1)`을 하므로 시작 실패 시 JVM이 종료된다(빈 홈 디렉터리로 실행해 종료 코드 255 확인). 코드 변경 없음 |
