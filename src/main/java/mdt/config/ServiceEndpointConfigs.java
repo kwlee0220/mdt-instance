@@ -4,7 +4,6 @@ import java.util.Map;
 
 import mdt.endpoint.companion.CompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
-import mdt.endpoint.rt.RobotTwinEndpointConfig;
 
 
 /**
@@ -13,7 +12,6 @@ import mdt.endpoint.rt.RobotTwinEndpointConfig;
  */
 public class ServiceEndpointConfigs {
 	private MqttEndpointConfig.MDTConfig m_mqtt;
-	private RobotTwinEndpointConfig.RobotTwinConfig m_robotTwin;
 	private CompanionConfig m_companion;
 	private Map<String,CompanionConfig> m_companions = Map.of();
 	
@@ -22,13 +20,6 @@ public class ServiceEndpointConfigs {
 	}
 	public void setMqtt(MqttEndpointConfig.MDTConfig mqtt) {
 		m_mqtt = mqtt;
-	}
-	
-	public RobotTwinEndpointConfig.RobotTwinConfig getRobotTwin() {
-		return m_robotTwin;
-	}
-	public void setRobotTwin(RobotTwinEndpointConfig.RobotTwinConfig robotTwin) {
-		m_robotTwin = robotTwin;
 	}
 	
 	public CompanionConfig getCompanion() {

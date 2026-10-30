@@ -10,13 +10,14 @@ MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 �
 
 - MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
   시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
-- Companion(6절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
+- Companion(5절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
 - Audit: 기본 로더에 등록 경로가 없어 쓰이지 않던 `mdt.endpoint.audit`(주기적 JDBC 기록) 패키지를 삭제하고 관련 절을 뺐다
 - ROS2: `serviceEndpoints.ros2`(rosbridge `joint_states` 수신) 엔드포인트를 삭제하고 관련 절을 뺐다. 이를 쓰던 예전 모델(`panda_org`)도
   함께 정리했으며, 로봇 관절 상태는 RobotTwin 자산 변수로 받는다([asset-persistence-guide](asset-persistence-guide.md))
+- RobotTwin: 조회 루프가 꺼져 있어 아무 일도 하지 않던 `serviceEndpoints.robotTwin` 엔드포인트를 삭제하고 관련 절을 뺐다.
+  로봇 상태는 RobotTwin 자산 변수(`mdt:asset:robot-twin:state`)로 읽는다
 
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
-RobotTwin 조회처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
 
 ## 1. 역할과 구현 상태
 
@@ -29,7 +30,6 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | 루트 / `MDTManagerHealthMonitor` | Manager 생존 확인, 실패 시 인스턴스 JVM 종료 | `JAR` 유형에 자동 등록 |
 | `reconnector` / `MDTManagerReconnector` | 외부 인스턴스의 주기적 등록·연결 유지 | `EXTERNAL` 유형에 자동 등록 |
 | `mqtt` / `MqttEndpoint` | MQTT 메시지 → AAS 요소 값 갱신 | `serviceEndpoints.mqtt` |
-| `rt` / `RobotTwinEndpoint` | RobotTwin REST 상태 조회용 코드 | `serviceEndpoints.robotTwin`; **조회 루프는 비활성** |
 | `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
 
 연산 호출은 [mdt.assetconnection](assetconnection-guide.md), 저장 계층의 값 접근은
@@ -469,100 +469,7 @@ JVM이 끝나면 프로세스와 함께 연결이 정리된다.
 [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
 [MqttBrokerConfig](../../mdt-client/src/main/java/mdt/client/support/MqttBrokerConfig.java).
 
-## 5. RobotTwin 엔드포인트와 상태 DTO
-
-### 5.1 현재 동작 범위
-
-**현재 `RobotTwinEndpoint`의 polling 시작·종료 코드는 주석 처리되어 있다.**
-`init()`은 URL과 REST 클라이언트를 준비하지만, `start()`는 핸들러 초기화와 로그 출력만 수행한다.
-핸들러를 설정으로 등록하는 경로도 없으므로 기본 핸들러 맵은 비어 있다.
-`getLastStateSnapshot()`은 일반 실행 경로에서 계속 null이며, AAS 값으로 상태를 반영하는 코드도 연결되어 있지 않다.
-
-다음 설정은 DTO와 기본 로더가 인식하는 형태를 보여준다. 이 설정만으로 주기 조회가 시작되지는 않는다.
-
-```json
-{
-  "serviceEndpoints": {
-    "robotTwin": {
-      "robotTwinBaseUrl": "http://localhost:8000",
-      "twinId": "panda01",
-      "pollInterval": "PT1S",
-      "reconnectInterval": "PT10S"
-    }
-  }
-}
-```
-
-`pollInterval` 기본값은 1초, `reconnectInterval` 기본값은 10초다.
-현재 polling이 비활성이므로 조회 주기가 적용되지 않으며, `reconnectInterval`은 조회 보조 코드에서도 쓰이지 않는다.
-로그용 `toString()`은 `RobotTwinEndpoint[conn=..., twin=..., pollInterval=...]` 형식이며, `conn`은 현재 설정되지 않은 연결 필드다.
-
-### 5.2 구현되어 있으나 호출되지 않는 조회 절차
-
-`pollRobotTwinState()` 등 private 메서드에는 다음 절차가 구현되어 있다.
-
-1. `GET {base}/api/v1/robot_twins/{twinId}/variables`로 카탈로그를 읽는다.
-2. 응답 `variables` 배열의 각 객체에서 `name`을 추출하고 목록을 캐시한다.
-3. 같은 URL에 `names` query parameter로 쉼표 구분 이름 목록을 보내 최신 값을 일괄 조회한다.
-4. 응답의 `values` 객체를 이름 → `RobotTwinVariable` 맵으로 변환한다.
-5. `Instant.now()`와 함께 `RobotTwinStateSnapshot`을 만든다.
-
-코드가 기대하는 카탈로그·값 응답의 최소 예시는 각각 다음과 같다.
-
-```json
-{"variables": [{"name": "joint_states"}]}
-```
-
-```json
-{
-  "values": {
-    "joint_states": {
-      "quality": "OK",
-      "stamp": {"sec": 1700000000, "nanosec": 0},
-      "received_at": "2023-11-14T22:13:20Z",
-      "age_ms": 20,
-      "schema_version": 1,
-      "value": {"name": ["joint1"], "position": [0.25]}
-    }
-  }
-}
-```
-
-이 절차에서 오류가 발생하면 변수 목록 캐시를 비우고 이전 스냅샷은 유지한다.
-성공 중에는 카탈로그를 다시 읽지 않으며, 빈 목록도 캐시되어 이후 조회를 건너뛴다.
-이는 메서드 본문 분석 결과이며, 현재 엔드포인트가 수행하는 주기 작업을 설명하는 것은 아니다.
-
-### 5.3 DTO 계약
-
-| 타입 / 필드 | 의미 |
-| --- | --- |
-| `RobotTwinVariable.name` | 변수 이름. 응답 내부에 없으면 `values` 객체의 키로 보충 |
-| `quality` | `OK`, `STALE`, `NO_DATA`, `SOURCE_UNAVAILABLE`, `ERROR`, `UNKNOWN` |
-| `stamp` | 원본 timestamp의 `sec`, `nanosec` |
-| `received_at`, `age_ms` | 수신 시각과 값 나이. nullable |
-| `schema_version` | 정수 버전, 미지정 시 0 |
-| `value` | nullable `JsonNode`; 구체 ROS 메시지 타입으로 강제하지 않음 |
-| `reason`, `error` | 소스 부재·변환 실패 등의 추가 정보 |
-| `RobotTwinStateSnapshot.polledAt` | 조회 측에서 스냅샷을 생성한 시각 |
-| `RobotTwinStateSnapshot.variables` | 이름별 변수 맵 |
-
-알 수 없는 quality 문자열은 `UNKNOWN`으로 처리하며 비교는 대소문자를 무시한다.
-`isOk()`는 quality가 `OK`인지 비교할 뿐 age 임계값을 직접 계산하지 않는다.
-스냅샷은 수정 불가 Map 뷰를 반환하지만 방어적 복사나 내부 변수 객체의 불변성을 제공하지는 않는다.
-`polledAt`도 모든 변수의 원본 생성 시각이 같음을 의미하지 않는다.
-
-설정 타입은 특히 구분해야 한다. `RobotTwinEndpointConfig.RobotTwinConfig`는 위 엔드포인트의 중첩 DTO이고,
-별도 클래스 `mdt.endpoint.rt.RobotTwinConfig`는 전역 `robotTwins` 연결·operations 설정이다.
-표준 `serviceEndpoints.robotTwin`은 중첩 DTO를 사용하며 전역 연결 이름을 조회하지 않는다.
-전역 RobotTwin 설정을 사용하는 연산·Persistence 경로와 이 비활성 엔드포인트를 혼동하지 않아야 한다.
-
-근거: [RobotTwinEndpoint](../src/main/java/mdt/endpoint/rt/RobotTwinEndpoint.java),
-[RobotTwinEndpointConfig](../src/main/java/mdt/endpoint/rt/RobotTwinEndpointConfig.java),
-[RobotTwinVariable](../src/main/java/mdt/endpoint/rt/RobotTwinVariable.java),
-[RobotTwinStateSnapshot](../src/main/java/mdt/endpoint/rt/RobotTwinStateSnapshot.java),
-[전역 RobotTwinConfig](../src/main/java/mdt/endpoint/rt/RobotTwinConfig.java).
-
-## 6. Companion 외부 프로그램
+## 5. Companion 외부 프로그램
 
 Companion은 MDT 인스턴스가 떠 있는 동안 **함께 실행해 두어야 하는 외부 프로그램**을 관리한다.
 센서 데이터를 가공해 AAS에 써 넣는 Python 스크립트, 예측 결과를 MQTT로 내보내는 보조 프로세스처럼
@@ -578,7 +485,7 @@ AAS Operation이 호출될 때마다 프로그램을 한 번씩 실행하는 `Pr
 | 입출력 | 없음(프로그램이 직접 MDT·MQTT·DB에 접근) | Operation 입력·출력 인자 |
 | 설정 위치 | `serviceEndpoints.companion` / `companions` | `operations.programs` |
 
-### 6.1 구성 요소와 등록 흐름
+### 5.1 구성 요소와 등록 흐름
 
 ```mermaid
 flowchart LR
@@ -602,10 +509,10 @@ flowchart LR
 | `ServiceShutdownHook` | `utils.async.command` | JVM이 종료될 때 서비스를 멈추고 정리를 기다리는 hook |
 
 동반 프로그램 하나에 `ProgramCompanion` 하나가 만들어진다. 따라서 여러 프로그램을 등록하면 각각 따로 시작·재시작·중지되고,
-한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT·RobotTwin
+한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT
 엔드포인트 다음에 놓이며, 단일 `companion`이 먼저, 이어서 `companions`가 설정 파일에 적힌 순서대로 시작된다.
 
-### 6.2 설정 방법
+### 5.2 설정 방법
 
 #### 단일 프로그램
 
@@ -673,19 +580,19 @@ flowchart LR
 | `commandLine` | (필수) | 실행 파일과 인자 목록. 셸을 거치지 않으므로 파이프나 리다이렉션이 필요하면 `["sh", "-c", "..."]`로 적는다 |
 | `workingDirectory` | 인스턴스의 현재 디렉터리 | 프로그램 실행 위치이자 `application.log`가 생기는 위치. 상대 경로는 인스턴스의 현재 디렉터리 기준 |
 | `environmentFile` | 없음 | `KEY=VALUE` 형식의 환경 변수 파일. 파일이 없으면 무시한다 |
-| `environments` | 빈 맵 | 자식 프로세스에 줄 환경 변수. 로더가 인스턴스 변수와 병합한다(6.3) |
-| `restartPolicy` | `ALWAYS` | `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO`. `on-completed`처럼 소문자·하이픈 표기도 된다(6.5) |
+| `environments` | 빈 맵 | 자식 프로세스에 줄 환경 변수. 로더가 인스턴스 변수와 병합한다(5.3) |
+| `restartPolicy` | `ALWAYS` | `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO`. `on-completed`처럼 소문자·하이픈 표기도 된다(5.5) |
 | `restartDelay` | `5s` | 재시작 전에 기다리는 시간 |
 | `maxRestartDelay` | `1m` | 짧은 실행이 이어질 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 지연을 늘리지 않는다 |
 | `stableRunTime` | `10s` | 이보다 짧게 끝난 실행을 "짧은 실행"으로 본다 |
 | `restartLimit` | `0` (제한 없음) | 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스를 FAILED로 만든다 |
 | `restartLimitInterval` | `1m` | `restartLimit`을 세는 구간 |
 | `startTimeout` | `30s` | 첫 실행이 이 시간 안에 시작되지 못하면 서비스를 FAILED로 만든다. `0s`이면 제한 없음 |
-| `required` | `false` | `true`이면 프로그램이 시작되지 못할 때 인스턴스 시작도 실패시킨다(6.4) |
+| `required` | `false` | `true`이면 프로그램이 시작되지 못할 때 인스턴스 시작도 실패시킨다(5.4) |
 
 시간 값은 `"5s"`, `"1m"`, `"PT5S"` 형식을 모두 받는다.
 
-### 6.3 변수 치환과 환경 변수
+### 5.3 변수 치환과 환경 변수
 
 Companion 설정에서 값을 바꿔 넣는 방법은 두 가지이고, 적용 시점이 다르다.
 
@@ -727,7 +634,7 @@ Companion 설정에서 값을 바꿔 넣는 방법은 두 가지이고, 적용 �
 > `Shutting down Service ...`, 실행 취소 시의 `cancelled: ...` 로그에 그대로 찍힌다. DB 비밀번호 같은 값은
 > `environments`나 `environmentFile`로 넘기고 프로그램이 환경 변수에서 읽게 한다.
 
-### 6.4 생명주기
+### 5.4 생명주기
 
 ```mermaid
 sequenceDiagram
@@ -759,11 +666,11 @@ sequenceDiagram
 | 단계 | 동작 |
 | --- | --- |
 | `init()` | 설정을 검사한다(`programConfig`가 없으면 `IllegalArgumentException`). 이름, `required`, `startTimeout`, 명령행을 이때 확정하고, `ProgramService`를 만들고, JVM 종료 hook을 등록한다. 이후 설정 객체를 바꿔도 실행·대기·로그에는 반영되지 않는다 |
-| `start()` | `ProgramService`를 시작한다. `required=false`면 바로 반환하고, `true`면 6.4.1처럼 시작을 확인한다 |
-| 실행 중 | 프로그램이 끝날 때마다 재시작 정책을 적용한다(6.5) |
-| `stop()` | 중지를 요청하고 자식 프로세스 정리가 끝날 때까지 최대 3초 기다린다(6.6) |
+| `start()` | `ProgramService`를 시작한다. `required=false`면 바로 반환하고, `true`면 5.4.1처럼 시작을 확인한다 |
+| 실행 중 | 프로그램이 끝날 때마다 재시작 정책을 적용한다(5.5) |
+| `stop()` | 중지를 요청하고 자식 프로세스 정리가 끝날 때까지 최대 3초 기다린다(5.6) |
 
-`ProgramService`의 상태는 다음과 같이 바뀐다. FAILED로 가는 모든 경로에서 companion은 ERROR 로그를 남긴다(6.7).
+`ProgramService`의 상태는 다음과 같이 바뀐다. FAILED로 가는 모든 경로에서 companion은 ERROR 로그를 남긴다(5.7).
 
 ```mermaid
 stateDiagram-v2
@@ -780,7 +687,7 @@ stateDiagram-v2
 여기서 **RUNNING은 자식 프로세스가 생성되었다는 뜻일 뿐**, 프로그램이 일할 준비를 마쳤다는 뜻이 아니다.
 실행하자마자 스크립트 오류로 죽는 프로그램도 일단 RUNNING이 되고, 그다음부터는 재시작 정책을 따른다.
 
-#### 6.4.1 필수 프로그램(`required`)
+#### 5.4.1 필수 프로그램(`required`)
 
 프로그램이 없으면 인스턴스가 제 역할을 못 하는 경우 `required`를 `true`로 둔다.
 
@@ -805,7 +712,7 @@ flowchart LR
 `required`는 프로세스가 생성되는지만 확인한다. 포트가 열렸는지, 모델을 다 읽었는지 같은 업무 준비 상태는 확인하지 않으며,
 여러 companion을 적은 순서대로 시작해도 앞 프로그램의 준비가 끝난 뒤 다음 프로그램이 시작된다는 보장은 없다.
 
-### 6.5 재시작 정책
+### 5.5 재시작 정책
 
 프로그램이 스스로 끝났을 때 서비스가 어떻게 되는지는 `restartPolicy`가 정한다.
 `stop()`이나 JVM 종료로 멈춘 경우에는 정책과 관계없이 재시작하지 않는다.
@@ -829,7 +736,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 `"restartLimit": 5, "restartLimitInterval": "10m"`처럼 한도를 둔다. 한도를 넘으면
 `restart limit exceeded: ...` 원인으로 FAILED가 되고 ERROR 로그가 남는다.
 
-### 6.6 종료와 프로세스 정리
+### 5.6 종료와 프로세스 정리
 
 자식 프로세스를 정리하는 경로는 두 가지다. 두 경로 모두 같은 기준으로 정리 완료를 판단한다.
 
@@ -852,7 +759,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 - 자식 프로세스가 스스로 데몬이 되어 부모와의 관계를 끊은 경우. 하위 프로세스는 부모-자식 관계를 따라가며 찾기 때문에
   그 사이에 떨어져 나간 프로세스는 놓칠 수 있고, 프로세스 그룹 단위로 함께 종료하는 장치는 없다.
 
-### 6.7 로그와 문제 확인
+### 5.7 로그와 문제 확인
 
 | 위치 | 내용 |
 | --- | --- |
@@ -880,12 +787,12 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 | 증상 | 확인할 것 |
 | --- | --- |
 | 프로그램이 아예 뜨지 않음 | `companion program failed ... state=STARTING` 로그, `commandLine`의 실행 파일 경로, `workingDirectory` 존재 여부 |
-| 인자에 `${...}`가 그대로 들어감 | `Register Companion endpoint` 줄. 치환하지 못한 참조는 글자 그대로 남는다(6.3) |
+| 인자에 `${...}`가 그대로 들어감 | `Register Companion endpoint` 줄. 치환하지 못한 참조는 글자 그대로 남는다(5.3) |
 | 프로그램이 계속 재시작됨 | `application.log`의 마지막 출력, `backing off` 로그. 실패로 드러내려면 `restartLimit` 설정 |
 | 두 프로그램의 출력이 섞임 | 두 companion의 `workingDirectory`가 같은지 |
-| 인스턴스 종료 후 프로세스가 남음 | 인스턴스를 `kill -9`로 끝냈는지, 프로그램이 데몬으로 떨어져 나가는지(6.6) |
+| 인스턴스 종료 후 프로세스가 남음 | 인스턴스를 `kill -9`로 끝냈는지, 프로그램이 데몬으로 떨어져 나가는지(5.6) |
 
-### 6.8 제약
+### 5.8 제약
 
 - 프로그램의 업무 준비 상태를 확인하는 readiness 검사는 없다. `required`도 프로세스 생성까지만 확인한다.
 - Companion의 실패는 로그로만 드러난다. Manager에 보이는 인스턴스 상태는 바뀌지 않고, 실행 중 실패로 인스턴스를 멈추지도 않는다.
@@ -905,7 +812,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 [ServiceShutdownHook](../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
 utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide.md).
 
-## 7. 확장과 검증 지점
+## 6. 확장과 검증 지점
 
 새 엔드포인트를 추가하려면 FA³ST `Endpoint<C>`와 `EndpointConfig`를 구현하고,
 인스턴스 JSON DTO를 `ServiceEndpointConfigs`에 추가한 뒤 `MDTInstanceMain.loadEndpointConfigs()`에서
@@ -918,11 +825,10 @@ utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide
 | --- | --- |
 | Manager | 첫 호출 시점, 일시 장애 시 JVM 종료, registry 등록·해제 요청, INFO 수준 변경 영향 |
 | MQTT | 시작 로그의 `subscriptions=n/m`과 구독 제외 로그, 값 형식·대상 타입 불일치 시 실패 로그와 빈도 제한, `delivery`·`overflowPolicy`별 반영(밀릴 때와 상한에 이를 때), 대기 중 `stop()`이 제한 시간 안에 끝나는지, broker 재연결 후 재구독 |
-| RobotTwin | polling 활성화와 실제 호출 경로를 먼저 구현한 뒤 카탈로그 변경·빈 목록·오류·quality 처리 |
 | Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
-실제 Manager·RobotTwin에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+실제 Manager에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
 MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 종료와 연결된 상태의 잘못된 토픽 거부를 확인했다
 (`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
 Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서

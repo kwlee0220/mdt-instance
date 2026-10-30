@@ -692,6 +692,20 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 
 응답은 `RobotTwinVariable`로 해석한다. `mappings`의 JSON Pointer는 응답의 **`value` 필드 내부**를 기준으로 한다. 예를 들어 `/position/panda_joint1`은 응답 전체에서 보면 `value.position.panda_joint1`에 해당한다. 매핑을 생략하면 `value` 전체를 AAS 요소에 반영한다.
 
+응답 필드는 다음과 같다. 모르는 필드는 무시한다.
+
+| 필드 | 의미 |
+| --- | --- |
+| `name` | 변수 이름 |
+| `quality` | 값의 신선도. `OK`, `STALE`, `NO_DATA`, `SOURCE_UNAVAILABLE`, `ERROR` 중 하나이며, 대소문자를 가리지 않는다. 그 밖의 값은 `UNKNOWN`으로 읽는다 |
+| `value` | ROS 메시지를 변환한 JSON 값. 아직 받은 값이 없으면 없거나 `null` |
+| `stamp` | 로봇이 값을 만든 시각(`sec`, `nanosec`) |
+| `received_at`, `age_ms` | 트윈이 값을 받은 시각과 값의 나이 |
+| `schema_version` | 값 스키마 버전. 없으면 0 |
+| `reason`, `error` | 소스가 없는 사유(`SOURCE_UNAVAILABLE`), 변환 실패 원인(`ERROR`) |
+
+이 중 이 변수가 쓰는 것은 `quality`와 `value`이고, `reason`은 품질 경고 로그에만 들어간다. 품질은 `OK`인지만 보며, `age_ms`로 값의 나이를 따로 판단하지 않는다.
+
 매핑은 예제의 객체 형식 외에 기존 `{ "subPath": "...", "pointer": "..." }` 항목을 나열한 배열 형식도 지원한다. 다시 JSON으로 저장할 때는 객체 형식을 사용한다.
 
 ### 설정 검사

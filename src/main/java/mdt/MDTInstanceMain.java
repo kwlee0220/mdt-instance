@@ -78,7 +78,6 @@ import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
-import mdt.endpoint.rt.RobotTwinEndpointConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.persistence.ConcurrentPersistenceConfig;
 import mdt.persistence.MDTModelLookup;
@@ -526,14 +525,6 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			FOption.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
 				configs.add(new MqttEndpointConfig(mqttConf));
 				getLogger().info("Register MQTT endpoint: {}", mqttConf);
-			});
-			
-			// RobotTwin endpoint 설정 정보가 있으면 추가한다.
-			FOption.accept(instConf.getServiceEndpoints().getRobotTwin(), conf -> {
-				RobotTwinEndpointConfig epConfig = new RobotTwinEndpointConfig(conf);
-				configs.add(epConfig);
-				
-				getLogger().info("Register RobotTwin endpoint: {}", epConfig);
 			});
 			
 			// 동반 프로그램 설정이 있으면 프로그램마다 companion endpoint를 추가한다.
