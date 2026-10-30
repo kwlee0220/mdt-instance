@@ -79,9 +79,16 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 
 		try ( Connection conn = jdbc.connect();
 			PreparedStatement pstmt = prepare(conn, range)) {
-			return JdbcUtils.fstream(pstmt.executeQuery(), JdbcUtils::toColumnObjectList)
+			// 각 컬럼 값을 필드 타입으로 변환한다. 드라이버가 반환한 Timestamp를 그대로 두면
+			// DefaultRecord의 Instant 형변환에 실패한다.
+			List<List<Object>> rows = JdbcUtils.fstream(pstmt.executeQuery(), JdbcUtils::toColumnObjectList)
+												.map(this::toFieldValues)
+												.toList();
+			String zeroPaddingFormat = "rec%0" + String.valueOf(rows.size()).length() + "d";
+			return FStream.from(rows)
 							.zipWithIndex()
-							.map(idxed -> new DefaultRecord("" + idxed.index(), m_metadata, idxed.value()))
+							.map(idxed -> new DefaultRecord(String.format(zeroPaddingFormat, idxed.index()),
+															m_metadata, idxed.value()))
 							.toList();
 		}
 		catch ( SQLException e ) {
@@ -89,6 +96,13 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 										m_tsConfig.getTableName(), range.getMin(), range.getMax(), "" + e);
 			throw new ModelGenerationException(msg);
 		}
+	}
+		
+	private List<Object> toFieldValues(List<Object> columnValues) {
+		return FStream.from(m_metadata.getFieldAll())
+						.zipWith(FStream.from(columnValues))
+						.map(tup -> (Object)tup._1.getType().fromJdbcObject(tup._2))
+						.toList();
 	}
 		
 	private PreparedStatement prepare(Connection conn, Range range) throws SQLException {

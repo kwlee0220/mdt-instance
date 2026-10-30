@@ -109,9 +109,16 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 			PreparedStatement pstmt = conn.prepareStatement(sql)) {
 			pstmt.setTimestamp(1, Timestamp.from(Instant.now().minus(duration)));
 			
-			return JdbcUtils.fstream(pstmt.executeQuery(), JdbcUtils::toColumnObjectList)
+			// 개수 기준 Tail과 같이 각 컬럼 값을 필드 타입으로 변환하고 rec<번호> 형식의 idShort를 붙인다.
+			// 변환하지 않으면 드라이버가 반환한 Timestamp가 그대로 DefaultRecord에 들어가 Instant 형변환에 실패한다.
+			List<List<Object>> rows = JdbcUtils.fstream(pstmt.executeQuery(), JdbcUtils::toColumnObjectList)
+												.map(this::toFieldValues)
+												.toList();
+			String zeroPaddingFormat = "rec%0" + String.valueOf(rows.size()).length() + "d";
+			return FStream.from(rows)
 							.zipWithIndex()
-							.map(idxed -> new DefaultRecord("" + idxed.index(), m_metadata, idxed.value()))
+							.map(idxed -> new DefaultRecord(String.format(zeroPaddingFormat, idxed.index()),
+															m_metadata, idxed.value()))
 							.toList();
 		}
 		catch ( SQLException e ) {
@@ -156,17 +163,9 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 	}
 	
 	private List<DefaultRecord> readRecords(String zpFormat, ResultSet rset) throws SQLException {
-		var rows
-			= JdbcUtils.fstream(rset, JdbcUtils::toColumnObjectList)
-						.map(rs -> {
-							return FStream.from(m_metadata.getFieldAll())
-											.zipWith(FStream.from(rs))
-											.map(tup -> {
-												return tup._1.getType().fromJdbcObject(tup._2);
-											})
-											.toList();
-						})
-						.toList();
+		var rows = JdbcUtils.fstream(rset, JdbcUtils::toColumnObjectList)
+							.map(this::toFieldValues)
+							.toList();
 
 		int length = rows.size();
 		DefaultRecord[] records = new DefaultRecord[length];
@@ -181,5 +180,13 @@ public class JdbcTailInternalSegment extends DefaultInternalSegment implements I
 				});
 		
 		return Arrays.asList(records);
+	}
+	
+	/** JDBC 컬럼 값들을 Metadata 필드 순서대로 각 필드의 타입 값으로 변환한다. */
+	private List<Object> toFieldValues(List<Object> columnValues) {
+		return FStream.from(m_metadata.getFieldAll())
+						.zipWith(FStream.from(columnValues))
+						.map(tup -> (Object)tup._1.getType().fromJdbcObject(tup._2))
+						.toList();
 	}
 }

@@ -155,7 +155,7 @@ public class TimeSeriesSubmodelConfig {
 			String details = (m_length != null)
 							? String.format("length=%d", m_length)
 							: String.format("duration=%s", m_duration);
-			return String.format("Tail[%s] (%s)", details);
+			return String.format("Tail[%s]", details);
 		}
 	};
 

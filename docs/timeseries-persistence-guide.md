@@ -239,9 +239,9 @@ DB에서 최신순으로 가져온 결과를 Java에서 뒤집어 시간 오름�
 
 Tail에 공통 캐시나 `validPeriod` 설정은 없다. `Segments.Tail.RecordCount`처럼 요약 필드만 요청해도 Tail 전체 레코드를 읽어 세그먼트를 만든 뒤 해당 필드를 추출한다.
 
-현재 타입 변환에도 경로 차이가 있다. 개수 기준 Tail은 각 JDBC 값을 Metadata의 `DataType.fromJdbcObject()`로 변환하지만, 기간 기준 Tail은 JDBC 원시 객체 목록을 `DefaultRecord`에 직접 전달한다. 세그먼트를 만들 때 `DefaultRecord.getTimestamp()`가 첫 필드를 `Instant`로 형변환하므로, 시간 컬럼을 `java.sql.Timestamp`로 돌려주는 드라이버(예: PostgreSQL)에서는 레코드가 하나라도 있으면 `ClassCastException`이 발생한다. 또한 기간 기준 Tail은 레코드 idShort를 `rec000`이 아니라 `0`, `1`처럼 순번 그대로 붙인다.
+두 Tail 모두 각 JDBC 값을 Metadata 필드의 `DataType.fromJdbcObject()`로 변환한 뒤 레코드를 만든다. 따라서 PostgreSQL처럼 시간 컬럼을 `java.sql.Timestamp`로 돌려주는 드라이버에서도 첫 필드는 `Instant`로 바뀐다. 레코드 idShort도 두 경로 모두 `rec` 뒤에 순번을 붙인다. 기간 기준 Tail은 조회 결과 수의 자릿수만큼 0을 채운다(예: 12건이면 `rec00`~`rec11`).
 
-어느 경로든 필드 값이 SQL `NULL`이면 레코드 Property의 값은 `null`(값 없음)이 된다. 숫자 필드라도 0으로 바꾸지 않는다. 원시 객체를 전달하는 경로는 값을 Property로 바꿀 때 `DataType.toValueString()`이 원시 객체를 직접 변환한다. 숫자 필드는 `NUMERIC` 컬럼의 `BigDecimal` 등 어떤 숫자 객체든 받는다. 정수 타입 필드에 소수 부분이 있는 값이 오면 변환에 실패한다.
+어느 경로든 필드 값이 SQL `NULL`이면 레코드 Property의 값은 `null`(값 없음)이 된다. 숫자 필드라도 0으로 바꾸지 않는다. 숫자 필드는 `NUMERIC` 컬럼의 `BigDecimal` 등 어떤 숫자 객체든 받는다. 정수 타입 필드에 소수 부분이 있는 값이 오면 변환에 실패한다.
 
 구현: [JdbcTailInternalSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcTailInternalSegment.java).
 
@@ -389,7 +389,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 이 클래스는 AAS Range의 min과 max에 따라 `BETWEEN`, `>=`, `<=` SQL을 선택하고 Timestamp 파라미터를 바인딩한다. 양쪽 경계가 모두 없으면 실패한다. 결과는 `ReadRecords`라는 idShort의 InternalSegment에 담긴다.
 
-현재 mdt-instance 안에서 이 클래스를 사용하는 코드는 없다. `ReadRecordsOperation`도 `JdbcRecordsReader`에 위임한다. 따라서 이 클래스의 구현을 바꾸어도 두 공개 조회 Operation의 SQL은 바뀌지 않는다. 기간 Tail과 마찬가지로 JDBC 원시 값을 `DefaultRecord`에 전달하므로 시각 타입 변환도 별도 확인이 필요하다.
+현재 mdt-instance 안에서 이 클래스를 사용하는 코드는 없다. `ReadRecordsOperation`도 `JdbcRecordsReader`에 위임한다. 따라서 이 클래스의 구현을 바꾸어도 두 공개 조회 Operation의 SQL은 바뀌지 않는다. Tail과 마찬가지로 JDBC 값을 필드 타입으로 변환한 뒤 레코드를 만든다.
 
 ### InternalSegmentRecordsReader
 
@@ -433,7 +433,6 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | Operation 초기화 시 설정을 찾지 못함 | `timeSeriesSubmodels[].id`와 Operation의 Submodel ID |
 | `Cannot find the column mapped to the record field` | Metadata 필드 이름과 parameter 이름의 정확한 일치 |
 | Tail에서 필드 값이 뒤바뀜 | parameterColumns와 Metadata의 필드 순서 |
-| 기간 Tail에서 `ClassCastException` | 드라이버가 시간 컬럼을 `Timestamp`로 반환함. DefaultRecord는 `Instant`를 요구 |
 | 세그먼트 조회·Operation 초기화 시 `IllegalArgumentException` | `endpoint`에 `user`·`password`가 있는지 |
 | `Segments.Tail`이 없음 | tail 생략 여부. 빈 객체는 기본 100개를 의미 |
 | 데이터가 있는데 현재 시각 기준 조회가 비어 있음 | 데이터의 최신 시각, NOW와 LATEST 기준, DB 시간대 |
@@ -443,4 +442,4 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | 목록 조회가 느리거나 실패 | 각 시계열 모델의 집계·Tail 조회 및 오류 전파 |
 | Tail 요약에서 나눗셈 오류 | 복수 레코드의 전체 시간 차이가 밀리초 기준 0인지 확인 |
 
-설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. Operation 제공자 초기화 실패는 `ConfigurationInitializationException`으로 보고된다. 다만 `endpoint`에 사용자·비밀번호가 없을 때의 `IllegalArgumentException`과 기간 Tail의 `ClassCastException`은 변환 없이 그대로 전달되므로, 오류 메시지와 실제 조회 경로를 함께 확인한다.
+설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. Operation 제공자 초기화 실패는 `ConfigurationInitializationException`으로 보고된다. 다만 `endpoint`에 사용자·비밀번호가 없을 때의 `IllegalArgumentException`은 변환 없이 그대로 전달되므로, 오류 메시지와 실제 조회 경로를 함께 확인한다.
