@@ -2,7 +2,7 @@
 
 `mdt.endpoint`는 MDT 인스턴스의 FA³ST 서비스 생명주기에 외부 통신과 백그라운드 작업을 연결한다.
 MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,
-외부 동반 프로세스 실행과 요소 값의 JDBC 기록 기능을 제공한다.
+외부 동반 프로세스를 실행한다.
 
 이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 28일의 작업 트리를 기준으로
 설정 로더, 엔드포인트 구현, 관련 `mdt-client`·`utils` 코드를 함께 검토했다.
@@ -11,9 +11,10 @@ MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결
 - MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
   시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
 - Companion(7절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
+- Audit: 기본 로더에 등록 경로가 없어 쓰이지 않던 `mdt.endpoint.audit`(주기적 JDBC 기록) 패키지를 삭제하고 관련 절을 뺐다
 
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
-RobotTwin 조회와 Audit 등록처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
+RobotTwin 조회처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
 
 ## 1. 역할과 구현 상태
 
@@ -29,7 +30,6 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | `ros2` / `Ros2Endpoint` | rosbridge WebSocket 메시지 → AAS 관절 위치 갱신 | `serviceEndpoints.ros2` |
 | `rt` / `RobotTwinEndpoint` | RobotTwin REST 상태 조회용 코드 | `serviceEndpoints.robotTwin`; **조회 루프는 비활성** |
 | `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
-| `audit` / `PeriodicElementAudit` | 요소 값 변경을 JDBC 테이블에 기록 | **기본 로더에 등록 경로 없음** |
 
 연산 호출은 [mdt.assetconnection](assetconnection-guide.md), 저장 계층의 값 접근은
 [mdt.persistence.asset](asset-persistence-guide.md)에서 다룬다.
@@ -101,14 +101,12 @@ MQTT와 ROS2는 인스턴스 설정에서 연결 이름을 지정하고, 전역 
 
 MQTT 엔드포인트의 `mqttBrokerConfig`는 MQTT 자산 변수와 같은 규칙을 따른다. 문자열이면 전역 설정 이름으로,
 객체이면 broker 설정을 직접 적은 것으로 해석하고, 생략하면 `default`를 쓴다(4.2절).
-반면 Audit의 `jdbcConfig`는 아직 Java 타입이 `Object`라서 전역 설정 이름(문자열)만 쓸 수 있다.
-객체를 넣으면 Map으로 읽혀 해당 설정 타입으로 변환되지 않는다.
 
 근거: [MDTGlobalConfigurations](../src/main/java/mdt/MDTGlobalConfigurations.java).
 
 ### 2.2 AAS 요소 위치
 
-MQTT 구독, ROS2 핸들러, Audit 컬럼은 `ElementLocations.parseStringExpr()`로 대상 요소를 지정한다.
+MQTT 구독과 ROS2 핸들러는 `ElementLocations.parseStringExpr()`로 대상 요소를 지정한다.
 
 | 표현 | 의미 | 예 |
 | --- | --- | --- |
@@ -1014,61 +1012,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 [ServiceShutdownHook](../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
 utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide.md).
 
-## 8. 주기적 JDBC Audit
-
-`PeriodicElementAudit`는 지정된 요소들을 주기적으로 읽고, 직전 기록 값과 달라졌을 때 한 행을 추가한다.
-**현재 `ServiceEndpointConfigs`와 `loadEndpointConfigs()`에는 Audit 등록 항목이 없다.**
-따라서 아래 JSON을 `serviceEndpoints.audit`에 추가하는 것만으로 실행할 수 없다.
-
-다음은 `PeriodicElementAuditConfig.MDTConfig`에 해당하는 설정 데이터 예시다.
-사용하려면 이 DTO를 읽어 `new PeriodicElementAuditConfig(dto)`로 감싸고 FA³ST endpoint 목록에 추가하는
-등록 코드를 구현해야 한다.
-
-```json
-{
-  "table": "robot_state_audit",
-  "jdbcConfig": "auditDb",
-  "timestampColumn": "recorded_at",
-  "columns": [
-    {"name": "temperature", "element": "RobotState:Temperature"},
-    {"name": "joints", "element": "RobotState:Joints"}
-  ],
-  "interval": "1s",
-  "enabled": true
-}
-```
-
-`jdbcConfig`는 전역 `jdbcs`의 이름이며 기본값은 `default`다.
-`timestampColumn` 기본값은 `timestamp`, `enabled` 기본값은 true다.
-`table`, `columns`, `interval`에는 실행 가능한 기본값이 없으므로 명시해야 한다.
-위 예제를 쓰려면 `auditDb` 연결과 타입이 호환되는 DB 테이블을 사전에 준비해야 한다.
-
-처리 순서는 다음과 같다.
-
-1. `init()`에서 INSERT SQL, JDBC 처리기, 직전 값 비교용 목록을 준비한다.
-2. `start()`에서 요소 위치를 활성화하고 `PeriodicLoopExecution`을 시작한다.
-3. 각 컬럼의 현재 AAS 요소를 읽는다. Property는 AAS 데이터 타입에 맞춰 JDBC 값으로 변환한다.
-   다른 요소는 `ElementValues.getValue()` 결과를 MDT JSON 문자열로 직렬화한다.
-4. 변환된 값 목록이 직전 목록과 `List.equals()`로 같으면 기록을 생략한다.
-5. 달라졌으면 `Instant.now()`의 timestamp와 모든 컬럼 값을 한 행에 넣고 직전 값을 갱신한다.
-
-초기 비교 목록은 sentinel 객체이므로 유효한 비어 있지 않은 컬럼 목록의 첫 수집은 기록 대상이다.
-timestamp는 수집·저장 측 시각이며 MQTT·ROS 메시지의 원본 생성 시각이 아니다.
-여러 요소를 순차적으로 읽기 때문에 한 행의 모든 값이 원자적으로 같은 시점에 관찰되었다는 보장도 없다.
-재시작하면 직전 값 목록이 초기화되므로 DB 마지막 행과 비교하지 않는다.
-
-테이블 생성·스키마 변경·보관 기간 관리 기능은 없다.
-값은 PreparedStatement로 바인딩하지만 테이블과 컬럼 이름은 SQL에 직접 결합되므로,
-설정에는 DB에서 유효한 식별자를 사용해야 한다.
-SQL 오류는 반복 실행 밖으로 전파되며 엔드포인트 자체의 재시도·재시작 처리는 없다.
-`stop()`은 반복 작업을 취소한다.
-
-근거: [PeriodicElementAudit](../src/main/java/mdt/endpoint/audit/PeriodicElementAudit.java),
-[PeriodicElementAuditConfig](../src/main/java/mdt/endpoint/audit/PeriodicElementAuditConfig.java),
-[ElementColumnConfig](../src/main/java/mdt/ElementColumnConfig.java),
-[JdbcProcessor](../../../common/utils/src/main/java/utils/jdbc/JdbcProcessor.java).
-
-## 9. 확장과 검증 지점
+## 8. 확장과 검증 지점
 
 새 엔드포인트를 추가하려면 FA³ST `Endpoint<C>`와 `EndpointConfig`를 구현하고,
 인스턴스 JSON DTO를 `ServiceEndpointConfigs`에 추가한 뒤 `MDTInstanceMain.loadEndpointConfigs()`에서
@@ -1088,10 +1032,9 @@ ROS2 메시지 타입 확장은 `Ros2MessageHandler<T>`의 `getTopic`, `initiali
 | ROS2 | 매핑·배열 길이, 미등록 topic·상태 프레임, 오래된 메시지, 동시 값 갱신, 연결 종료·재연결 |
 | RobotTwin | polling 활성화와 실제 호출 경로를 먼저 구현한 뒤 카탈로그 변경·빈 목록·오류·quality 처리 |
 | Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
-| Audit | 등록 코드, JDBC 타입 대응, 첫 기록·변경 없음·변경 있음, DB 오류와 재시작 시 중복 기록 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
-실제 Manager·rosbridge·RobotTwin·DB에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+실제 Manager·rosbridge·RobotTwin에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
 MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 종료와 연결된 상태의 잘못된 토픽 거부를 확인했다
 (`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
 Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서

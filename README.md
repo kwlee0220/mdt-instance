@@ -111,8 +111,7 @@ src/main/java/mdt/
 ├── endpoint/                 Manager 상태 확인과 부가 엔드포인트
 │   ├── reconnector/          EXTERNAL 인스턴스의 Manager 재등록
 │   ├── mqtt/  ros2/  rt/     메시지 수신, 로봇 트윈 엔드포인트
-│   ├── companion/            동반 프로그램 실행
-│   └── audit/                요소 값 변경의 JDBC 기록 (기본 로더에는 등록되지 않음)
+│   └── companion/            동반 프로그램 실행
 ├── ksx9101/                  KS X 9101 제조 데이터 JPA 매핑
 └── ext/                      특정 과제용 연산 구현(RCK 프레스 시뮬레이션 등)
 ```
@@ -438,7 +437,7 @@ flowchart TD
 
 | 문서 | 다루는 내용 |
 | --- | --- |
-| [mdt.endpoint 패키지](docs/endpoint-guide.md) | Manager 연결 관리, MQTT·ROS2 수신, RobotTwin 엔드포인트, 동반 프로그램, JDBC Audit의 설정·생명주기·확장 방법 |
+| [mdt.endpoint 패키지](docs/endpoint-guide.md) | Manager 연결 관리, MQTT·ROS2 수신, RobotTwin 엔드포인트, 동반 프로그램의 설정·생명주기·확장 방법 |
 | [mdt.assetconnection 패키지](docs/assetconnection-guide.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
 | [로봇 트윈 연산 Provider](docs/robot-twin-operation-guide.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |
 | [mdt.persistence.asset 패키지](docs/asset-persistence-guide.md) | 자산 변수 계약과 JDBC·HTTP·MQTT·OPC UA·RobotTwin 연동 설정 |
