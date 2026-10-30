@@ -106,6 +106,13 @@ public class FaaastRuntimeValueUpdaterTest {
 	}
 
 	@Test
+	public void testSetSubmodelElementValueByPathReportsFailure() {
+		// 타입을 매번 조회하는 기존 메서드도 오류 응답을 예외로 알린다.
+		assertThrows(ElementUpdateException.class,
+					() -> m_runtime.setSubmodelElementValueByPath(SUBMODEL_ID, "NoSuchElement", "1.0"));
+	}
+
+	@Test
 	public void testMissingElementFailsWhenCreatingUpdater() {
 		ElementUpdateException e = assertThrows(ElementUpdateException.class,
 												() -> m_runtime.newValueUpdater(location("NoSuchElement")));

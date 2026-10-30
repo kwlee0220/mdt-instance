@@ -6,24 +6,32 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Message;
+import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.dataformat.DeserializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.http.serialization.HttpJsonApiDeserializer;
+import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.Response;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.StatusCode;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.PatchSubmodelElementValueByPathRequest;
 import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.submodel.GetSubmodelElementByPathRequest;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.request.submodel.PutSubmodelElementByPathRequest;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
+import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ValueMappingException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValue;
 import de.fraunhofer.iosb.ilt.faaast.service.model.value.ElementValueParser;
+import de.fraunhofer.iosb.ilt.faaast.service.model.value.mapper.ElementValueMapper;
 import de.fraunhofer.iosb.ilt.faaast.service.typing.TypeInfo;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceBuilder;
+import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
 
 import utils.Preconditions;
 
+import mdt.model.ReferenceUtils;
+import mdt.model.sm.value.ElementValues;
 
 
 /**
@@ -57,6 +65,14 @@ public class FaaastRuntime {
 		return m_service;
 	}
 	
+	public SubmodelElement getSubmodelElementOfLocation(ElementLocation loc) {
+		GetSubmodelElementByPathRequest req = GetSubmodelElementByPathRequest.builder()
+																			.submodelId(loc.getSubmodelId())
+																			.path(loc.getElementPath())
+																			.build();
+		return m_service.execute(req).getPayload();
+	}
+	
 	public SubmodelElement getSubmodelElementByPath(String submodelId, String path) {
 		GetSubmodelElementByPathRequest req = GetSubmodelElementByPathRequest.builder()
 																			.submodelId(submodelId)
@@ -64,6 +80,28 @@ public class FaaastRuntime {
 																			.build();
 		return m_service.execute(req).getPayload();
 	}
+	
+	public SubmodelElement getSubmodelElementByReference(Reference reference) {
+		ReferenceUtils.assertSubmodelElementReference(reference);
+		String submodelId = ReferenceHelper.getRoot(reference).getValue();
+		String path = IdShortPath.fromReference(reference).toString();
+		
+		return getSubmodelElementByPath(submodelId, path);
+	}
+	
+	/**
+	 * 주어진 경로의 요소를 교체한다.
+	 *
+	 * @throws ElementUpdateException	FA³ST가 오류 응답을 반환한 경우.
+	 */
+	public void putSubmodelElementByPath(String submodelId, String path, SubmodelElement element) {
+		PutSubmodelElementByPathRequest req = PutSubmodelElementByPathRequest.builder()
+                                                                            .submodelId(submodelId)
+                                                                            .path(path)
+                                                                            .submodelElement(element)
+                                                                            .build();
+		checkSuccess(m_service.execute(req), "replace", submodelId, path);
+    }
 	
 	/**
 	 * 주어진 경로의 요소 값을 value-only 문자열로 갱신한다.
@@ -169,5 +207,57 @@ public class FaaastRuntime {
 		};
 	}
 	
+	public void setSubmodelElementValueByPath(String submodelId, String path, String valueString) {
+		setSubmodelElementValueByPath(submodelId, path, valueString, newElementValueParser(submodelId, path));
+	}
+	
+	public void updateSubmodelElementValue(String submodelId, String elementPath, SubmodelElement element) {
+		mdt.model.sm.value.ElementValue smev = ElementValues.getValue(element);
+		setSubmodelElementValueByPath(submodelId, elementPath, smev.toValueJsonString());
+	}
+
 	private static HttpJsonApiDeserializer API_DESERIALIZER = new HttpJsonApiDeserializer();
+	private final ElementValueParser<Object> newElementValueParser(String submodelId, String path) {
+		return new ElementValueParser<Object>() {
+	        @Override
+	        public <U extends ElementValue> U parse(Object raw, Class<U> type) throws DeserializationException {
+	            String rawString;
+				if ( raw.getClass().isAssignableFrom(byte[].class) ) {
+					rawString = new String((byte[]) raw);
+				}
+				else {
+					rawString = raw.toString();
+				}
+	            if ( ElementValue.class.isAssignableFrom(type) ) {
+	                try {
+	                    return API_DESERIALIZER.readValue(rawString,
+								                            m_service.getTypeInfo(new ReferenceBuilder()
+											                                            .submodel(submodelId)
+											                                            .idShortPath(path)
+											                                            .build()));
+	                }
+					catch ( de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException e ) {
+	                    throw new DeserializationException("unable to obtain type information "
+	                    									+ "as resource does not exist", e);
+					}
+					catch ( PersistenceException e ) {
+	                    throw new DeserializationException("unable to read value: " + rawString, e);
+					}
+	            }
+				else if ( SubmodelElement.class.isAssignableFrom(type) ) {
+	                SubmodelElement submodelElement = (SubmodelElement) API_DESERIALIZER.read(rawString, type);
+	                try {
+	                    return ElementValueMapper.toValue(submodelElement, type);
+	                }
+					catch ( ValueMappingException e ) {
+						throw new DeserializationException("error mapping submodel element to value object", e);
+					}
+	            }
+	            throw new DeserializationException(
+	                    String.format("error deserializing payload - invalid type '%s' "
+	                    				+ "(must be either instance of ElementValue or SubmodelElement",
+	                    				type.getSimpleName()));
+	        }
+	    };
+	}
 }
