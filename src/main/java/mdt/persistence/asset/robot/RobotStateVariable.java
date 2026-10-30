@@ -7,7 +7,6 @@ import java.util.List;
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.Range;
-import org.eclipse.digitaltwin.aas4j.v3.model.Submodel;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementCollection;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElementList;
@@ -20,14 +19,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.Throwables;
 import utils.thread.Guard;
 
-import mdt.ElementLocation;
 import mdt.RobotTwinConfig;
 import mdt.aas.DataType;
 import mdt.aas.DataTypes;
 import mdt.model.MDTModelSerDe;
 import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.value.ElementValues;
-import mdt.persistence.MDTModelLookup;
 import mdt.persistence.asset.AbstractAssetVariable;
 import mdt.persistence.asset.AssetVariableException;
 import mdt.persistence.asset.robot.RobotStateVariableConfig.SubPathToJsonPointer;
@@ -102,18 +99,6 @@ public class RobotStateVariable extends AbstractAssetVariable<RobotStateVariable
 	@Override
 	public boolean isUpdatable() {
 		return false;
-	}
-
-	@Override
-	public void initialize(MDTModelLookup lookup) {
-		super.initialize(lookup);
-		
-		ElementLocation loc = getElementLocation();
-		loc.activate(lookup);
-
-		// 검색된 Submodel 내에서 본 element에 해당하는 SubmodelElement를 찾는다.
-		Submodel submodel = lookup.getSubmodelByIdShort(loc.getSubmodelIdShort());
-		m_prototype = SubmodelUtils.traverse(submodel, loc.getElementPath());
 	}
 
 	/**
