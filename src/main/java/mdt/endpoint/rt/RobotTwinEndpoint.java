@@ -29,7 +29,6 @@ import utils.http.HttpRESTfulClient;
 import utils.stream.FStream;
 
 import mdt.FaaastRuntime;
-import mdt.endpoint.ros2.msg.Ros2MessageHandler;
 import mdt.model.MDTModelSerDe;
 
 /**
@@ -64,7 +63,6 @@ public class RobotTwinEndpoint implements Endpoint<RobotTwinEndpointConfig> {
 	private RobotTwinConfig m_rtConnConfig;
 	private HttpRESTfulClient m_restClient;
 	private String m_variablesUrl;
-	private Map<String,Ros2MessageHandler<?>> m_handlers = Maps.newHashMap();
 
 	private volatile PeriodicLoopService m_poller;
 	// 로봇 트윈의 변수 카탈로그. 최초 조회시 채워지고, 조회 실패시 null로 초기화된다.
@@ -106,9 +104,6 @@ public class RobotTwinEndpoint implements Endpoint<RobotTwinEndpointConfig> {
 
     @Override
     public void start() throws EndpointException {
-		// 등록된 모든 메시지 핸들러에 대해 ElementLocation을 활성화한다.
-    	FStream.from(m_handlers.values()).forEach(h -> h.initialize(m_faaast));
-
 		s_logger.info("Starting service: {}", this);
 
 //		// 로봇 트윈의 전체 상태를 주기적으로 조회하는 서비스를 시작시킨다.
@@ -161,7 +156,7 @@ public class RobotTwinEndpoint implements Endpoint<RobotTwinEndpointConfig> {
 
 	@Override
 	public String toString() {
-		return String.format("ROS2Endpoint[conn=%s, twin=%s, pollInterval=%s]",
+		return String.format("RobotTwinEndpoint[conn=%s, twin=%s, pollInterval=%s]",
 							m_rtConnConfig, m_config.getTwinId(), m_config.getPollInterval());
 	}
 

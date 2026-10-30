@@ -1,8 +1,11 @@
-package mdt.endpoint.ros2.msg;
+package mdt.endpoint.rt;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
+ * ROS 메시지 header의 timestamp({@code sec}, {@code nanosec}).
+ * <p>
+ * RobotTwin 변수 값({@link RobotTwinVariable#getStamp()})의 원본 생성 시각을 담는다.
  *
  * @author Kang-Woo Lee (ETRI)
  */

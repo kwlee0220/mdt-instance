@@ -78,7 +78,6 @@ import mdt.endpoint.MDTManagerHealthMonitorConfig;
 import mdt.endpoint.companion.ProgramCompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
 import mdt.endpoint.reconnector.MDTManagerReconnectorConfig;
-import mdt.endpoint.ros2.Ros2EndpointConfig;
 import mdt.endpoint.rt.RobotTwinEndpointConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.persistence.ConcurrentPersistenceConfig;
@@ -527,16 +526,6 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			FOption.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
 				configs.add(new MqttEndpointConfig(mqttConf));
 				getLogger().info("Register MQTT endpoint: {}", mqttConf);
-			});
-			
-			// ROS2 endpoint 설정 정보가 있으면 추가한다.
-			FOption.accept(instConf.getServiceEndpoints().getRos2(), rosConf -> {
-				Ros2EndpointConfig c = new Ros2EndpointConfig();
-				c.setConnectionConfig(rosConf.getConnectionConfig());
-				c.setMessages(rosConf.getMessages());
-				configs.add(c);
-				
-				getLogger().info("Register ROS2 endpoint: {}", c);
 			});
 			
 			// RobotTwin endpoint 설정 정보가 있으면 추가한다.

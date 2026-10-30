@@ -21,7 +21,6 @@ import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
 
 import mdt.client.support.MqttBrokerConfig;
-import mdt.endpoint.ros2.RosBridgeConnectionConfig;
 import mdt.endpoint.rt.RobotTwinConfig;
 import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
@@ -41,7 +40,6 @@ public final class MDTGlobalConfigurations {
 	public static final String CONFIG_GROUP_JDBC = "jdbcs";
 	public static final String CONFIG_GROUP_MQTT_BROKER = "mqttBrokers";
 	public static final String CONFIG_GROUP_OPC_UA = "opcuas";
-	public static final String CONFIG_GROUP_ROS_BRIDGE = "rosBridges";
 	public static final String CONFIG_GROUP_ROBOT_TWIN = "robotTwins";
 	
 	private static File s_globalConfigFile;
@@ -116,9 +114,6 @@ public final class MDTGlobalConfigurations {
 		return getConfig(CONFIG_GROUP_OPC_UA, configName, OpcUaConnectionConfig.class);
 	}
 	
-	public static RosBridgeConnectionConfig getRosBridgeConfig(String configName) throws ResourceNotFoundException  {
-		return getConfig(CONFIG_GROUP_ROS_BRIDGE, configName, RosBridgeConnectionConfig.class);
-	}
 
 	public static RobotTwinConfig getRobotTwinConfig(String configName) throws ResourceNotFoundException  {
 		return getConfig(CONFIG_GROUP_ROBOT_TWIN, configName, RobotTwinConfig.class);

@@ -53,7 +53,7 @@ flowchart LR
         DB[(JDBC DB)]
         MQ[MQTT 브로커]
         OPC[OPC UA 서버]
-        RT[로봇 트윈 / rosbridge]
+        RT[로봇 트윈]
         PRG[외부 프로그램 · 스크립트<br/>원격 HTTP 연산]
     end
 
@@ -76,7 +76,7 @@ flowchart LR
 | AAS REST API | FA³ST의 HTTP 엔드포인트. HTTPS로만 열리며 인증서(PKCS12 키 저장소)가 필요하다. |
 | 영속성 스택 | 초기 모델(`model.json`)을 메모리에 보관하고, 설정된 요소는 외부 데이터소스와 값을 주고받는다. |
 | 연산 제공자 | AAS Operation 호출을 Java·프로그램·스크립트·HTTP 구현으로 연결한다. |
-| 부가 엔드포인트 | Manager 연결 유지, MQTT·ROS2 메시지 수신, 동반 프로그램 실행처럼 서비스와 함께 시작·종료되는 작업을 맡는다. |
+| 부가 엔드포인트 | Manager 연결 유지, MQTT 메시지 수신, 동반 프로그램 실행처럼 서비스와 함께 시작·종료되는 작업을 맡는다. |
 
 ## 2. 주요 기능
 
@@ -89,8 +89,7 @@ flowchart LR
 | AAS Operation 구현 연결 (Java, Program, Script, HTTP) | `operations` | `mdt.assetconnection` | [assetconnection-guide](docs/assetconnection-guide.md) |
 | 로봇 이동·그리퍼·장면 관측 연산 | `operations.javas` | `mdt.assetconnection.operation.robot` | [robot-twin-operation-guide](docs/robot-twin-operation-guide.md) |
 | MQTT 메시지로 요소 값 갱신 | `serviceEndpoints.mqtt` | `mdt.endpoint.mqtt` | [endpoint-guide §4](docs/endpoint-guide.md) |
-| rosbridge(ROS2) 메시지로 관절 값 갱신 | `serviceEndpoints.ros2` | `mdt.endpoint.ros2` | [endpoint-guide §5](docs/endpoint-guide.md) |
-| 인스턴스와 함께 외부 프로그램 실행·재시작 | `serviceEndpoints.companion` | `mdt.endpoint.companion` | [endpoint-guide §7](docs/endpoint-guide.md) |
+| 인스턴스와 함께 외부 프로그램 실행·재시작 | `serviceEndpoints.companion` | `mdt.endpoint.companion` | [endpoint-guide §6](docs/endpoint-guide.md) |
 | 동시 요청 직렬화 | `persistenceStacks` | `mdt.persistence` | [7장](#7-영속성-스택) |
 | Manager 상태 확인·재등록 | 실행 방식에 따라 자동 등록 | `mdt.endpoint`, `mdt.endpoint.reconnector` | [endpoint-guide §3](docs/endpoint-guide.md) |
 
@@ -110,7 +109,7 @@ src/main/java/mdt/
 │       └── robot/            로봇 트윈 연산 제공자
 ├── endpoint/                 Manager 상태 확인과 부가 엔드포인트
 │   ├── reconnector/          EXTERNAL 인스턴스의 Manager 재등록
-│   ├── mqtt/  ros2/  rt/     메시지 수신, 로봇 트윈 엔드포인트
+│   ├── mqtt/  rt/            메시지 수신, 로봇 트윈 엔드포인트
 │   └── companion/            동반 프로그램 실행
 ├── ksx9101/                  KS X 9101 제조 데이터 JPA 매핑
 └── ext/                      특정 과제용 연산 구현(RCK 프레스 시뮬레이션 등)
@@ -287,7 +286,7 @@ flowchart TD
 | `keyStoreFile`, `keyStorePassword`, `keyPassword` | 경로, 문자열 | 인증서 키 저장소. 두 암호 중 하나만 적으면 다른 하나도 같은 값을 쓴다 |
 | `heartbeatInterval` | 기간 (예: `60s`) | `external` 방식의 Manager 재등록 주기 |
 | `managerCheckInterval` | 기간 (예: `10s`) | `jar` 방식의 Manager 상태 확인 주기 |
-| `serviceEndpoints` | 객체 | 부가 엔드포인트: `mqtt`, `ros2`, `robotTwin`, `companion` |
+| `serviceEndpoints` | 객체 | 부가 엔드포인트: `mqtt`, `robotTwin`, `companion`, `companions` |
 | `assetVariables` | 배열 | 외부 데이터소스와 연결할 요소 목록 |
 | `timeSeriesSubmodels` | 배열 | 시계열 Submodel 목록 |
 | `persistenceStacks` | 배열 | 추가 영속성 계층 (현재는 `{"@type": "concurrent"}`만 지원) |
@@ -375,7 +374,6 @@ DB·브로커처럼 여러 인스턴스가 함께 쓰는 연결 정보는 전역
   "jdbcs":       { "default": { "jdbcUrl": "jdbc:postgresql://localhost:5432/mdt", "user": "mdt", "password": "…" } },
   "mqttBrokers": { "default": { "brokerUrl": "tcp://localhost:1883" } },
   "opcuas":      { "line1":   { "serverEndpoint": "opc.tcp://localhost:4840" } },
-  "rosBridges":  { "robot":   { "serverUri": "ws://localhost:9090" } },
   "robotTwins":  { "panda":   { "robotTwinBaseUrl": "http://localhost:8811", "twinId": "panda" } }
 }
 ```
@@ -385,7 +383,6 @@ DB·브로커처럼 여러 인스턴스가 함께 쓰는 연결 정보는 전역
 | `jdbcs` | JDBC 자산 변수, 시계열 조회 |
 | `mqttBrokers` | MQTT 수신 엔드포인트, MQTT 자산 변수 |
 | `opcuas` | OPC UA 자산 변수 |
-| `rosBridges` | ROS2 엔드포인트 |
 | `robotTwins` | 로봇 트윈 상태 연동과 로봇 연산 |
 
 이름을 지정하지 않으면 `default` 항목을 쓰고, `default`가 없으면 그룹의 첫 항목을 쓴다.
@@ -437,7 +434,7 @@ flowchart TD
 
 | 문서 | 다루는 내용 |
 | --- | --- |
-| [mdt.endpoint 패키지](docs/endpoint-guide.md) | Manager 연결 관리, MQTT·ROS2 수신, RobotTwin 엔드포인트, 동반 프로그램의 설정·생명주기·확장 방법 |
+| [mdt.endpoint 패키지](docs/endpoint-guide.md) | Manager 연결 관리, MQTT 수신, RobotTwin 엔드포인트, 동반 프로그램의 설정·생명주기·확장 방법 |
 | [mdt.assetconnection 패키지](docs/assetconnection-guide.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
 | [로봇 트윈 연산 Provider](docs/robot-twin-operation-guide.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |
 | [mdt.persistence.asset 패키지](docs/asset-persistence-guide.md) | 자산 변수 계약과 JDBC·HTTP·MQTT·OPC UA·RobotTwin 연동 설정 |

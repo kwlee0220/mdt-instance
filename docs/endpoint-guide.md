@@ -1,7 +1,7 @@
 # mdt.endpoint 패키지 기술문서
 
 `mdt.endpoint`는 MDT 인스턴스의 FA³ST 서비스 생명주기에 외부 통신과 백그라운드 작업을 연결한다.
-MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,
+MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,
 외부 동반 프로세스를 실행한다.
 
 이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 28일의 작업 트리를 기준으로
@@ -10,8 +10,10 @@ MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결
 
 - MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
   시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
-- Companion(7절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
+- Companion(6절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
 - Audit: 기본 로더에 등록 경로가 없어 쓰이지 않던 `mdt.endpoint.audit`(주기적 JDBC 기록) 패키지를 삭제하고 관련 절을 뺐다
+- ROS2: `serviceEndpoints.ros2`(rosbridge `joint_states` 수신) 엔드포인트를 삭제하고 관련 절을 뺐다. 이를 쓰던 예전 모델(`panda_org`)도
+  함께 정리했으며, 로봇 관절 상태는 RobotTwin 자산 변수로 받는다([asset-persistence-guide](asset-persistence-guide.md))
 
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
 RobotTwin 조회처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
@@ -27,13 +29,12 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | 루트 / `MDTManagerHealthMonitor` | Manager 생존 확인, 실패 시 인스턴스 JVM 종료 | `JAR` 유형에 자동 등록 |
 | `reconnector` / `MDTManagerReconnector` | 외부 인스턴스의 주기적 등록·연결 유지 | `EXTERNAL` 유형에 자동 등록 |
 | `mqtt` / `MqttEndpoint` | MQTT 메시지 → AAS 요소 값 갱신 | `serviceEndpoints.mqtt` |
-| `ros2` / `Ros2Endpoint` | rosbridge WebSocket 메시지 → AAS 관절 위치 갱신 | `serviceEndpoints.ros2` |
 | `rt` / `RobotTwinEndpoint` | RobotTwin REST 상태 조회용 코드 | `serviceEndpoints.robotTwin`; **조회 루프는 비활성** |
 | `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
 
 연산 호출은 [mdt.assetconnection](assetconnection-guide.md), 저장 계층의 값 접근은
 [mdt.persistence.asset](asset-persistence-guide.md)에서 다룬다.
-이 패키지의 MQTT·ROS2는 수신 이벤트에 따라 FA³ST에 값 변경 요청을 전달하는 역할이다.
+이 패키지의 MQTT 엔드포인트는 수신 이벤트에 따라 FA³ST에 값 변경 요청을 전달하는 역할이다.
 
 ## 2. 등록과 공통 생명주기
 
@@ -47,7 +48,7 @@ flowchart TD
     I --> S[start: 위치 활성화와 비동기 작업 시작]
     S --> R[메시지 처리 또는 백그라운드 작업]
     R --> T[stop: 작업 중지 요청]
-    Q[MQTT / ROS2 메시지] --> F[FaaastRuntime]
+    Q[MQTT 메시지] --> F[FaaastRuntime]
     F --> P[ServiceContext.execute: AAS 값 PATCH]
     P --> V[설정된 Persistence 계층]
 ```
@@ -74,7 +75,7 @@ HTTP 엔드포인트의 포트는 `instanceEndpoint`에서 추출하며, 인증�
 
 ### 2.1 전역 연결 설정
 
-MQTT와 ROS2는 인스턴스 설정에서 연결 이름을 지정하고, 전역 설정 파일에서 상세 내용을 읽는다.
+MQTT 엔드포인트는 인스턴스 설정에서 연결 이름을 지정하고, 전역 설정 파일에서 상세 내용을 읽을 수 있다.
 다음은 전역 설정 파일의 일부다.
 
 ```json
@@ -84,11 +85,6 @@ MQTT와 ROS2는 인스턴스 설정에서 연결 이름을 지정하고, 전역 
       "brokerUrl": "tcp://localhost:1883",
       "connectionTimeout": "10s",
       "keepAliveInterval": "30s"
-    }
-  },
-  "rosBridges": {
-    "robot": {
-      "serverUri": "ws://localhost:9090"
     }
   }
 }
@@ -106,7 +102,7 @@ MQTT 엔드포인트의 `mqttBrokerConfig`는 MQTT 자산 변수와 같은 규�
 
 ### 2.2 AAS 요소 위치
 
-MQTT 구독과 ROS2 핸들러는 `ElementLocations.parseStringExpr()`로 대상 요소를 지정한다.
+MQTT 구독은 `ElementLocations.parseStringExpr()`로 대상 요소를 지정한다.
 
 | 표현 | 의미 | 예 |
 | --- | --- | --- |
@@ -473,112 +469,9 @@ JVM이 끝나면 프로세스와 함께 연결이 정리된다.
 [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
 [MqttBrokerConfig](../../mdt-client/src/main/java/mdt/client/support/MqttBrokerConfig.java).
 
-## 5. ROS2 / rosbridge 엔드포인트
+## 5. RobotTwin 엔드포인트와 상태 DTO
 
-`Ros2Endpoint`는 rosbridge WebSocket에 접속하여 설정된 토픽을 구독한다.
-현재 JSON 다형성 등록에서 지원하는 메시지 핸들러는 `messageType: "joint_states"` 하나다.
-
-### 5.1 설정과 매핑
-
-```json
-{
-  "serviceEndpoints": {
-    "ros2": {
-      "connectionConfig": "robot",
-      "messages": [
-        {
-          "messageType": "joint_states",
-          "topic": "/joint_states",
-          "element": "RobotState:Joints",
-          "mappings": [
-            {"name": "joint1", "subPath": "Joint1"},
-            {"name": "joint2", "subPath": "Joint2"}
-          ]
-        }
-      ]
-    }
-  }
-}
-```
-
-`connectionConfig`는 전역 `rosBridges` 그룹의 이름이며 기본값은 `default`다.
-`messages`는 기본 목록이 초기화되지 않으므로 명시해야 한다.
-`element`는 갱신할 상위 요소, `subPath`는 그 요소 내부의 Property 경로다.
-대상 Property는 관절 위치의 double 값 표현을 받을 수 있도록 정의해야 한다.
-
-`Ros2EndpointConfig.MDTConfig`에는 `reconnectInterval`이 있고 기본값은 10초다.
-그러나 `MDTInstanceMain`은 ROS2 설정을 새 래퍼에 복사할 때 `connectionConfig`와 `messages`만 전달한다.
-따라서 표준 `serviceEndpoints.ros2` 경로에서는 지정한 `reconnectInterval`이 반영되지 않고 10초가 사용된다.
-설정을 보존하려면 로더 수정 또는 해당 설정을 직접 전달하는 별도 등록 경로가 필요하다.
-
-### 5.2 메시지 처리
-
-연결될 때마다 토픽별로 다음 구독 메시지를 보낸다.
-
-```json
-{"op": "subscribe", "topic": "/joint_states"}
-```
-
-수신 프레임 예시는 다음과 같다.
-
-```json
-{
-  "op": "publish",
-  "topic": "/joint_states",
-  "msg": {
-    "header": {"stamp": {"sec": 1700000000, "nanosec": 0}, "frame_id": "base"},
-    "name": ["joint1", "joint2"],
-    "position": [0.25, -0.1],
-    "velocity": [],
-    "effort": []
-  }
-}
-```
-
-핸들러는 초기화 때 대상 요소를 읽어 `m_buffer`에 보관한다.
-수신 시 `name`과 `position`을 zip하고, `mappings`에 등록된 이름의 Property를 찾아 값을 변경한 뒤
-**버퍼 전체의 value-only 값**을 FA³ST에 반영한다.
-`velocity`, `effort`, `header.stamp`는 이 갱신 경로에서 사용하지 않는다.
-`MsgPayload.getTimestamp()`가 있어도 과거 메시지 제거에 쓰이는 것은 아니다.
-
-배열 길이 일치, 단위, 관절 범위, 시간 순서에 대한 검증은 별도로 없다.
-핸들러가 보관한 전체 버퍼를 반복 사용하므로, 같은 상위 요소를 다른 생산자가 함께 갱신하면
-그 변경을 이전 버퍼 값으로 덮어쓸 수 있다.
-
-토픽을 키로 핸들러를 저장하므로 같은 토픽에 여러 핸들러를 지정하면 뒤의 항목으로 대체된다.
-수신부는 `topic`으로 바로 핸들러를 조회하며 `op` 필터링과 미등록 토픽 검증은 수행하지 않는다.
-JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸들러 등에서 발생하는 다른 예외는
-상위 WebSocket listener 실행부에서 무시될 수 있다.
-
-### 5.3 재연결과 생명주기 제한
-
-`AutoReconnectingWebSocketClient`는 `WebSocketReconnector`로 접속을 반복 시도한다.
-소켓이 열리면 현재 연결을 저장하고 구독 callback을 실행한다.
-연결 종료 callback에서는 `remote=true`일 때 재연결을 시작한다.
-
-현재 구현에는 다음 보완점이 있다.
-
-- Guava `AbstractService`의 `notifyStarted()`와 `notifyStopped()` 호출이 없어 서비스 상태 전이가 완결되지 않는다.
-- `doStop()`은 재접속 작업 취소만 구현하며, 활성 WebSocket을 닫는 처리가 없다.
-  위 상태 전이 누락 때문에 `stopAsync()`가 정상적인 종료 경로에 도달하는 것도 기대할 수 없다.
-- 연결 성공 때 `awaitConnected()` 대기자를 깨우는 명시적 signal 호출이 없어 대기 API도 검증이 필요하다.
-- 원격 종료 후 재연결 분기에는 서비스 종료 요청 여부를 검사하는 조건이 없다.
-- listener는 공통 lock 안에서 호출된다. 느린 값 갱신이 다른 callback 처리를 지연시킬 수 있다.
-- 인자 없는 `send()`는 빈 구현이다. 구독 전송은 callback에 전달된 실제 WebSocket의 `send()`를 사용한다.
-
-따라서 현재 코드를 사용할 때 연결 여부와 서비스 상태를 구분해야 하며,
-정상 종료와 장애 후 재연결까지 검증된 통신 계층으로 가정해서는 안 된다.
-
-근거: [Ros2Endpoint](../src/main/java/mdt/endpoint/ros2/Ros2Endpoint.java),
-[Ros2EndpointConfig](../src/main/java/mdt/endpoint/ros2/Ros2EndpointConfig.java),
-[Ros2MessageHandler](../src/main/java/mdt/endpoint/ros2/msg/Ros2MessageHandler.java),
-[JointStateMessageHandler](../src/main/java/mdt/endpoint/ros2/msg/JointStateMessageHandler.java),
-[AutoReconnectingWebSocketClient](../src/main/java/mdt/endpoint/ros2/AutoReconnectingWebSocketClient.java),
-[WebSocketReconnector](../src/main/java/mdt/endpoint/ros2/WebSocketReconnector.java).
-
-## 6. RobotTwin 엔드포인트와 상태 DTO
-
-### 6.1 현재 동작 범위
+### 5.1 현재 동작 범위
 
 **현재 `RobotTwinEndpoint`의 polling 시작·종료 코드는 주석 처리되어 있다.**
 `init()`은 URL과 REST 클라이언트를 준비하지만, `start()`는 핸들러 초기화와 로그 출력만 수행한다.
@@ -602,9 +495,9 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 
 `pollInterval` 기본값은 1초, `reconnectInterval` 기본값은 10초다.
 현재 polling이 비활성이므로 조회 주기가 적용되지 않으며, `reconnectInterval`은 조회 보조 코드에서도 쓰이지 않는다.
-로그용 `toString()`은 `ROS2Endpoint`라는 이름과 미설정 연결 필드를 출력하는 상태다.
+로그용 `toString()`은 `RobotTwinEndpoint[conn=..., twin=..., pollInterval=...]` 형식이며, `conn`은 현재 설정되지 않은 연결 필드다.
 
-### 6.2 구현되어 있으나 호출되지 않는 조회 절차
+### 5.2 구현되어 있으나 호출되지 않는 조회 절차
 
 `pollRobotTwinState()` 등 private 메서드에는 다음 절차가 구현되어 있다.
 
@@ -639,7 +532,7 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 성공 중에는 카탈로그를 다시 읽지 않으며, 빈 목록도 캐시되어 이후 조회를 건너뛴다.
 이는 메서드 본문 분석 결과이며, 현재 엔드포인트가 수행하는 주기 작업을 설명하는 것은 아니다.
 
-### 6.3 DTO 계약
+### 5.3 DTO 계약
 
 | 타입 / 필드 | 의미 |
 | --- | --- |
@@ -669,7 +562,7 @@ JSON 읽기 `IOException`은 로그에 남지만, 누락된 topic이나 null 핸
 [RobotTwinStateSnapshot](../src/main/java/mdt/endpoint/rt/RobotTwinStateSnapshot.java),
 [전역 RobotTwinConfig](../src/main/java/mdt/endpoint/rt/RobotTwinConfig.java).
 
-## 7. Companion 외부 프로그램
+## 6. Companion 외부 프로그램
 
 Companion은 MDT 인스턴스가 떠 있는 동안 **함께 실행해 두어야 하는 외부 프로그램**을 관리한다.
 센서 데이터를 가공해 AAS에 써 넣는 Python 스크립트, 예측 결과를 MQTT로 내보내는 보조 프로세스처럼
@@ -685,7 +578,7 @@ AAS Operation이 호출될 때마다 프로그램을 한 번씩 실행하는 `Pr
 | 입출력 | 없음(프로그램이 직접 MDT·MQTT·DB에 접근) | Operation 입력·출력 인자 |
 | 설정 위치 | `serviceEndpoints.companion` / `companions` | `operations.programs` |
 
-### 7.1 구성 요소와 등록 흐름
+### 6.1 구성 요소와 등록 흐름
 
 ```mermaid
 flowchart LR
@@ -709,10 +602,10 @@ flowchart LR
 | `ServiceShutdownHook` | `utils.async.command` | JVM이 종료될 때 서비스를 멈추고 정리를 기다리는 hook |
 
 동반 프로그램 하나에 `ProgramCompanion` 하나가 만들어진다. 따라서 여러 프로그램을 등록하면 각각 따로 시작·재시작·중지되고,
-한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT·ROS2·RobotTwin
+한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT·RobotTwin
 엔드포인트 다음에 놓이며, 단일 `companion`이 먼저, 이어서 `companions`가 설정 파일에 적힌 순서대로 시작된다.
 
-### 7.2 설정 방법
+### 6.2 설정 방법
 
 #### 단일 프로그램
 
@@ -780,19 +673,19 @@ flowchart LR
 | `commandLine` | (필수) | 실행 파일과 인자 목록. 셸을 거치지 않으므로 파이프나 리다이렉션이 필요하면 `["sh", "-c", "..."]`로 적는다 |
 | `workingDirectory` | 인스턴스의 현재 디렉터리 | 프로그램 실행 위치이자 `application.log`가 생기는 위치. 상대 경로는 인스턴스의 현재 디렉터리 기준 |
 | `environmentFile` | 없음 | `KEY=VALUE` 형식의 환경 변수 파일. 파일이 없으면 무시한다 |
-| `environments` | 빈 맵 | 자식 프로세스에 줄 환경 변수. 로더가 인스턴스 변수와 병합한다(7.3) |
-| `restartPolicy` | `ALWAYS` | `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO`. `on-completed`처럼 소문자·하이픈 표기도 된다(7.5) |
+| `environments` | 빈 맵 | 자식 프로세스에 줄 환경 변수. 로더가 인스턴스 변수와 병합한다(6.3) |
+| `restartPolicy` | `ALWAYS` | `ALWAYS`, `ON_COMPLETED`, `ON_FAILED`, `NO`. `on-completed`처럼 소문자·하이픈 표기도 된다(6.5) |
 | `restartDelay` | `5s` | 재시작 전에 기다리는 시간 |
 | `maxRestartDelay` | `1m` | 짧은 실행이 이어질 때 늘어나는 재시작 지연의 상한. `restartDelay` 이하이면 지연을 늘리지 않는다 |
 | `stableRunTime` | `10s` | 이보다 짧게 끝난 실행을 "짧은 실행"으로 본다 |
 | `restartLimit` | `0` (제한 없음) | 양수이면 `restartLimitInterval` 안에 이 횟수를 넘겨 재시작하려 할 때 서비스를 FAILED로 만든다 |
 | `restartLimitInterval` | `1m` | `restartLimit`을 세는 구간 |
 | `startTimeout` | `30s` | 첫 실행이 이 시간 안에 시작되지 못하면 서비스를 FAILED로 만든다. `0s`이면 제한 없음 |
-| `required` | `false` | `true`이면 프로그램이 시작되지 못할 때 인스턴스 시작도 실패시킨다(7.4) |
+| `required` | `false` | `true`이면 프로그램이 시작되지 못할 때 인스턴스 시작도 실패시킨다(6.4) |
 
 시간 값은 `"5s"`, `"1m"`, `"PT5S"` 형식을 모두 받는다.
 
-### 7.3 변수 치환과 환경 변수
+### 6.3 변수 치환과 환경 변수
 
 Companion 설정에서 값을 바꿔 넣는 방법은 두 가지이고, 적용 시점이 다르다.
 
@@ -834,7 +727,7 @@ Companion 설정에서 값을 바꿔 넣는 방법은 두 가지이고, 적용 �
 > `Shutting down Service ...`, 실행 취소 시의 `cancelled: ...` 로그에 그대로 찍힌다. DB 비밀번호 같은 값은
 > `environments`나 `environmentFile`로 넘기고 프로그램이 환경 변수에서 읽게 한다.
 
-### 7.4 생명주기
+### 6.4 생명주기
 
 ```mermaid
 sequenceDiagram
@@ -866,11 +759,11 @@ sequenceDiagram
 | 단계 | 동작 |
 | --- | --- |
 | `init()` | 설정을 검사한다(`programConfig`가 없으면 `IllegalArgumentException`). 이름, `required`, `startTimeout`, 명령행을 이때 확정하고, `ProgramService`를 만들고, JVM 종료 hook을 등록한다. 이후 설정 객체를 바꿔도 실행·대기·로그에는 반영되지 않는다 |
-| `start()` | `ProgramService`를 시작한다. `required=false`면 바로 반환하고, `true`면 7.4.1처럼 시작을 확인한다 |
-| 실행 중 | 프로그램이 끝날 때마다 재시작 정책을 적용한다(7.5) |
-| `stop()` | 중지를 요청하고 자식 프로세스 정리가 끝날 때까지 최대 3초 기다린다(7.6) |
+| `start()` | `ProgramService`를 시작한다. `required=false`면 바로 반환하고, `true`면 6.4.1처럼 시작을 확인한다 |
+| 실행 중 | 프로그램이 끝날 때마다 재시작 정책을 적용한다(6.5) |
+| `stop()` | 중지를 요청하고 자식 프로세스 정리가 끝날 때까지 최대 3초 기다린다(6.6) |
 
-`ProgramService`의 상태는 다음과 같이 바뀐다. FAILED로 가는 모든 경로에서 companion은 ERROR 로그를 남긴다(7.7).
+`ProgramService`의 상태는 다음과 같이 바뀐다. FAILED로 가는 모든 경로에서 companion은 ERROR 로그를 남긴다(6.7).
 
 ```mermaid
 stateDiagram-v2
@@ -887,7 +780,7 @@ stateDiagram-v2
 여기서 **RUNNING은 자식 프로세스가 생성되었다는 뜻일 뿐**, 프로그램이 일할 준비를 마쳤다는 뜻이 아니다.
 실행하자마자 스크립트 오류로 죽는 프로그램도 일단 RUNNING이 되고, 그다음부터는 재시작 정책을 따른다.
 
-#### 7.4.1 필수 프로그램(`required`)
+#### 6.4.1 필수 프로그램(`required`)
 
 프로그램이 없으면 인스턴스가 제 역할을 못 하는 경우 `required`를 `true`로 둔다.
 
@@ -912,7 +805,7 @@ flowchart LR
 `required`는 프로세스가 생성되는지만 확인한다. 포트가 열렸는지, 모델을 다 읽었는지 같은 업무 준비 상태는 확인하지 않으며,
 여러 companion을 적은 순서대로 시작해도 앞 프로그램의 준비가 끝난 뒤 다음 프로그램이 시작된다는 보장은 없다.
 
-### 7.5 재시작 정책
+### 6.5 재시작 정책
 
 프로그램이 스스로 끝났을 때 서비스가 어떻게 되는지는 `restartPolicy`가 정한다.
 `stop()`이나 JVM 종료로 멈춘 경우에는 정책과 관계없이 재시작하지 않는다.
@@ -936,7 +829,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 `"restartLimit": 5, "restartLimitInterval": "10m"`처럼 한도를 둔다. 한도를 넘으면
 `restart limit exceeded: ...` 원인으로 FAILED가 되고 ERROR 로그가 남는다.
 
-### 7.6 종료와 프로세스 정리
+### 6.6 종료와 프로세스 정리
 
 자식 프로세스를 정리하는 경로는 두 가지다. 두 경로 모두 같은 기준으로 정리 완료를 판단한다.
 
@@ -959,7 +852,7 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 - 자식 프로세스가 스스로 데몬이 되어 부모와의 관계를 끊은 경우. 하위 프로세스는 부모-자식 관계를 따라가며 찾기 때문에
   그 사이에 떨어져 나간 프로세스는 놓칠 수 있고, 프로세스 그룹 단위로 함께 종료하는 장치는 없다.
 
-### 7.7 로그와 문제 확인
+### 6.7 로그와 문제 확인
 
 | 위치 | 내용 |
 | --- | --- |
@@ -987,12 +880,12 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 | 증상 | 확인할 것 |
 | --- | --- |
 | 프로그램이 아예 뜨지 않음 | `companion program failed ... state=STARTING` 로그, `commandLine`의 실행 파일 경로, `workingDirectory` 존재 여부 |
-| 인자에 `${...}`가 그대로 들어감 | `Register Companion endpoint` 줄. 치환하지 못한 참조는 글자 그대로 남는다(7.3) |
+| 인자에 `${...}`가 그대로 들어감 | `Register Companion endpoint` 줄. 치환하지 못한 참조는 글자 그대로 남는다(6.3) |
 | 프로그램이 계속 재시작됨 | `application.log`의 마지막 출력, `backing off` 로그. 실패로 드러내려면 `restartLimit` 설정 |
 | 두 프로그램의 출력이 섞임 | 두 companion의 `workingDirectory`가 같은지 |
-| 인스턴스 종료 후 프로세스가 남음 | 인스턴스를 `kill -9`로 끝냈는지, 프로그램이 데몬으로 떨어져 나가는지(7.6) |
+| 인스턴스 종료 후 프로세스가 남음 | 인스턴스를 `kill -9`로 끝냈는지, 프로그램이 데몬으로 떨어져 나가는지(6.6) |
 
-### 7.8 제약
+### 6.8 제약
 
 - 프로그램의 업무 준비 상태를 확인하는 readiness 검사는 없다. `required`도 프로세스 생성까지만 확인한다.
 - Companion의 실패는 로그로만 드러난다. Manager에 보이는 인스턴스 상태는 바뀌지 않고, 실행 중 실패로 인스턴스를 멈추지도 않는다.
@@ -1012,16 +905,12 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 [ServiceShutdownHook](../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
 utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide.md).
 
-## 8. 확장과 검증 지점
+## 7. 확장과 검증 지점
 
 새 엔드포인트를 추가하려면 FA³ST `Endpoint<C>`와 `EndpointConfig`를 구현하고,
 인스턴스 JSON DTO를 `ServiceEndpointConfigs`에 추가한 뒤 `MDTInstanceMain.loadEndpointConfigs()`에서
 래퍼 설정을 생성해야 한다. 클래스가 존재하는 것만으로 기본 로더가 자동 등록하지 않는다.
 초기화·연결 완료·중지 완료를 분리하고, 비동기 서비스 상태 전이와 자원 해제도 함께 구현해야 한다.
-
-ROS2 메시지 타입 확장은 `Ros2MessageHandler<T>`의 `getTopic`, `initialize`, `readMessage`, `update`를
-구현하고 `@JsonSubTypes`에 `messageType` 이름을 등록한다.
-한 토픽에서 여러 대상을 갱신해야 한다면 현재 토픽별 단일 핸들러 맵 구조도 함께 검토해야 한다.
 
 운영 전 검증은 다음 동작에 초점을 맞출 수 있다.
 
@@ -1029,12 +918,11 @@ ROS2 메시지 타입 확장은 `Ros2MessageHandler<T>`의 `getTopic`, `initiali
 | --- | --- |
 | Manager | 첫 호출 시점, 일시 장애 시 JVM 종료, registry 등록·해제 요청, INFO 수준 변경 영향 |
 | MQTT | 시작 로그의 `subscriptions=n/m`과 구독 제외 로그, 값 형식·대상 타입 불일치 시 실패 로그와 빈도 제한, `delivery`·`overflowPolicy`별 반영(밀릴 때와 상한에 이를 때), 대기 중 `stop()`이 제한 시간 안에 끝나는지, broker 재연결 후 재구독 |
-| ROS2 | 매핑·배열 길이, 미등록 topic·상태 프레임, 오래된 메시지, 동시 값 갱신, 연결 종료·재연결 |
 | RobotTwin | polling 활성화와 실제 호출 경로를 먼저 구현한 뒤 카탈로그 변경·빈 목록·오류·quality 처리 |
 | Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
-실제 Manager·rosbridge·RobotTwin에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+실제 Manager·RobotTwin에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
 MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 종료와 연결된 상태의 잘못된 토픽 거부를 확인했다
 (`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
 Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
