@@ -449,7 +449,7 @@ RPC 클라이언트에는 세션 DELETE 취소 기능이 있지만 `OperationPro
 ```
 
 연산 경로는 `/api/v1/robot_twins/<twinId>/operations/` 아래에 붙는다.
-현재 구현은 각 클래스의 고정 경로를 사용하며 `RobotTwinConfig.operations` 맵을 읽지 않는다.
+각 제공자는 클래스마다 정해진 경로를 사용한다.
 
 | 제공자 | 경로 끝부분 | 입력 AAS 변수 | 출력 AAS 변수 |
 |---|---|---|---|
@@ -984,7 +984,7 @@ HTTP 오류는 `TwinException` 등 클라이언트의 예외로 즉시 전달하
 | Script | [ScriptOperationProvider](../src/main/java/mdt/assetconnection/operation/ScriptOperationProvider.java), [ScriptOperationProviderConfig](../src/main/java/mdt/assetconnection/operation/ScriptOperationProviderConfig.java) |
 | HTTP | [HttpOperationProvider](../src/main/java/mdt/assetconnection/operation/HttpOperationProvider.java), [HttpOperationProviderConfig](../src/main/java/mdt/assetconnection/operation/HttpOperationProviderConfig.java) |
 | Java 구현 보조 | [OperationVariables](../src/main/java/mdt/assetconnection/operation/OperationVariables.java), [AbstractJavaOperationProvider](../src/main/java/mdt/assetconnection/operation/AbstractJavaOperationProvider.java) |
-| 로봇 연산 | [operation.robot](../src/main/java/mdt/assetconnection/operation/robot), [RobotTwinConfig](../src/main/java/mdt/endpoint/rt/RobotTwinConfig.java) |
+| 로봇 연산 | [operation.robot](../src/main/java/mdt/assetconnection/operation/robot), [RobotTwinConfig](../src/main/java/mdt/RobotTwinConfig.java) |
 | AI 모델·전역 설정 | [AIModelOperation](../src/main/java/mdt/assetconnection/operation/AIModelOperation.java), [MDTGlobalConfigurations](../src/main/java/mdt/MDTGlobalConfigurations.java) |
 | 명령 실행·변수 파일 | [CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java), [CommandVariable](../../../common/utils/src/main/java/utils/async/command/CommandVariable.java) |
 | RPC 프로토콜 | [RESTfulAsyncRpcClient](../../../common/utils/src/main/java/utils/rpc/restful/RESTfulAsyncRpcClient.java) |

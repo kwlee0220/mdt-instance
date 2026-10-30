@@ -1,4 +1,4 @@
-package mdt.endpoint.rt;
+package mdt.persistence.asset.robot;
 
 import java.time.Instant;
 

@@ -21,10 +21,9 @@ import utils.Throwables;
 import utils.thread.Guard;
 
 import mdt.ElementLocation;
+import mdt.RobotTwinConfig;
 import mdt.aas.DataType;
 import mdt.aas.DataTypes;
-import mdt.endpoint.rt.RobotTwinConfig;
-import mdt.endpoint.rt.RobotTwinVariable;
 import mdt.model.MDTModelSerDe;
 import mdt.model.sm.SubmodelUtils;
 import mdt.model.sm.value.ElementValues;

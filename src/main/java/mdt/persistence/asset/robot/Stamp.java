@@ -1,4 +1,4 @@
-package mdt.endpoint.rt;
+package mdt.persistence.asset.robot;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

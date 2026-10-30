@@ -156,7 +156,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 }
 ```
 
-위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([asset-persistence-guide](asset-persistence-guide.md#연결-설정-지정)). `RobotTwinConfig.operations` 필드는 존재하지만 이 패키지의 현재 Provider는 그 맵으로 원격 연산 이름을 재지정하지 않는다.
+위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([asset-persistence-guide](asset-persistence-guide.md#연결-설정-지정)).
 
 ### 3.2 Pose와 관절 목표
 

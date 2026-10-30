@@ -21,7 +21,6 @@ import utils.jdbc.JdbcConfiguration;
 import utils.stream.FStream;
 
 import mdt.client.support.MqttBrokerConfig;
-import mdt.endpoint.rt.RobotTwinConfig;
 import mdt.ksx9101.GlobalPersistenceConfig;
 import mdt.ksx9101.JpaConfiguration;
 import mdt.model.MDTModelSerDe;

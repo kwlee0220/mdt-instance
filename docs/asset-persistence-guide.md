@@ -750,7 +750,7 @@ Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range
 
 모든 매핑을 캐시의 복사본에 적용하고, 처리가 끝나면 캐시를 교체한다. 따라서 중간에 변환 예외가 나면 일부 필드만 바뀐 캐시가 남지 않는다. 다만 누락되거나 `null`인 필드는 의도적으로 이전 값을 유지하므로, 정상 처리된 결과에도 이전 값과 새 값이 함께 있을 수 있다. JDBC·HTTP와 마찬가지로 캐시 갱신과 반환용 복사는 `Guard` 잠금 안에서 수행한다.
 
-관련 코드: [RobotStateVariable.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariable.java), [RobotStateVariableConfig.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariableConfig.java).
+관련 코드: [RobotStateVariable.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariable.java), [RobotStateVariableConfig.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariableConfig.java), [RobotTwinVariable.java](../src/main/java/mdt/persistence/asset/robot/RobotTwinVariable.java), [RobotTwinConfig.java](../src/main/java/mdt/RobotTwinConfig.java).
 
 ## 새 데이터소스 구현 방법
 

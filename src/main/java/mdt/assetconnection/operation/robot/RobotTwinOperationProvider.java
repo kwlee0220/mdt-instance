@@ -27,9 +27,9 @@ import utils.async.AbstractThreadedExecution;
 
 import mdt.ConnectionConfigRef;
 import mdt.MDTGlobalConfigurations;
+import mdt.RobotTwinConfig;
 import mdt.assetconnection.operation.AbstractJavaOperationProvider;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
-import mdt.endpoint.rt.RobotTwinConfig;
 import mdt.model.MDTModelSerDe;
 import mdt.robot.client.OperationFailedException;
 import mdt.robot.client.OperationResult;
