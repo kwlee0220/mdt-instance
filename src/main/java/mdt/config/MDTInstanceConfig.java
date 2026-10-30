@@ -38,7 +38,7 @@ public class MDTInstanceConfig {
 	private String m_managerCheckInterval;	// (External MDTInstance가 아닌 경우) MDTInstance에서 주기적으로
 											// MDTManager 상태 점검 주기
 	
-	// 본 MDTInstance에서 제공하는 서비스 엔드포인트 설정. mqtt, ros2, companion 등
+	// 본 MDTInstance에서 제공하는 서비스 엔드포인트 설정. mqtt, companion, companions
 	private @Nullable ServiceEndpointConfigs m_serviceEndpoints;
 	// 본 MDTInstance에 등록된 자산 변수 설정 목록. 예: Jdbc, mqtt, opcua 등
 	private List<AssetVariableConfig> m_assetVariables = Lists.newArrayList();
