@@ -662,7 +662,7 @@ simple은 반환값을 요소 타입에 맞춰 반영하고, 응답 상태가 Ba
 
 `AutoReconnectingOpcUaClient`는 비동기로 연결을 시도하고 연결이 끊기면 클라이언트를 정리한 뒤 재접속한다. 변수에서 지정하는 재시도 간격은 5초이고, 노드 조회 전에 연결된 클라이언트를 기다리는 제한도 5초다. 이 대기 제한은 뒤이어 수행되는 `readValue(...).get()` 전체의 제한 시간을 뜻하지 않는다.
 
-MQTT 변수와 달리 OPC UA 연결은 공유하지 않는다. 변수마다 생성자에서 자체 `AutoReconnectingOpcUaClient`를 만들어 시작하며, 현재 `close()`에서 이 클라이언트를 멈추지 않는다. 같은 서버를 읽는 변수가 많으면 그만큼 연결이 생긴다는 점을 고려한다.
+MQTT 변수와 달리 OPC UA 연결은 공유하지 않는다. 변수마다 생성자에서 자체 `AutoReconnectingOpcUaClient`를 만들어 시작하고, 영속성 계층이 멈출 때 `close()`에서 재연결 작업을 취소하고 연결을 끊는다. 같은 서버를 읽는 변수가 많으면 그만큼 연결이 생긴다는 점을 고려한다.
 
 `OpcUaServerReconnect`는 실제 연결 재시도를 수행한다. `PandaRobotOpcUaReader`는 별도의 로봇 조회 보조 코드이며 `AssetVariableConfigs`에 등록되는 변수 구현은 아니다.
 

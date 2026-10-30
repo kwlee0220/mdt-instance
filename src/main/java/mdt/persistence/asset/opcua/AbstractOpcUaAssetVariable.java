@@ -55,6 +55,13 @@ public abstract class AbstractOpcUaAssetVariable<T extends AssetVariableConfig> 
 		
 		setLogger(s_logger);
 	}
+	
+	@Override
+	public void close() {
+		// 변수마다 만든 OPC UA 클라이언트를 멈춘다(재연결 작업 취소와 연결 해제).
+		// stopAsync()는 여러 번 호출해도 안전하다.
+		m_reconnectingClient.stopAsync();
+	}
 
 	@Override
 	public boolean isUpdatable() {
