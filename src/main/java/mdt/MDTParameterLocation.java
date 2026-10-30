@@ -35,7 +35,8 @@ public class MDTParameterLocation implements ElementLocation {
 		m_submodelIdShort = dataSubmodel.getIdShort();
 		
 		String pathPrefix = SubmodelUtils.getParameterValuePrefix(dataSubmodel);
-		SubmodelElementList paramValues = SubmodelUtils.traverse(dataSubmodel, pathPrefix, SubmodelElementList.class);
+		SubmodelElementList paramValues = SubmodelUtils.traverse(dataSubmodel, pathPrefix,
+																	SubmodelElementList.class);
 		
 		// parameter expression에서 parameter ID를 추출하여 해당 parameter의 인덱스를 구한다.
 		m_elementPath = SubmodelUtils.resolveParameterValueElementPath(pathPrefix, m_paramExpr, paramId -> {

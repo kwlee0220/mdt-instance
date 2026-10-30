@@ -113,7 +113,6 @@ public final class MDTGlobalConfigurations {
 		return getConfig(CONFIG_GROUP_OPC_UA, configName, OpcUaConnectionConfig.class);
 	}
 	
-
 	public static RobotTwinConfig getRobotTwinConfig(String configName) throws ResourceNotFoundException  {
 		return getConfig(CONFIG_GROUP_ROBOT_TWIN, configName, RobotTwinConfig.class);
 	}
