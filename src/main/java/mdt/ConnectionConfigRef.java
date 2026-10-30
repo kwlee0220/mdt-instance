@@ -128,11 +128,31 @@ public record ConnectionConfigRef<T>(@Nullable String name, @Nullable T inline) 
 	 */
 	public static <T> ConnectionConfigRef<T> load(JsonNode jnode, String field, String legacyNameField,
 													Class<T> configClass) throws IOException {
-		JsonNode configNode = JacksonUtils.getFieldOrNull(jnode, field);
+		return load(JacksonUtils.getFieldOrNull(jnode, field), field,
+					JacksonUtils.getFieldOrNull(jnode, legacyNameField), legacyNameField, configClass);
+	}
+
+	/**
+	 * 연결 설정 필드와 이전 형식 필드의 값 노드로부터 연결 설정 참조를 읽는다.
+	 * <p>
+	 * {@link #load(JsonNode, String, String, Class)}와 같은 규칙을 따르며, {@code @JsonCreator}처럼
+	 * 필드 값만 따로 받는 곳에서 사용한다.
+	 *
+	 * @param <T>			연결 설정 타입.
+	 * @param configNode	연결 설정 필드 값 노드. {@code null}일 수 있다.
+	 * @param field			연결 설정 필드 이름 (문자열 또는 객체).
+	 * @param legacyNode	이전 형식 필드 값 노드. {@code null}일 수 있다.
+	 * @param legacyNameField	이전 형식의 전역 설정 이름 전용 필드 이름.
+	 * @param configClass	연결 설정 클래스.
+	 * @return	참조 객체. 두 필드가 모두 없으면 {@link #DEFAULT_NAME}을 가리킨다.
+	 * @throws IOException	두 필드를 함께 사용했거나 필드 값의 형식이 잘못된 경우.
+	 */
+	public static <T> ConnectionConfigRef<T> load(@Nullable JsonNode configNode, String field,
+													@Nullable JsonNode legacyNode, String legacyNameField,
+													Class<T> configClass) throws IOException {
 		if ( configNode != null && configNode.isNull() ) {
 			configNode = null;
 		}
-		JsonNode legacyNode = JacksonUtils.getFieldOrNull(jnode, legacyNameField);
 		if ( legacyNode != null && legacyNode.isNull() ) {
 			legacyNode = null;
 		}
