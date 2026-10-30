@@ -102,7 +102,8 @@ public class MqttEndpointLifecycleTest {
 	
 	private static MqttEndpoint endpoint(String brokerUrl) throws Exception {
 		ServiceEndpointConfigs configs = MDTModelSerDe.MAPPER.readerFor(ServiceEndpointConfigs.class)
-				.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": { \"brokerUrl\": \"" + brokerUrl + "\" } } }");
+				.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": { \"brokerUrl\": \"" + brokerUrl + "\" }, "
+						+ "\"subscribers\": [ { \"topic\": \"t\", \"element\": \"State:A\" } ] } }");
 		MqttEndpoint endpoint = new MqttEndpoint();
 		endpoint.init(null, new MqttEndpointConfig(configs.getMqtt()), null);
 		return endpoint;

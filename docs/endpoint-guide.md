@@ -6,8 +6,12 @@ MQTT·ROS2 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결
 
 이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 28일의 작업 트리를 기준으로
 설정 로더, 엔드포인트 구현, 관련 `mdt-client`·`utils` 코드를 함께 검토했다.
-이번 개정에서는 Companion(7절)의 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그,
-종료 시 프로세스 정리 방식을 반영했다.
+개정 내용은 다음과 같다.
+
+- MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
+  시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
+- Companion(7절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
+
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
 RobotTwin 조회와 Audit 등록처럼 구현이 연결되지 않은 부분은 별도로 표시한다.
 
@@ -57,8 +61,8 @@ HTTP 엔드포인트의 포트는 `instanceEndpoint`에서 추출하며, 인증�
 | `init(CoreConfig, C, ServiceContext)` | 설정 보관, 클라이언트·실행 객체 준비 | 모델 위치 해석을 `start()`까지 미루는 구현이 있음 |
 | `asConfig()` | 현재 엔드포인트 설정 반환 | FA³ST 설정 래퍼와 인스턴스 JSON DTO를 구분해야 함 |
 | `getProfiles()` | 설정의 서비스 프로파일 반환 | 외부 연결 성공 여부를 나타내는 상태 API는 아님 |
-| `start()` | 작업 시작 | 대부분 `startAsync()` 또는 비동기 실행을 호출하며 연결 완료를 기다리지 않음. Companion의 `required=true`만 프로세스 시작을 확인함 |
-| `stop()` | 중지 요청 | 완료 대기·자원 정리 범위가 구현마다 다름. Companion은 자식 프로세스 정리를 최대 3초 기다림 |
+| `start()` | 작업 시작 | 대부분 `startAsync()` 또는 비동기 실행을 호출하며 연결 완료를 기다리지 않음. MQTT는 구독마다 대상 요소를 확인함. Companion의 `required=true`만 프로세스 시작을 확인함 |
+| `stop()` | 중지 요청 | 완료 대기·자원 정리 범위가 구현마다 다름. MQTT는 구독 해제와 반영 작업 정리를 기다림(4.8절). Companion은 자식 프로세스 정리를 최대 3초 기다림 |
 
 `start()` 반환이나 시작 로그만으로 브로커 연결, WebSocket 구독, 자식 프로그램의 업무 준비가
 완료되었다고 판단할 수 없다. 또한 메시지 갱신은 `FaaastRuntime`을 통해 FA³ST 요청으로 실행되므로,
@@ -96,7 +100,7 @@ MQTT와 ROS2는 인스턴스 설정에서 연결 이름을 지정하고, 전역 
 배포 설정에서는 의도한 연결 이름을 명시하는 편이 명확하다.
 
 MQTT 엔드포인트의 `mqttBrokerConfig`는 MQTT 자산 변수와 같은 규칙을 따른다. 문자열이면 전역 설정 이름으로,
-객체이면 broker 설정을 직접 적은 것으로 해석하고, 생략하면 `default`를 쓴다(4.1).
+객체이면 broker 설정을 직접 적은 것으로 해석하고, 생략하면 `default`를 쓴다(4.2절).
 반면 Audit의 `jdbcConfig`는 아직 Java 타입이 `Object`라서 전역 설정 이름(문자열)만 쓸 수 있다.
 객체를 넣으면 Map으로 읽혀 해당 설정 타입으로 변환되지 않는다.
 
@@ -196,7 +200,67 @@ primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한
 
 ## 4. MQTT 수신 엔드포인트
 
-### 4.1 설정
+MQTT 엔드포인트는 broker의 토픽을 구독해, 받은 메시지를 AAS 요소 값으로 반영한다. 센서·설비가 MQTT로 내보내는 값을
+디지털 트윈 모델에 실시간으로 옮길 때 쓴다. 같은 MQTT라도 방향이 반대인 MQTT 자산 변수와 구분해야 한다.
+
+| 구분 | MQTT 엔드포인트 (`serviceEndpoints.mqtt`) | MQTT 자산 변수 (`mdt:asset:mqtt`) |
+| --- | --- | --- |
+| 방향 | broker → AAS 요소 (구독) | AAS 요소 → broker (발행) |
+| 시점 | 메시지를 받을 때마다 | 요소 값이 바뀔 때마다 |
+| 설정 위치 | 인스턴스 설정의 `serviceEndpoints.mqtt` | `assetVariables` |
+| broker 연결 | 같은 broker 설정이면 하나의 연결을 함께 쓴다(4.6) | 〃 |
+
+### 4.1 구성 요소와 처리 흐름
+
+```mermaid
+flowchart LR
+    CFG["serviceEndpoints.mqtt<br/>(broker, subscribers)"] --> S["start()<br/>구독마다 요소 확인"]
+    S -->|요소 없음·형식 불일치| X["구독 제외<br/>ERROR 로그"]
+    S --> SUB["구독 등록<br/>(공유 broker 연결)"]
+    B(("MQTT broker")) --> P["Paho 콜백 쓰레드"]
+    SUB -.-> P
+    P -->|"format 변환 후<br/>대기열에 넣고 바로 반환"| Q["구독별 대기열<br/>(delivery: all / latest)"]
+    Q --> W["작업 쓰레드<br/>(구독별 순서 유지)"]
+    W --> U["값 갱신기<br/>(FA³ST PATCH)"]
+    U --> PS["Persistence<br/>(자산 변수 포함)"]
+    U -->|실패| L["ERROR 로그<br/>(빈도 제한)"]
+```
+
+| 구성 요소 | 역할 |
+| --- | --- |
+| [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java) | FA³ST 엔드포인트. 시작할 때 구독을 검증·등록하고, 멈출 때 정리한다 |
+| [MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java) | broker 설정(이름 또는 인라인)과 구독 목록 |
+| [MqttElementSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttElementSubscriber.java) | 구독 설정 하나(토픽, 요소, 반영 옵션) |
+| [MqttSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttSubscriber.java) | 실제 구독자. payload 변환, 구독별 대기열, 반영과 실패 로그 |
+| `DeliveryMode`, `PayloadFormat`, `OverflowPolicy` | 반영 방식(`all`/`latest`), payload 형식(`json`/`text`), 포화 정책(`wait`/`drop`) |
+| [FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java), [ElementValueUpdater](../src/main/java/mdt/ElementValueUpdater.java) | 요소별 값 갱신기. 타입을 미리 조회하고 FA³ST 응답 상태로 실패를 알린다 |
+| [MqttServicePool](../src/main/java/mdt/MqttServicePool.java), [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java) | broker 연결 공유, 토픽 구독 관리와 메시지 분배 |
+
+### 4.2 설정 방법
+
+#### broker 지정
+
+`mqttBrokerConfig`에는 전역 설정의 `mqttBrokers` 항목 이름을 적거나, broker 설정을 객체로 바로 적는다.
+MQTT 자산 변수의 `mqttBrokerConfig`와 같은 규칙이다.
+
+| 적는 방법 | 예 | 의미 |
+| --- | --- | --- |
+| 문자열 | `"mqttBrokerConfig": "factory"` | 전역 설정 `mqttBrokers.factory` |
+| 객체 | `"mqttBrokerConfig": { "brokerUrl": "tcp://192.168.0.10:1883" }` | 인스턴스 설정에 직접 기술 |
+| 생략 | — | 전역 설정 `mqttBrokers.default` |
+
+숫자나 배열처럼 문자열도 객체도 아닌 값은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다.
+
+broker 설정 항목은 다음과 같다. 현재 사용자명·비밀번호·인증서 항목은 없고, 모르는 항목(예: 오타인 `connectTimeout`)은 무시하되 설정을 읽을 때 경고를 남긴다.
+
+| 항목 | 기본값 | 설명 |
+| --- | --- | --- |
+| `brokerUrl` | `tcp://localhost:1883` | broker 주소 |
+| `connectionTimeout` | Paho 기본값 | 연결 시도 제한 시간(예: `"10s"`) |
+| `keepAliveInterval` | Paho 기본값 | keep-alive 주기 |
+| `reconnectInterval` | 첫 연결 5초, 재연결 최대 128초 | 첫 연결을 다시 시도하는 간격이자, 연결이 끊긴 뒤 Paho 자동 재연결 간격의 상한(Paho는 1초부터 두 배씩 늘려 이 값까지 기다린다) |
+
+#### 구독 항목
 
 ```json
 {
@@ -204,206 +268,210 @@ primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한
     "mqtt": {
       "mqttBrokerConfig": "factory",
       "subscribers": [
-        {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature"},
-        {"topic": "factory/robot01/joints", "element": "RobotState:Joints"}
+        {"topic": "factory/robot01/events", "element": "RobotState:LastEvent"},
+        {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature", "delivery": "latest"},
+        {"topic": "factory/robot01/status", "element": "RobotState:Status", "format": "text", "qos": 0},
+        {"topic": "factory/robot01/counter", "element": "RobotState:Count",
+         "maxInFlightMessages": 200, "overflowPolicy": "drop"}
       ]
     }
   }
 }
 ```
 
-`mqttBrokerConfig`는 전역 `mqttBrokers`의 이름(문자열)이나 broker 설정 객체로 적는다. 생략하면 `default`이고,
-`subscribers` 기본값은 빈 목록이다. 전역 설정을 두지 않고 인스턴스 설정에 broker를 바로 적을 수도 있다.
-
-```json
-{
-  "serviceEndpoints": {
-    "mqtt": {
-      "mqttBrokerConfig": { "brokerUrl": "tcp://192.168.0.10:1883", "reconnectInterval": "10s" },
-      "subscribers": [
-        {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature"}
-      ]
-    }
-  }
-}
-```
-
-문자열도 객체도 아닌 값(숫자, 배열 등)은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다.
-이 규칙은 MQTT 자산 변수(`mdt:asset:mqtt`)의 `mqttBrokerConfig`와 같다.
-각 구독은 `topic`과 `element`를 요구하고, 반영 방식 `delivery`를 선택적으로 지정한다.
-
-| 구독 필드 | 기본값 | 설명 |
+| 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `topic` | (필수) | 구독할 토픽 필터. `+`, `#` 와일드카드를 쓸 수 있다. MQTT 규칙에 맞지 않으면(빈 문자열, `a/#/b`, `a+` 등) 설정을 읽는 단계에서 거부된다 |
+| `topic` | (필수) | 구독할 토픽 필터. `+`, `#` 와일드카드를 쓸 수 있다 |
 | `element` | (필수) | 값을 반영할 요소 위치(2.2절) |
-| `delivery` | `all` | `all`: 받은 메시지를 모두 순서대로 반영. `latest`: 반영이 밀리면 최신 값만 반영(4.3절) |
-| `qos` | `1` | broker 구독 QoS(0, 1, 2). 같은 토픽을 여러 곳(다른 구독, MQTT 자산 변수)에서 구독하면 broker 구독에는 그중 가장 큰 값이 쓰인다 |
-| `format` | `json` | `json`: payload가 AAS value-only JSON. `text`: payload 전체를 Property 값으로 사용(4.2절). `text`는 Property 대상에만 쓸 수 있다 |
-| `maxInFlightMessages` | `1000` | `delivery: all`에서 **처리 중인 메시지와 대기 중인 메시지를 합한** 수의 상한(4.3절). `latest`에는 적용되지 않는다 |
-| `overflowPolicy` | `wait` | 상한에 이르렀을 때의 동작. `wait`: 자리가 날 때까지 기다림(메시지를 버리지 않음). `drop`: 새 메시지를 버림 |
+| `delivery` | `all` | `all`: 받은 메시지를 모두 순서대로 반영. `latest`: 반영이 밀리면 최신 값만 반영(4.5절) |
+| `qos` | `1` | broker 구독 QoS(0, 1, 2) |
+| `format` | `json` | `json`: AAS value-only JSON. `text`: payload 전체를 Property 값으로 사용(4.3절) |
+| `maxInFlightMessages` | `1000` | `delivery: all`에서 **처리 중인 메시지와 대기 중인 메시지를 합한** 수의 상한. `latest`에는 적용되지 않는다 |
+| `overflowPolicy` | `wait` | 상한에 이르렀을 때 `wait`(자리가 날 때까지 기다림) 또는 `drop`(새 메시지를 버림) |
 
-```json
-"subscribers": [
-  {"topic": "factory/robot01/events", "element": "RobotState:LastEvent"},
-  {"topic": "factory/robot01/temperature", "element": "RobotState:Temperature", "delivery": "latest"},
-  {"topic": "factory/robot01/status", "element": "RobotState:Status", "format": "text", "qos": 0}
-]
-```
+`subscribers`에는 구독을 하나 이상 적어야 한다. 구독이 없는 MQTT 엔드포인트는 아무 일도 하지 않으므로, `mqtt` 항목을 적고 `subscribers`를 빠뜨리거나(철자 오류 포함) 비워 두면 설정 실수로 보고 거부한다. 문자열 옵션은 대소문자를 구분하지 않는다.
 
-`qos`가 0·1·2가 아니거나, `maxInFlightMessages`가 양수가 아니거나, `delivery`·`format`·`overflowPolicy`가 알 수 없는 값이거나,
-`subscribers`에 `null` 항목이 있으면 설정을 읽는 단계에서 거부된다. 오류 메시지에는 `subscribers[1]`처럼 문제가 된 항목의 위치가 나온다.
-문자열 옵션은 대소문자를 구분하지 않는다.
+#### 설정 검증
 
-브로커 설정의 URL 기본값은 `tcp://localhost:1883`이며,
-timeout과 keep-alive를 생략하면 MQTT 라이브러리 기본값을 사용한다.
-`reconnectInterval`(예: `"10s"`)은 연결될 때까지 다시 시도하는 간격이다. 첫 연결 재시도 간격이면서,
-연결된 뒤 끊어졌을 때 Paho 자동 재연결 간격의 상한이다(Paho는 1초부터 두 배씩 늘려 이 값까지 기다린다).
-생략하면 첫 연결은 5초 간격, 재연결은 최대 128초 간격이다.
-현재 `MqttBrokerConfig`에는 사용자명·비밀번호·인증서 필드가 없다.
-지원하지 않는 필드(예: 오타인 `connectTimeout`)는 무시되며, 설정을 읽을 때 경고 로그를 남긴다.
+다음 오류는 broker에 연결하기 전, 설정을 읽는 단계에서 거부되어 인스턴스가 시작되지 않는다. 오류 메시지에는 `subscribers[1]`처럼 문제가 된 항목의 위치가 나온다.
 
-### 4.2 수신 값 계약
+| 오류 | 예 |
+| --- | --- |
+| MQTT 규칙에 맞지 않는 토픽 필터 | 빈 문자열, `a/#/b`(`#`는 마지막 레벨에만), `a+`(`+`는 한 레벨 전체로만) |
+| 범위를 벗어난 값 | `qos: 3`, `maxInFlightMessages: 0` |
+| 알 수 없는 옵션 값 | `delivery: "newest"`, `format: "xml"`, `overflowPolicy: "block"` |
+| 구독이 없음 | `subscribers` 누락·철자 오류(`subscriber`)·빈 목록 → `'subscribers' is required and must not be empty` |
+| `null` 구독 항목 | `"subscribers": [ null ]` → `subscribers[0] is null` |
 
-1. `init()`에서 broker 설정을 해석한다.
-2. `start()`에서 구독마다 요소 위치를 활성화하고 `FaaastRuntime.newValueUpdater()`로 값 갱신기를 만든다.
-   이때 대상 요소의 FA³ST `TypeInfo`를 조회해 두므로 요소가 실제로 있는지도 확인된다.
-3. 대상 요소를 찾지 못한 구독은 ERROR 로그를 남기고 제외한다. 나머지 구독이 있으면 `MqttServicePool`에서 broker 연결을 얻어 구독을 등록한다.
-4. 수신 payload를 UTF-8 문자열로 읽어 구독별 대기열에 넣고 MQTT 콜백을 바로 반환한다.
-5. 엔드포인트의 작업 쓰레드가 구독별로 순서대로 꺼내 갱신기로 넘긴다. 갱신기는 `PatchSubmodelElementValueByPathRequest`를 실행하고 응답 상태를 확인한다.
+반면 **모델에 없는 요소**는 설정만 보고 알 수 없으므로 시작할 때 확인하며, 이때는 그 구독만 빠진다(4.4절).
 
-설정한 요소가 모델에 없거나(경로 오타, 없는 Submodel·파라미터 등) `format: "text"`인데 대상이 Property가 아니면,
-인스턴스는 정상적으로 시작하고 그 구독만 빠진다. 이때 다음과 같은 로그가 한 번 남는다.
+### 4.3 payload 형식
 
-```text
-skipping MQTT subscription, cannot apply messages to the target element: topic=factory/robot01/pressure, element=RobotState:Presure, cause=...
-```
+기본 형식(`json`)의 payload는 대상 요소 타입에 맞는 **AAS value-only JSON**이다.
 
-시작 로그 `Starting service: MqttEndpoint[...], subscriptions=2/3`에서 실제로 등록된 구독 수와 설정된 구독 수를 비교할 수 있다.
-모든 구독이 빠지면 broker에 연결하지 않는다.
+| 대상 요소 | payload 예 |
+| --- | --- |
+| 숫자 Property `Temperature` | `23.5` |
+| 문자열 Property `Status` | `"running"` (따옴표 포함) |
+| Collection `Joints` (숫자 Property `Joint1`, `Joint2`) | `{"Joint1": 0.25, "Joint2": -0.1}` |
 
-payload는 대상 모델에 맞는 **AAS value-only JSON**이다.
-예를 들어 숫자 Property인 `Temperature`로 보내는 메시지는 다음과 같다.
+장치가 문자열을 따옴표 없이(`running`) 보내면 JSON 형식이 아니어서 반영되지 않는다. 이때는 구독에 `"format": "text"`를 지정한다. 그러면 payload 전체를 JSON 문자열로 감싸(따옴표·역슬래시는 이스케이프) 넘기고, FA³ST가 Property의 데이터 타입에 맞게 해석한다. 그래서 숫자 Property에 `23.5`, 불리언 Property에 `true`를 그대로 보내도 된다.
 
-```json
-23.5
-```
-
-`Joints`가 숫자 Property `Joint1`, `Joint2`를 포함하는 Collection이라면 메시지는 다음 형태다.
-
-```json
-{
-  "Joint1": 0.25,
-  "Joint2": -0.1
-}
-```
-
-Property 문자열은 JSON 문자열로 인코딩해야 한다. 장치가 따옴표 없는 일반 텍스트(`running`)를 보낸다면 구독에 `"format": "text"`를 지정한다.
-그러면 payload 전체를 JSON 문자열로 감싸(따옴표·역슬래시 이스케이프 포함) 반영하며, 값은 Property의 데이터 타입에 맞게 해석된다.
-예를 들어 숫자 Property에 `23.5`, 불리언 Property에 `true`를 그대로 보내도 된다.
-
-| payload | `format: "json"` (기본) | `format: "text"` |
+| payload → 대상 | `format: "json"` (기본) | `format: "text"` |
 | --- | --- | --- |
 | `23.5` → 숫자 Property | 반영 | 반영 |
 | `"running"` → 문자열 Property | 반영 | 따옴표까지 포함한 `"running"`이 값이 됨 |
 | `running` → 문자열 Property | JSON 형식 오류 | 반영 |
-| `{"Joint1": 0.25}` → Collection | 반영 | 사용 불가(시작 시 구독 제외) |
+| `{"Joint1": 0.25}` → Collection | 반영 | 사용 불가(시작할 때 구독 제외) |
 
-완전한 AAS 요소 정의나 MDT의 타입 메타데이터가
-붙은 직렬화 형식은 이 입력 계약과 다르다. 값의 해석은 미리 존재하는 AAS 요소 타입에 의존한다.
-캐시된 타입 정보는 메시지마다 다시 조회하지 않는다.
+AAS 요소 전체 정의나 MDT 타입 메타데이터가 붙은 직렬화 형식은 받지 않는다. 값의 해석은 모델에 이미 있는 요소 타입을 따르며, 타입 정보는 시작할 때 한 번 조회해 메시지마다 다시 조회하지 않는다.
 
-### 4.3 연결·오류 처리
+### 4.4 시작과 구독 검증
 
-broker 연결은 `MqttServicePool`을 통해 같은 broker 설정(URL, 연결 timeout, keep-alive 주기, 재연결 간격)을 쓰는
-MQTT 자산 변수(`mdt:asset:mqtt`)와 공유한다. 처음 연결을 얻는 쪽이 `MqttService`를 만들어 시작하고,
-마지막 사용자가 반납하면 연결을 끊는다. 연결을 반납하는 사용자가 마지막이면 연결이 종료될 때까지 최대 5초 기다린다.
+`start()`는 다음 순서로 진행한다.
 
-`MqttService`는 구독 목록을 내부 잠금으로 보호하지만, broker와의 통신(구독·해제·발행)은 이 잠금 밖에서 한다.
-메시지 분배도 같은 잠금을 쓰기 때문에, 잠금을 잡은 채 broker 응답을 기다리면 수신이 밀릴 때 응답을 읽지 못해 교착될 수 있기 때문이다.
-같은 토픽의 구독·해제가 뒤집히지 않도록 broker 작업은 한 번에 하나씩 수행하고, 작업할 때의 구독 목록을 보고 구독할지 해제할지 정한다.
-broker 구독·해제 응답은 작업 제한 시간(기본 10초)까지만 기다리며, 넘기면 ERROR 로그를 남기고 다음 연결 때 다시 맞춘다.
-잘못된 토픽은 구독 목록에 넣기 전에 거부하므로 공유 연결에 남지 않는다.
+1. 구독마다 요소 위치를 활성화하고 `FaaastRuntime.newValueUpdater()`로 값 갱신기를 만든다. 이때 대상 요소의 타입을 조회하므로 요소가 실제로 있는지 확인된다.
+2. 요소를 찾지 못했거나(경로 오타, 없는 Submodel·파라미터 등), `format: "text"`인데 대상이 Property가 아니면 그 구독만 빼고 ERROR 로그를 한 번 남긴다.
+3. 남은 구독이 있으면 공유 broker 연결을 얻어 구독마다 `qos`로 등록한다. 남은 구독이 없으면 broker에 연결하지 않는다.
 
-`MqttService`는 초기 연결을 반복 시도하며 기본 재시도 간격은 5초다.
-첫 연결 시도가 실패하면 broker 주소와 원인을 WARN 로그로 한 번 남기고, 이후의 실패는 DEBUG로만 남긴다.
-연결에 성공하면 그때까지 실패한 횟수와 함께 INFO 로그를 남긴다. 연결된 뒤 끊어지면 WARN 로그를 남기고
-Paho 자동 재연결을 사용한다. 공유 연결의 서비스 자체가 실패하면 `MqttServicePool`이 ERROR 로그를 남긴다.
-연결 옵션은 clean session과 Paho 자동 재연결을 사용한다. 연결되면 모든 토픽을 재구독하는데, 재구독은 broker 응답을 기다려야 하므로
-Paho 콜백 쓰레드가 아닌 별도 쓰레드(`mqtt-resubscribe-<n>`)에서 한다. 재연결 직후 retained 메시지가 몰려도 콜백이 막히지 않게 하기 위함이다.
-`MqttService`는 topic별 QoS(같은 topic에 요청된 QoS 중 최댓값)를 보관하여 재구독할 때도 같은 QoS를 사용하며,
-일부 topic의 재구독이 실패해도 나머지 topic은 계속 구독한다. 엔드포인트는 구독의 `qos`(기본 1)로 구독한다.
-같은 topic을 여러 구독자가 구독하면 broker 구독은 하나만 유지되고, 마지막 구독자가 해제될 때 broker 구독도 해제된다.
+```text
+skipping MQTT subscription, cannot apply messages to the target element: topic=factory/robot01/pressure, element=RobotState:Presure, cause=...
+Starting service: MqttEndpoint[broker=tcp://192.168.0.10:1883], subscriptions=3/4
+```
 
-`+`, `#` 토픽 패턴을 지원하는 로컬 분배 로직이 있다. 빈 레벨도 하나의 레벨로 보며(`a/+`는 `a/`와 일치, `a`는 `a/`와 불일치),
-`a/#`는 상위 레벨 `a`와도 일치한다. `$`로 시작하는 토픽(`$SYS/...`)은 첫 레벨의 `+`·`#`와 일치하지 않는다. 중복·겹치는 구독은 같은 메시지를 여러 대상에
-반영할 수 있다. 엔드포인트에는 중복 제거, 수신 시각 비교, 메시지 저장·재처리 기능이 없다(구독별 대기열은 메모리에만 있다).
+시작 로그의 `subscriptions=<등록 수>/<설정 수>`로 빠진 구독이 있는지 바로 알 수 있다.
 
-FA³ST는 요청 처리 중의 실패(값 파싱 실패, 요소 없음, 저장 계층의 쓰기 실패 등)를 예외 대신 오류 상태의 응답으로 돌려준다.
-갱신기는 응답 상태를 확인해 실패를 `ElementUpdateException`으로 알리고, 구독자는 이를
-`failed to update element from MQTT message: topic=..., element=..., cause=...` ERROR 로그로 남긴 뒤 다음 메시지를 계속 처리한다.
-`cause`에는 응답 상태 코드와 FA³ST 메시지가 들어가며, payload 원문은 비밀 값이 있을 수 있어 남기지 않는다.
-공유 연결(`MqttService`)의 수신 DEBUG 로그도 payload 대신 `topic`, 바이트 수, QoS, retained 여부만 남긴다.
-자산 변수의 쓰기 실패(`AssetVariableException`)나 `PersistenceException`도 같은 로그로 드러난다.
-다만 FA³ST 1.3.0의 값 갱신 처리기는 persistence의 `update()`가 던진 `IllegalArgumentException`을 일부러 무시하고 성공으로 응답한다.
-따라서 저장 계층이 값 검증 등으로 `IllegalArgumentException`을 던지면 값이 저장되지 않아도 실패 로그가 남지 않는다.
-요소가 없는 구독은 시작할 때 빠지므로 메시지 처리 중에는 이 로그가 나오지 않는다.
+시작 도중 연결 사용권 획득이나 구독 등록이 실패하면 그때까지 만든 자원(작업 쓰레드, 연결, 등록된 구독)을 모두 되돌리고, 원인을 담은 `EndpointException`을 던진다. 이미 시작된 엔드포인트의 `start()`를 다시 부르면 `IllegalStateException`이 난다.
 
-장치가 잘못된 형식을 계속 보내도 로그가 넘치지 않도록, 구독마다 연속 실패를 다음과 같이 기록한다.
+### 4.5 메시지 반영: 작업 쓰레드와 `delivery`
 
-| 연속 실패 | 로그 |
-| --- | --- |
-| 첫 번째 | ERROR `failed to update element from MQTT message: ...` |
-| 10번째, 100번째, 1000번째 … | ERROR `still failing to update element from MQTT messages: <n> consecutive failures, ..., last cause=...` |
-| 그 밖의 실패 | DEBUG |
-| 실패가 이어지다 성공 | INFO `MQTT element updates recovered after <n> consecutive failures` (이후 실패는 다시 첫 번째로 센다) |
-
-broker 설정을 찾지 못해 엔드포인트 초기화가 실패하면 `failed to resolve the MQTT broker config: ...` 예외에 원래 원인이 함께 남는다.
-
-**반영 쓰레드와 `delivery`.** Paho는 한 broker 연결의 메시지를 콜백 쓰레드 하나에서 순서대로 전달하고, 이 연결은 MQTT 자산 변수와 공유된다.
-그래서 엔드포인트는 콜백 쓰레드에서 요소를 갱신하지 않고, 메시지를 구독별 대기열에 넣은 뒤 바로 반환한다. 실제 반영은 엔드포인트의
-작업 쓰레드(`mqtt-endpoint-<n>`, daemon)가 구독별로 한 번에 하나씩, 받은 순서대로 수행한다. 따라서 JDBC 저장처럼 느린 반영이 있어도
-같은 연결의 다른 구독과 자산 변수의 수신은 막히지 않는다.
+Paho는 한 broker 연결의 메시지를 콜백 쓰레드 하나에서 차례로 전달하고, 이 연결은 MQTT 자산 변수와 함께 쓴다. 그래서 엔드포인트는 콜백 쓰레드에서 요소를 갱신하지 않는다. 메시지를 구독별 대기열에 넣고 곧바로 반환하며, 실제 반영은 엔드포인트의 작업 쓰레드(`mqtt-endpoint-<n>`, daemon)가 **구독별로 한 번에 하나씩, 받은 순서대로** 한다.
+JDBC 저장처럼 느린 반영이 있어도 같은 연결의 다른 구독과 자산 변수의 수신은 막히지 않는다.
 
 ```mermaid
 flowchart LR
-    P["Paho 콜백 쓰레드<br/>(공유 연결)"] -->|"넣고 바로 반환"| Q{"delivery"}
-    Q -->|all| A["구독별 대기열<br/>(처리 중 포함 최대 maxInFlightMessages개)"]
-    Q -->|latest| L["구독별 최신 값 칸<br/>(새 값이 이전 값을 덮음)"]
+    P["Paho 콜백 쓰레드<br/>(공유 연결)"] -->|"넣고 바로 반환"| D{"delivery"}
+    D -->|all| A["구독별 대기열<br/>처리 중 포함 최대 maxInFlightMessages개"]
+    D -->|latest| L["구독별 최신 값 칸<br/>새 값이 이전 값을 덮음"]
+    A -->|가득 차면| O{"overflowPolicy"}
+    O -->|wait| P
+    O -->|drop| X["새 메시지 버림"]
     A --> W["작업 쓰레드<br/>(구독별 순서 유지)"]
     L --> W
     W --> F["FA³ST PATCH → Persistence"]
 ```
 
-| 상황 | `all` (기본) | `latest` |
-| --- | --- | --- |
-| 반영이 메시지 속도를 따라갈 때 | 모든 메시지를 순서대로 반영 | 모든 메시지를 순서대로 반영 |
-| 반영이 밀릴 때 | 대기열에 쌓아 두었다가 모두 반영 | 아직 반영하지 못한 값은 버리고 최신 값만 반영 |
-| 처리 중·대기 중인 메시지가 상한(`maxInFlightMessages`, 기본 1,000)에 이를 때 | `overflowPolicy: wait`(기본)이면 자리가 날 때까지 콜백 쓰레드가 기다림(처음 한 번 `MQTT in-flight limit (n) reached, waiting` WARN). `drop`이면 새 메시지를 버림(`... dropped <n> message(s)` WARN을 첫 번째와 10·100·1000…번째에) | 해당 없음(최신 값 하나만 보관) |
-| 쓰임새 | 이벤트·카운터처럼 중간 값도 의미 있는 경우 | 센서 값처럼 마지막 값만 의미 있는 경우 |
+| 상황 | `all` + `wait` (기본) | `all` + `drop` | `latest` |
+| --- | --- | --- | --- |
+| 반영이 메시지 속도를 따라갈 때 | 모든 메시지를 순서대로 반영 | 〃 | 〃 |
+| 반영이 밀릴 때 | 쌓아 두었다가 모두 반영 | 쌓아 두었다가 모두 반영 | 밀린 값은 버리고 최신 값만 반영 |
+| 상한(`maxInFlightMessages`)에 이를 때 | 자리가 날 때까지 콜백 쓰레드가 기다림. 그동안 같은 연결의 다른 수신도 늦어짐 | 새 메시지를 버림. 다른 수신은 늦어지지 않음 | 해당 없음(값 하나만 보관) |
+| 알리는 로그 | `MQTT in-flight limit (n) reached, waiting ...` WARN을 처음 한 번 | `... dropped <n> message(s) so far ...` WARN을 1·10·100…번째에 | — |
+| 알맞은 데이터 | 이벤트·카운터처럼 중간 값도 의미 있고 유실되면 안 되는 경우 | 중간 값도 의미 있지만 다른 수신 지연이 더 곤란한 경우 | 센서 값처럼 마지막 값만 의미 있는 경우 |
 
-`all`의 `wait`에서 상한에 이르면 콜백 쓰레드가 기다리므로, 이때는 같은 연결의 다른 수신도 함께 늦어진다. 반영이 계속 메시지 속도를
-따라가지 못한다면 `latest`나 `overflowPolicy: drop`을 쓰거나 저장 계층을 점검한다. 메모리에 둘 수 있는 메시지는 유한하므로
-"모든 메시지 보관"과 "다른 수신에 영향 없음"을 동시에 보장할 수는 없다. QoS 1의 "적어도 한 번 전달"은 broker에서 엔드포인트까지에 대한 보장이며,
-`latest`에서 버려진 중간 값은 요소에 반영되지 않는다.
+메모리에 둘 수 있는 메시지는 유한하므로 "모든 메시지 보관"과 "다른 수신에 영향 없음"을 동시에 보장할 수는 없다. 반영이 계속 메시지 속도를 따라가지 못한다면 `latest`나 `drop`을 고르거나 저장 계층을 점검한다.
+
+### 4.6 공유 연결과 재연결
+
+broker 연결은 `MqttServicePool`을 통해 같은 broker 설정(URL, 연결 timeout, keep-alive 주기, 재연결 간격)을 쓰는
+MQTT 자산 변수와 공유한다. 처음 연결을 얻는 쪽이 연결을 만들고, 마지막 사용자가 반납하면 연결을 끊는다(종료를 최대 5초 기다림).
+같은 토픽을 여러 곳에서 구독해도 broker 구독은 하나만 유지되며, QoS는 요청된 값 중 가장 큰 값이 쓰인다.
+
+공유 연결(`MqttService`)은 수신이 밀려도 교착되지 않도록 다음처럼 동작한다.
+
+| 동작 | 방식 |
+| --- | --- |
+| 구독 목록 잠금 | 구독 목록만 보호한다. broker와의 통신(구독·해제·발행·연결 종료)은 이 잠금 밖에서 한다 |
+| broker 구독·해제 | 별도 잠금으로 한 번에 하나씩 수행하고, 수행 시점의 구독 목록을 보고 구독할지 해제할지 정한다. 응답은 작업 제한 시간(기본 10초)까지만 기다리고, 넘기면 ERROR를 남긴 뒤 다음 연결 때 다시 맞춘다 |
+| 첫 연결 | 연결될 때까지 `reconnectInterval`(기본 5초) 간격으로 반복 시도한다 |
+| 연결이 끊겼을 때 | Paho 자동 재연결을 쓰고, 연결되면 모든 토픽을 요청된 QoS로 재구독한다. 재구독은 Paho 콜백 쓰레드가 아닌 별도 쓰레드(`mqtt-resubscribe-<n>`)에서 하며, 한 토픽이 실패해도 나머지는 계속한다 |
+| 잘못된 토픽 | 구독 목록에 넣기 전에 거부하므로 공유 연결에 남지 않는다 |
+
+받은 메시지는 토픽 필터가 일치하는 모든 구독자에게 전달한다. 일치 규칙은 MQTT 3.1.1을 따른다.
+
+| 필터 | 일치하는 토픽 | 일치하지 않는 토픽 |
+| --- | --- | --- |
+| `a/+` | `a/b`, `a/` (빈 레벨도 한 레벨) | `a`, `a/b/c` |
+| `a/#` | `a`, `a/b`, `a/b/c` | `b` |
+| `a` | `a` | `a/` |
+| `#`, `+/broker` | `$`로 시작하지 않는 토픽 | `$SYS/broker` (`$` 토픽은 첫 레벨 와일드카드와 일치하지 않음) |
+
+겹치는 필터로 여러 구독이 같은 메시지를 받으면 각자 반영한다. 중복 제거, 수신 시각 비교, 메시지 영속 저장·재처리 기능은 없다.
+
+### 4.7 오류 처리와 로그
+
+FA³ST는 요청 처리 중의 실패(값 파싱 실패, 요소 없음, 저장 계층의 쓰기 실패 등)를 예외 대신 오류 응답으로 돌려준다.
+값 갱신기는 응답 상태를 확인해 실패를 `ElementUpdateException`으로 알리고, 구독자는 이를 로그로 남긴 뒤 다음 메시지를 계속 처리한다.
+자산 변수의 쓰기 실패(`AssetVariableException`)와 `PersistenceException`도 이 경로로 드러난다.
+
+장치가 잘못된 형식을 계속 보내도 로그가 넘치지 않도록, 구독마다 연속 실패를 다음과 같이 기록한다.
+
+| 연속 실패 | 로그 |
+| --- | --- |
+| 첫 번째 | ERROR `failed to update element from MQTT message: topic=..., element=..., cause=...` |
+| 10번째, 100번째, 1000번째 … | ERROR `still failing to update element from MQTT messages: <n> consecutive failures, ..., last cause=...` |
+| 그 밖의 실패 | DEBUG |
+| 실패가 이어지다 성공 | INFO `MQTT element updates recovered after <n> consecutive failures` (이후 실패는 다시 첫 번째로 센다) |
+
+`cause`에는 응답 상태 코드와 FA³ST 메시지가 들어간다. **payload 원문은 비밀 값이 있을 수 있어 어떤 로그에도 남기지 않는다.**
+공유 연결의 수신 DEBUG 로그도 `Message arrived: topic=..., bytes=..., qos=..., retained=...`처럼 메타데이터만 남긴다.
+
+자주 보게 되는 로그와 의미는 다음과 같다.
+
+| 로그 | 의미 |
+| --- | --- |
+| `Starting service: MqttEndpoint[...], subscriptions=<n>/<m>` | 설정된 구독 m개 중 n개를 등록함 |
+| `skipping MQTT subscription, cannot apply messages to the target element: ...` | 요소가 없거나 `text` 형식이 맞지 않아 구독을 뺌 |
+| `created a shared MQTT connection` / `closing the shared MQTT connection` | 공유 연결을 처음 만들거나 마지막 사용자가 반납함 |
+| `failed to connect to <broker>, keep retrying every ...` | 첫 연결 실패(이후 실패는 DEBUG). 연결되면 `connected to ... after <n> failed attempts` |
+| `MQTT broker disconnected` | 연결이 끊김. 자동 재연결 후 재구독 |
+| `failed to subscribe topic[...] at the broker, retry on reconnection` | broker 구독·해제가 실패하거나 제한 시간을 넘김 |
+| `failed to update element from MQTT message` 등 | 요소 반영 실패(위 표) |
+| `MQTT in-flight limit (n) reached, ...` | 처리 중·대기 중 메시지가 상한에 이름(4.5절) |
+| `failed to resolve the MQTT broker config: ...` | 초기화 때 broker 설정을 찾지 못함(원래 원인이 함께 남음) |
+| `... stopped with leftovers: ...` | 종료 때 정리하지 못한 것이 있음(4.8절) |
+
+문제가 생겼을 때는 다음을 먼저 확인한다.
+
+| 증상 | 확인할 것 |
+| --- | --- |
+| 값이 전혀 바뀌지 않음 | 시작 로그의 `subscriptions=n/m`과 구독 제외 로그, broker 연결 로그, 토픽 필터 일치 여부(4.6절) |
+| 일부 메시지만 반영되지 않음 | `failed to update element` 로그의 `cause`(payload 형식, 저장 실패). 문자열 값이면 `format: "text"` 검토 |
+| 값이 늦게 반영되고 다른 MQTT 수신도 늦음 | `in-flight limit ... waiting` WARN. 저장 계층의 속도, `latest`·`drop` 검토 |
+| 중간 값이 빠짐 | `delivery: latest`이거나 `overflowPolicy: drop`인지 |
+| 같은 메시지가 여러 요소에 반영됨 | 겹치는 토픽 필터가 있는지 |
+
+### 4.8 종료
 
 `stop()`은 다음 순서로 정리하며, 한 단계가 실패해도 다음 단계를 계속한다.
 
-1. 구독자를 닫는다. 새 메시지를 받지 않고, 대기 중인 메시지는 버리며, 상한 때문에 기다리던 콜백 쓰레드를 깨운다.
-2. broker 구독을 해제한다. 구독마다 작업 제한 시간(기본 10초)까지만 기다린다.
-3. 반영 중인 메시지가 끝나기를 최대 5초 기다리고, 넘기면 작업 쓰레드를 인터럽트한다.
-4. 공유 연결 사용권을 반납한다.
+```mermaid
+flowchart LR
+    A["1. 구독자 닫기<br/>새 메시지 거부·대기 메시지 버림<br/>기다리던 콜백 깨움"] --> B["2. broker 구독 해제<br/>구독마다 최대 10초"]
+    B --> C["3. 반영 중 작업 대기<br/>최대 5초, 넘기면 인터럽트"]
+    C --> D["4. 공유 연결 반납"]
+```
 
-정리하지 못한 것(구독 해제 미확인, 반영 작업 인터럽트)이 있으면 `stopped with leftovers` WARN을 남긴다.
-`start()`는 시작 중에 실패하면 그때까지 만든 자원을 모두 정리하고 원인을 담은 `EndpointException`을 던지며, 이미 시작된 상태에서 다시
-부르면 `IllegalStateException`을 던진다. `stop()`은 여러 번 불러도 되고, `stop()` 뒤에는 다시 시작할 수 있다.
-구독자 호출은 `MqttService`의 lock 밖에서 수행되므로, 메시지 처리 중에도 다른 구독·발행이 막히지 않는다.
-서비스의 RUNNING 상태는 실제 브로커 접속 완료와 동일하지 않다.
+구독자를 먼저 닫는 이유는, 상한 때문에 기다리던 콜백 쓰레드를 풀어야 broker의 구독 해제 응답을 읽을 수 있기 때문이다.
+구독 해제를 확인하지 못했거나 반영 작업을 인터럽트했으면 `stopped with leftovers: unconfirmed unsubscriptions=<n>, updates interrupted after PT5S=<true|false>` WARN을 남긴다.
+`stop()`은 여러 번 불러도 되고, 멈춘 뒤에는 다시 시작할 수 있다. 이 저장소에는 현재 FA³ST 서비스의 `stop()`을 부르는 종료 경로가 없어,
+JVM이 끝나면 프로세스와 함께 연결이 정리된다.
+
+### 4.9 제약
+
+- MQTT QoS는 broker에서 엔드포인트까지의 전달을 보장할 뿐, AAS 저장 완료를 보장하지 않는다. 반영에 실패한 메시지는 재시도하지 않으며, 종료할 때 대기 중인 메시지는 버린다.
+- `latest`는 구독별 최신 값이다. 와일드카드 필터에 여러 실제 토픽이 들어오면 서로의 대기 값을 대체한다.
+- FA³ST 1.3.0의 값 갱신 처리기는 persistence의 `update()`가 던진 `IllegalArgumentException`을 일부러 무시하고 성공으로 응답한다. 저장 계층이 이 예외로 실패를 알리면 값이 저장되지 않아도 실패 로그가 남지 않는다.
+- broker 인증(사용자명·비밀번호)과 TLS 인증서 설정은 아직 없다.
+- 서비스의 RUNNING 상태나 시작 로그는 broker 연결 완료를 뜻하지 않는다. 연결 여부는 연결 로그로 확인한다.
+- 구독별 처리 상태(받은 수, 반영 수, 실패 수 등)를 조회하는 API는 없다. 로그로 확인한다.
 
 근거: [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java),
 [MqttSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttSubscriber.java),
-[FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java),
 [MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java),
 [MqttElementSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttElementSubscriber.java),
+[FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java),
+[MqttServicePool](../src/main/java/mdt/MqttServicePool.java),
 [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
 [MqttBrokerConfig](../../mdt-client/src/main/java/mdt/client/support/MqttBrokerConfig.java).
 
@@ -1016,13 +1084,15 @@ ROS2 메시지 타입 확장은 `Ros2MessageHandler<T>`의 `getTopic`, `initiali
 | 대상 | 확인할 동작 |
 | --- | --- |
 | Manager | 첫 호출 시점, 일시 장애 시 JVM 종료, registry 등록·해제 요청, INFO 수준 변경 영향 |
-| MQTT | 값 형식·대상 타입 불일치 시 실패 로그, 요소가 없는 구독의 제외, `delivery`별 반영(밀릴 때 `all`은 모두, `latest`는 최신 값), 대기열 포화 시 지연, 중복 메시지, 브로커 재연결 후 재구독 |
+| MQTT | 시작 로그의 `subscriptions=n/m`과 구독 제외 로그, 값 형식·대상 타입 불일치 시 실패 로그와 빈도 제한, `delivery`·`overflowPolicy`별 반영(밀릴 때와 상한에 이를 때), 대기 중 `stop()`이 제한 시간 안에 끝나는지, broker 재연결 후 재구독 |
 | ROS2 | 매핑·배열 길이, 미등록 topic·상태 프레임, 오래된 메시지, 동시 값 갱신, 연결 종료·재연결 |
 | RobotTwin | polling 활성화와 실제 호출 경로를 먼저 구현한 뒤 카탈로그 변경·빈 목록·오류·quality 처리 |
 | Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
 | Audit | 등록 코드, JDBC 타입 대응, 첫 기록·변경 없음·변경 있음, DB 오류와 재시작 시 중복 기록 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
-실제 Manager·MQTT broker·rosbridge·RobotTwin·DB에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+실제 Manager·rosbridge·RobotTwin·DB에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
+MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 종료와 연결된 상태의 잘못된 토픽 거부를 확인했다
+(`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
 Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
 시작·로그 분리·종료 후 프로세스 정리를 확인했다.

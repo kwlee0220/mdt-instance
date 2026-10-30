@@ -156,6 +156,17 @@ public class MqttEndpointConfigTest {
 	}
 
 	@Test
+	public void testMissingOrEmptySubscribersAreRejected() {
+		// 구독이 없는 MQTT 엔드포인트는 아무 일도 하지 않으므로, 빠뜨리거나(철자 오류 포함) 비운 경우 설정 오류로 본다.
+		for ( String mqtt: new String[] { "{ \"mqttBrokerConfig\": \"factory\" }",
+										"{ \"subscribers\": [] }",
+										"{ \"subscriber\": [ { \"topic\": \"t\", \"element\": \"State:A\" } ] }" } ) {
+			Exception e = assertThrows(mqtt, Exception.class, () -> read(mqtt));
+			assertTrue(e.getMessage(), e.getMessage().contains("'subscribers' is required and must not be empty"));
+		}
+	}
+
+	@Test
 	public void testNullSubscriberIsRejected() {
 		Exception e = assertThrows(Exception.class, () -> read("{ \"subscribers\": [ null ] }"));
 		assertTrue(e.getMessage(), e.getMessage().contains("subscribers[0] is null"));

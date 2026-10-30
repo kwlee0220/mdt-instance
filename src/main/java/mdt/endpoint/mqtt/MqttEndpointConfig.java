@@ -3,10 +3,13 @@ package mdt.endpoint.mqtt;
 import java.io.IOException;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
-import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Preconditions;
@@ -68,14 +71,56 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 	 * }</pre>
 	 * {@code mqttBrokerConfig}를 생략하면 전역 설정의 {@code default}를 사용한다. MQTT 자산 변수
 	 * ({@code mdt:asset:mqtt})의 같은 이름 필드와 같은 규칙이다({@link ConnectionConfigRef}).
+	 * {@code subscribers}는 반드시 하나 이상 있어야 하며, 없거나 비어 있으면 설정을 읽는 단계에서 거부한다.
 	 */
 	@JsonIncludeProperties({ "mqttBrokerConfig", "subscribers" })
 	public static class MDTConfig {
 		private static final String FIELD_BROKER_CONFIG = "mqttBrokerConfig";
+		private static final String FIELD_SUBSCRIBERS = "subscribers";
 
-		private ConnectionConfigRef<MqttBrokerConfig> m_brokerRef
-														= ConnectionConfigRef.ofName(ConnectionConfigRef.DEFAULT_NAME);
-		private List<MqttElementSubscriber> m_subscribers = List.of();
+		private ConnectionConfigRef<MqttBrokerConfig> m_brokerRef;
+		private List<MqttElementSubscriber> m_subscribers;
+		
+		/**
+		 * JSON 설정으로부터 만든다.
+		 *
+		 * @param brokerConfig	{@code mqttBrokerConfig} 값. 문자열은 전역 설정 이름, 객체는 broker 설정이며,
+		 * 						없으면 전역 설정의 {@code default}.
+		 * @param subscribers	구독 목록. 반드시 하나 이상 있어야 한다.
+		 * @throws IOException	{@code mqttBrokerConfig}가 문자열도 객체도 아니거나 broker 설정으로 읽지 못한 경우.
+		 * @throws IllegalArgumentException	{@code subscribers}가 없거나 비어 있거나 {@code null} 항목이 있는 경우.
+		 */
+		@JsonCreator
+		public MDTConfig(@JsonProperty(FIELD_BROKER_CONFIG) @Nullable JsonNode brokerConfig,
+						@JsonProperty(FIELD_SUBSCRIBERS) @Nullable List<MqttElementSubscriber> subscribers)
+			throws IOException {
+			m_brokerRef = ConnectionConfigRef.fromNode(brokerConfig, FIELD_BROKER_CONFIG, MqttBrokerConfig.class);
+			m_subscribers = checkSubscribers(subscribers);
+		}
+		
+		/**
+		 * Java 코드에서 만든다.
+		 *
+		 * @param brokerRef		broker 설정 참조.
+		 * @param subscribers	구독 목록. 반드시 하나 이상 있어야 한다.
+		 */
+		public MDTConfig(ConnectionConfigRef<MqttBrokerConfig> brokerRef, List<MqttElementSubscriber> subscribers) {
+			Preconditions.checkNotNullArgument(brokerRef, "MqttBrokerConfig reference is null");
+			m_brokerRef = brokerRef;
+			m_subscribers = checkSubscribers(subscribers);
+		}
+		
+		// 구독이 없는 MQTT 엔드포인트는 broker에 연결하지도 않고 아무 일도 하지 않는다. 'mqtt' 항목을 적고
+		// 'subscribers'를 빠뜨렸다면(철자 오류 포함) 설정 실수이므로 조용히 넘어가지 않고 거부한다.
+		private static List<MqttElementSubscriber> checkSubscribers(@Nullable List<MqttElementSubscriber> subscribers) {
+			Preconditions.checkArgument(subscribers != null && !subscribers.isEmpty(),
+										"'%s' is required and must not be empty: an MQTT endpoint without subscriptions "
+										+ "does nothing", FIELD_SUBSCRIBERS);
+			for ( int i = 0; i < subscribers.size(); ++i ) {
+				Preconditions.checkArgument(subscribers.get(i) != null, "%s[%s] is null", FIELD_SUBSCRIBERS, i);
+			}
+			return List.copyOf(subscribers);
+		}
 
 		/**
 		 * broker 설정 참조를 반환한다.
@@ -85,23 +130,6 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 		@JsonIgnore
 		public ConnectionConfigRef<MqttBrokerConfig> getMqttBrokerConfigRef() {
 			return m_brokerRef;
-		}
-
-		@JsonIgnore
-		public void setMqttBrokerConfigRef(ConnectionConfigRef<MqttBrokerConfig> ref) {
-			Preconditions.checkNotNullArgument(ref, "MqttBrokerConfig reference is null");
-			m_brokerRef = ref;
-		}
-
-		/**
-		 * JSON의 {@code mqttBrokerConfig} 값을 읽는다. 문자열은 전역 설정 이름, 객체는 broker 설정으로 해석한다.
-		 *
-		 * @param node	필드 값.
-		 * @throws IOException	값이 문자열도 객체도 아니거나 broker 설정으로 읽지 못한 경우.
-		 */
-		@JsonSetter(FIELD_BROKER_CONFIG)
-		public void setMqttBrokerConfig(JsonNode node) throws IOException {
-			m_brokerRef = ConnectionConfigRef.fromNode(node, FIELD_BROKER_CONFIG, MqttBrokerConfig.class);
 		}
 
 		/**
@@ -114,19 +142,9 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 			return (m_brokerRef.inline() != null) ? m_brokerRef.inline() : m_brokerRef.name();
 		}
 
+		@JsonGetter(FIELD_SUBSCRIBERS)
 		public List<MqttElementSubscriber> getSubscribers() {
 			return m_subscribers;
-		}
-
-		public void setSubscribers(List<MqttElementSubscriber> subscribers) {
-			if ( subscribers == null ) {
-				m_subscribers = List.of();
-				return;
-			}
-			for ( int i = 0; i < subscribers.size(); ++i ) {
-				Preconditions.checkArgument(subscribers.get(i) != null, "subscribers[%s] is null", i);
-			}
-			m_subscribers = subscribers;
 		}
 
 		/**

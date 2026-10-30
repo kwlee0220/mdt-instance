@@ -28,7 +28,8 @@ public class MqttEndpointInitTest {
 		MDTGlobalConfigurations.setGlobalConfigFile(global);
 		
 		ServiceEndpointConfigs configs = MDTModelSerDe.MAPPER.readerFor(ServiceEndpointConfigs.class)
-									.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": \"no-such-broker\", \"subscribers\": [] } }");
+									.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": \"no-such-broker\", "
+										+ "\"subscribers\": [ { \"topic\": \"t\", \"element\": \"State:A\" } ] } }");
 		MqttEndpointConfig config = new MqttEndpointConfig(configs.getMqtt());
 		
 		ConfigurationInitializationException e = assertThrows(ConfigurationInitializationException.class,

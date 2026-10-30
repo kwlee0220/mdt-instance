@@ -154,7 +154,8 @@ public class MqttEndpointBrokerTest {
 
 	private MqttEndpoint endpoint() throws Exception {
 		ServiceEndpointConfigs configs = MDTModelSerDe.MAPPER.readerFor(ServiceEndpointConfigs.class)
-				.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": { \"brokerUrl\": \"" + m_brokerUrl + "\" } } }");
+				.readValue("{ \"mqtt\": { \"mqttBrokerConfig\": { \"brokerUrl\": \"" + m_brokerUrl + "\" }, "
+						+ "\"subscribers\": [ { \"topic\": \"t\", \"element\": \"State:A\" } ] } }");
 		MqttEndpoint endpoint = new MqttEndpoint();
 		endpoint.init(null, new MqttEndpointConfig(configs.getMqtt()), null);
 		return endpoint;
