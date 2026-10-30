@@ -2,7 +2,7 @@
 
 `mdt.persistence.timeseries`는 JDBC 테이블의 시계열 데이터를 AAS TimeSeries Submodel과 레코드 조회 연산으로 제공한다. 기본 AAS 모델에서 레코드 스키마를 읽고, DB에서 전체 구간 요약이나 최근 레코드를 조회하여 응답을 구성한다.
 
-이 문서는 MDT 인스턴스 개발자와 시계열 연동 담당자를 대상으로 설정, 모델 구조, 세그먼트 생성, 범위 조회, 확장 및 문제 진단을 설명한다. 대상은 `mdt-instance`의 실제 패키지인 `mdt.persistence.timeseries`이며, 연결되는 `mdt-client`의 `mdt.model.timeseries`와 `mdt.model.sm.ref.timeseries`도 필요한 범위에서 다룬다. 동작 기준은 2026년 10월의 프로젝트 소스다.
+이 문서는 MDT 인스턴스 개발자와 시계열 연동 담당자를 대상으로 설정, 모델 구조, 세그먼트 생성, 범위 조회, 확장 및 문제 진단을 설명한다. 대상은 `mdt-instance`의 실제 패키지인 `mdt.persistence.timeseries`이며, 연결되는 `mdt-client`의 `mdt.model.timeseries`와 `mdt.model.sm.ref.timeseries`도 필요한 범위에서 다룬다. 동작 기준은 2026년 10월 30일의 프로젝트 소스다.
 
 ## 역할과 전체 구조
 
@@ -74,7 +74,7 @@ TelemetryLog
 
 `Metadata.Record`의 Property는 레코드 필드의 이름과 타입을 선언한다. `DefaultMetadata`는 각 Property의 `idShort`와 `valueType`을 읽어 `RecordMetadata`를 만든다. 첫 번째 필드는 반드시 `xs:dateTime`이어야 하며, `DefaultRecord.getTimestamp()`는 첫 번째 값을 `Instant`로 취급한다.
 
-두 가지 시간 컬럼 선택 규칙을 함께 만족시켜야 한다. 세그먼트 구현은 설정의 `parameter`가 정확히 `Time`인 항목을 찾고, `JdbcRecordsReader`는 메타데이터의 첫 번째 필드에 매핑된 DB 컬럼을 사용한다. 따라서 첫 번째 필드를 `Time`으로 두고 설정에도 `Time` 매핑을 제공하는 구성이 적합하다.
+두 가지 시간 컬럼 선택 규칙을 함께 만족시켜야 한다. 세그먼트 구현은 설정의 `parameter`가 정확히 `Time`인 항목을 찾고, `JdbcRecordsReader`는 메타데이터의 첫 번째 필드에 매핑된 DB 컬럼을 사용한다. 따라서 첫 번째 필드를 `Time`으로 두고 설정에도 `Time` 매핑을 제공하는 구성이 적합하다. `Time` 매핑이 없으면 세그먼트를 만들 때 `NullPointerException`으로 실패한다.
 
 ### 필드 이름과 순서
 
@@ -129,7 +129,7 @@ TelemetryLog
 | --- | --- |
 | `id` | 기본 모델의 Submodel 전역 ID. 연산 제공자가 설정을 찾을 때 사용 |
 | `idShort` | 기본 모델과 시작 시 매칭할 Submodel idShort |
-| `endpoint` | 인증 정보를 포함할 수 있는 전체 JDBC URL |
+| `endpoint` | `?user=…&password=…`를 반드시 포함하는 전체 JDBC URL |
 | `tableName` | 조회 대상 테이블명 |
 | `parameterColumns` | Metadata 필드 이름과 DB 컬럼 매핑 목록 |
 | `tail` | 생략 또는 null이면 Tail 미생성 |
@@ -144,7 +144,9 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 }
 ```
 
-`endpoint`는 `JdbcConfiguration.parseString()` 계열로 해석한다. 현재 파서는 `?` 뒤에서 `user`, `password`, `maxPoolSize`를 추출하며 나머지 질의 파라미터를 JDBC URL에 보존하지 않는다. `maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 따라서 DB 드라이버의 임의 URL 옵션이 그대로 전달된다고 가정해서는 안 된다. asset JDBC 변수의 `jdbcConfigName` 방식과도 다르다.
+세그먼트는 `JdbcConfiguration.parseString()`으로, 조회 Operation은 `JdbcProcessor.builderFromFullJdbcUrl()`로 `endpoint`를 해석한다. 두 파서 모두 `?` 뒤에서 `user`, `password`, `maxPoolSize`만 사용하고 나머지 질의 파라미터는 JDBC URL에 보존하지 않는다. 따라서 DB 드라이버의 임의 URL 옵션이 그대로 전달된다고 가정해서는 안 된다. `user`와 `password`는 필수이며, 없으면 세그먼트 조회와 Operation 초기화가 `IllegalArgumentException`으로 실패한다.
+
+`maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 다만 풀은 접속 정보(URL·사용자·비밀번호·드라이버)가 같으면 공유되므로, asset JDBC 변수 등이 같은 접속 정보로 풀을 먼저 만들었다면 그 풀의 크기가 그대로 쓰이고 이 값은 무시된다. 설정 방식도 asset JDBC 변수의 `jdbcConfig`(전역 `jdbcs` 이름 또는 인라인 설정)와 다르다.
 
 설정 구현: [TimeSeriesSubmodelConfig.java](../src/main/java/mdt/persistence/timeseries/TimeSeriesSubmodelConfig.java), [AASOperationConfig.java](../src/main/java/mdt/config/AASOperationConfig.java).
 
@@ -231,13 +233,13 @@ ORDER BY measured_at DESC
 LIMIT ?
 ```
 
-DB에서 최신순으로 가져온 결과를 Java에서 뒤집어 시간 오름차순으로 반환한다. 길이 100 설정에서는 `rec000` 형태로 idShort를 생성하며, 번호는 조회 결과 안의 순번이다. 영구적인 레코드 식별자가 아니다.
+DB에서 최신순으로 가져온 결과를 Java에서 뒤집어 시간 오름차순으로 반환한다. 길이 100 설정에서는 `rec000` 형태로 idShort를 생성하며, 번호는 조회 결과 안의 순번이다. 영구적인 레코드 식별자가 아니다. `parameterColumns`가 Metadata 필드보다 적으면 레코드 필드 수가 맞지 않아 `IllegalArgumentException`으로 실패한다.
 
-기간 기준 Tail은 `measured_at >= 현재 시각 - duration` 조건으로 시간 오름차순 조회한다. 기준은 서버의 현재 시각이며, 마지막 데이터 시각을 기준으로 하는 `ReadRecordsByRange`의 기본 `last=10m`와 다르다. 이 SQL에는 현재 시각 이하라는 상한이 없어 미래 시각의 레코드도 조건을 만족할 수 있다.
+기간 기준 Tail은 `measured_at >= 현재 시각 - duration` 조건으로 시간 오름차순 조회한다. 기준은 MDT 인스턴스(JVM)의 현재 시각이며 DB 서버 시각이 아니다. 또한 마지막 데이터 시각을 기준으로 하는 `ReadRecordsByRange`의 기본 `last=10m`와 다르다. 이 SQL에는 현재 시각 이하라는 상한이 없어 미래 시각의 레코드도 조건을 만족할 수 있다.
 
 Tail에 공통 캐시나 `validPeriod` 설정은 없다. `Segments.Tail.RecordCount`처럼 요약 필드만 요청해도 Tail 전체 레코드를 읽어 세그먼트를 만든 뒤 해당 필드를 추출한다.
 
-현재 타입 변환에도 경로 차이가 있다. 개수 기준 Tail은 각 JDBC 값을 Metadata의 `DataType.fromJdbcObject()`로 변환하지만, 기간 기준 Tail은 JDBC 원시 객체 목록을 `DefaultRecord`에 직접 전달한다. `DefaultRecord.getTimestamp()`가 `Instant`를 요구하므로 드라이버가 `Timestamp` 등을 반환하면 기간 기준 경로에서 타입 오류가 발생할 수 있다.
+현재 타입 변환에도 경로 차이가 있다. 개수 기준 Tail은 각 JDBC 값을 Metadata의 `DataType.fromJdbcObject()`로 변환하지만, 기간 기준 Tail은 JDBC 원시 객체 목록을 `DefaultRecord`에 직접 전달한다. 세그먼트를 만들 때 `DefaultRecord.getTimestamp()`가 첫 필드를 `Instant`로 형변환하므로, 시간 컬럼을 `java.sql.Timestamp`로 돌려주는 드라이버(예: PostgreSQL)에서는 레코드가 하나라도 있으면 `ClassCastException`이 발생한다. 또한 기간 기준 Tail은 레코드 idShort를 `rec000`이 아니라 `0`, `1`처럼 순번 그대로 붙인다.
 
 어느 경로든 필드 값이 SQL `NULL`이면 레코드 Property의 값은 `null`(값 없음)이 된다. 숫자 필드라도 0으로 바꾸지 않는다. 원시 객체를 전달하는 경로는 값을 Property로 바꿀 때 `DataType.toValueString()`이 원시 객체를 직접 변환한다. 숫자 필드는 `NUMERIC` 컬럼의 `BigDecimal` 등 어떤 숫자 객체든 받는다. 정수 타입 필드에 소수 부분이 있는 값이 오면 변환에 실패한다.
 
@@ -308,7 +310,7 @@ MDT 확장 연산은 선택적인 문자열 Property `Range`와 `Columns`를 받
 | `last=100` | 마지막 100개를 시간 오름차순으로 반환 |
 | `last=10m` | 마지막 레코드 시각을 기준으로 최근 10분 |
 | `last=10m@latest` | 위와 동일한 기준을 명시 |
-| `last=10m@now` | 서버 현재 시각 기준 최근 10분 |
+| `last=10m@now` | MDT 인스턴스의 현재 시각 기준 최근 10분 |
 | `2026-10-17T00:00:00Z~2026-10-17T01:00:00Z` | 두 경계를 포함한 절대 구간 |
 | `2026-10-17T00:00:00Z~` | 해당 시각 이상 |
 | `~2026-10-17T01:00:00Z` | 해당 시각 이하 |
@@ -363,7 +365,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 ### 타입 변환과 Records 구조
 
-날짜·시간 필드는 `ResultSet.getObject(index, OffsetDateTime.class)`로 읽고 `DataType.fromJdbcObject()`로 변환한다. 나머지는 일반 `getObject()` 후 해당 AAS 타입으로 변환한다. 사용하는 JDBC 드라이버가 날짜·시간 컬럼을 이 방식으로 읽을 수 있어야 한다.
+`xs:dateTime` 필드는 `ResultSet.getObject(index, OffsetDateTime.class)`로 읽고 `DataType.fromJdbcObject()`로 변환한다. 나머지(`xs:date`, `xs:time` 포함)는 일반 `getObject()` 후 해당 AAS 타입으로 변환한다. 사용하는 JDBC 드라이버가 날짜·시간 컬럼을 이 방식으로 읽을 수 있어야 한다.
 
 반환되는 `Records`는 SubmodelElementCollection이고 그 아래 레코드도 Collection이다. 각 레코드에는 선택된 필드의 Property가 들어간다. 레코드 idShort는 `rec00`, `rec01`처럼 조회마다 다시 부여하며 DB의 기본 키가 아니다. Records와 개별 레코드에는 해당 모델의 semanticId를 설정한다.
 
@@ -373,7 +375,9 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 ### 시각과 자원 관리
 
-범위 비교용 SQL 시각 리터럴은 `Instants.toUTCString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 공통 `DataTypes.DATE_TIME`의 변환을 따르므로 모든 출력에 `Z`가 붙는다고 가정하지 않는다.
+범위 비교용 SQL 시각 리터럴은 `Instants.toUTCString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 `DataTypes.DATE_TIME`이 JVM 기본 시간대의 지역 시각(오프셋 없음, 밀리초까지)으로 변환하므로 `Z`나 오프셋이 붙지 않는다.
+
+다른 경로는 시각을 다르게 다룬다. Tail·FullRange·`JdbcRangeInternalSegment`는 `java.sql.Timestamp`를 바인딩하거나 읽으므로, 시간대 없는 컬럼(`timestamp without time zone`)에서는 JVM 기본 시간대의 영향을 받는다. 조회 Operation의 UTC 리터럴 비교와 결과가 어긋나지 않게 하려면 JVM과 DB 세션의 시간대를 UTC로 맞추는 것이 안전하다.
 
 `JdbcRecordsReader`는 `executeQuery(query, true)`의 ResultSet을 try-with-resources로 닫아 연결도 함께 닫도록 한다. FullRange와 Tail 역시 Connection을 try-with-resources로 관리한다. 이 패키지는 여러 조회를 하나의 공통 Connection이나 트랜잭션으로 묶지 않는다.
 
@@ -385,15 +389,15 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 이 클래스는 AAS Range의 min과 max에 따라 `BETWEEN`, `>=`, `<=` SQL을 선택하고 Timestamp 파라미터를 바인딩한다. 양쪽 경계가 모두 없으면 실패한다. 결과는 `ReadRecords`라는 idShort의 InternalSegment에 담긴다.
 
-현재 `ReadRecordsOperation`은 이 클래스를 사용하지 않고 `JdbcRecordsReader`에 위임한다. 따라서 이 클래스의 구현을 바꾸어도 두 공개 조회 Operation의 SQL은 바뀌지 않는다. 기간 Tail과 마찬가지로 JDBC 원시 값을 `DefaultRecord`에 전달하므로 시각 타입 변환도 별도 확인이 필요하다.
+현재 mdt-instance 안에서 이 클래스를 사용하는 코드는 없다. `ReadRecordsOperation`도 `JdbcRecordsReader`에 위임한다. 따라서 이 클래스의 구현을 바꾸어도 두 공개 조회 Operation의 SQL은 바뀌지 않는다. 기간 Tail과 마찬가지로 JDBC 원시 값을 `DefaultRecord`에 전달하므로 시각 타입 변환도 별도 확인이 필요하다.
 
 ### InternalSegmentRecordsReader
 
-이 클래스는 주어진 세그먼트 참조의 `Records`를 먼저 읽고, 메모리에서 범위 필터와 컬럼 선택을 적용한다. DB에 조건을 내려보내는 조회기가 아니다. `read()` 접근 범위는 `protected`이며 현재 두 Operation에서는 사용하지 않는다.
+이 클래스는 주어진 세그먼트 참조의 `Records`를 먼저 읽고, 메모리에서 범위 필터와 컬럼 선택을 적용한다. DB에 조건을 내려보내는 조회기가 아니다. `read()` 접근 범위는 `protected`이며 현재 mdt-instance 안에서 이 클래스를 사용하는 코드는 없다.
 
 Count와 Since는 목록 순서에 따라 레코드를 줄이고, 기간 조회는 첫 번째 필드의 시각을 사용한다. 기존 목록이 시간 오름차순이라고 가정하며 직접 정렬하지 않는다. 컬럼 선택은 Metadata 순서로 계산한 인덱스를 이용해 각 레코드의 필드 목록을 변경한다.
 
-JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레코드의 필드를 모두 제거한다. 전체 필드를 유지하려면 null을 전달해야 한다. 입력 Records 객체를 제자리에서 수정하므로 다른 코드와 공유되는 모델을 직접 전달하는 확장에서는 소유권을 고려한다.
+JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레코드의 필드를 모두 제거한다. 전체 필드를 유지하려면 null을 전달해야 한다. 세그먼트 참조로 읽어 온 Records Collection을 제자리에서 수정하므로, 참조 구현이 공유 객체를 반환하는 확장에서는 소유권을 고려한다.
 
 보조 코드: [JdbcRangeInternalSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcRangeInternalSegment.java), [InternalSegmentRecordsReader.java](../src/main/java/mdt/persistence/timeseries/InternalSegmentRecordsReader.java).
 
@@ -429,7 +433,8 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | Operation 초기화 시 설정을 찾지 못함 | `timeSeriesSubmodels[].id`와 Operation의 Submodel ID |
 | `Cannot find the column mapped to the record field` | Metadata 필드 이름과 parameter 이름의 정확한 일치 |
 | Tail에서 필드 값이 뒤바뀜 | parameterColumns와 Metadata의 필드 순서 |
-| 기간 Tail에서 시각 타입 오류 | JDBC 원시 객체와 DefaultRecord의 Instant 요구 |
+| 기간 Tail에서 `ClassCastException` | 드라이버가 시간 컬럼을 `Timestamp`로 반환함. DefaultRecord는 `Instant`를 요구 |
+| 세그먼트 조회·Operation 초기화 시 `IllegalArgumentException` | `endpoint`에 `user`·`password`가 있는지 |
 | `Segments.Tail`이 없음 | tail 생략 여부. 빈 객체는 기본 100개를 의미 |
 | 데이터가 있는데 현재 시각 기준 조회가 비어 있음 | 데이터의 최신 시각, NOW와 LATEST 기준, DB 시간대 |
 | 빈 테이블에서 `last=10m` 실패 | LATEST 범위 계산에 필요한 마지막 timestamp 부재 |
@@ -438,4 +443,4 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | 목록 조회가 느리거나 실패 | 각 시계열 모델의 집계·Tail 조회 및 오류 전파 |
 | Tail 요약에서 나눗셈 오류 | 복수 레코드의 전체 시간 차이가 밀리초 기준 0인지 확인 |
 
-설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. 타입 변환 등은 다른 런타임 예외로 전달될 수 있으므로 오류 메시지와 실제 조회 경로를 함께 확인한다.
+설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. Operation 제공자 초기화 실패는 `ConfigurationInitializationException`으로 보고된다. 다만 `endpoint`에 사용자·비밀번호가 없을 때의 `IllegalArgumentException`과 기간 Tail의 `ClassCastException`은 변환 없이 그대로 전달되므로, 오류 메시지와 실제 조회 경로를 함께 확인한다.

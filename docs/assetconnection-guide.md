@@ -7,7 +7,7 @@ Java 클래스, 외부 프로그램, Python 스크립트, HTTP RPC를 동일한 
 로봇 트윈 연산별 동작, 입력·출력 인자와 기본값은
 [로봇 트윈 연산 Provider 기술 가이드](robot-twin-operation-guide.md)에 자세히 정리되어 있다.
 
-대상 독자는 MDT 인스턴스 개발자와 연산 연동 담당자다. 2026년 10월 17일의 작업 트리를 기준으로
+대상 독자는 MDT 인스턴스 개발자와 연산 연동 담당자다. 2026년 10월 30일의 작업 트리를 기준으로
 공통 계약, 설정 변환, 제공자별 데이터 형식, RobotTwin·AI 연산과 확장 방법을 설명한다.
 빌드 설정의 Java 대상 버전은 21, FA³ST starter 의존성은 1.3.0이다.
 
@@ -237,8 +237,11 @@ public final class IncrementOperation implements OperationProvider {
 세 배열을 `Map<String, SubmodelElement>`로 바꿔 protected `invokeSync()`에 전달한다.
 설정 arguments 접근, 전역 설정 선택, 필수 SMC·Property 및 XSD 타입 검사 기능을 제공한다.
 
-`getFloatVariableValue()` 등 이름에 `Required`가 없는 값 getter도 현재 필수 Property 조회를 사용한다.
-변수가 없으면 null이 아니라 예외가 발생한다. 선택 인자는 `getPropertyVariable()`의 null 결과를 직접 처리해야 한다.
+이름에 `Required`가 붙은 getter는 변수가 없거나 값이 비어 있으면 `IllegalArgumentException`을 던진다.
+`getStringVariableValue()`, `getIntVariableValue()`, `getFloatVariableValue()`, `getDoubleVariableValue()`,
+`getBooleanVariableValue()`는 선택 변수용으로, 변수가 없으면 null을 반환한다. 숫자·Boolean은 값이 null이거나
+공백뿐이어도 null을 반환한다. 요소 타입이 다르거나 값을 해석할 수 없으면 예외가 발생하며, Boolean은
+`true`/`false`/`1`/`0`(대소문자 무시)만 받는다.
 내부 `JavaOperationProviderConfig.arguments`를 직접 생성할 때는 null 대신 빈 Map을 전달한다.
 인스턴스 설정의 `JavaConfig`는 생략한 arguments를 빈 Map으로 정규화한다.
 
@@ -272,6 +275,11 @@ public final class IncrementOperation implements OperationProvider {
 | `${Left:path}` | 변수 파일의 절대 경로 |
 | `${WORKING_DIR}` | 작업 디렉터리 절대 경로 |
 
+어느 변수와도 맞지 않는 `${...}`가 남아 있으면(예: 변수 이름 오타) 프로세스를 시작하지 않고
+`IllegalArgumentException`으로 실패한다. 치환된 변수 값 안의 `${...}`는 다시 치환하지 않는다.
+한 호출에 같은 이름의 변수(예: 같은 `idShort`의 입력과 출력)를 두 번 등록할 수도 없다.
+프로그램의 표준 입력은 OS의 null device에 연결되므로, stdin을 읽는 프로그램은 바로 EOF를 받는다.
+
 `sum.py`는 값 JSON 파일을 읽고 결과 JSON을 지정 파일에 기록하도록 작성할 수 있다.
 
 ```python
@@ -292,11 +300,11 @@ Path(sys.argv[3]).write_text(json.dumps(left + right), encoding="utf-8")
 
 | 변수 종류 | 프로세스 입력·출력 방식 |
 |---|---|
-| 일반 입력 | 작업 디렉터리의 `<idShort>` 파일에 값 JSON 기록 |
-| 일반 출력 | 프로그램이 `<idShort>` 파일에 값 JSON 기록, 기존 AAS 요소 타입으로 복원 |
+| 일반 입력 | 작업 디렉터리의 `<idShort>` 파일에 값 JSON 기록. 값이 null이면 빈 파일을 만들며, 같은 이름의 파일이 이미 있으면 실패 |
+| 일반 출력 | 실행 전에 남아 있던 `<idShort>` 파일을 지운다. 프로그램이 이 파일에 값 JSON을 기록하면 기존 AAS 요소 타입으로 복원 |
 | 일반 입출력 | 입력과 같은 CommandVariable을 결과 읽기에도 사용 |
-| File 입력 | AAS File의 경로로 FileStorage에서 바이트를 읽어 작업 파일 생성 |
-| File 출력 | 출력 변수 파일 내용으로 **결과 파일의 경로**를 전달, 그 파일을 FileStorage에 저장 |
+| File 입력 | AAS File의 경로로 FileStorage에서 바이트를 읽어 `<작업 디렉터리>/<AAS File 경로>`에 복사. 경로가 비어 있으면 `TaskException` |
+| File 출력 | 출력 변수 파일 내용으로 **결과 파일의 경로**를 전달, 그 파일을 FileStorage에 저장. 경로가 비어 있으면 WARN 후 AAS File 유지 |
 
 일반 문자열 출력은 JSON 문자열이어야 한다. 예를 들어 `hello`가 아니라 `"hello"`를 출력 변수 파일에 쓴다.
 일반 입출력 변수는 명령에서 `${변수:path}`를 사용하여 file mode로 전환해야 수정된 파일을 읽는 경로가 된다.
@@ -307,8 +315,12 @@ File 출력은 출력 변수 파일 자체가 최종 첨부파일이 아니다. 
 명확하다. 결과 파일은 basename으로 FileStorage에 저장되고 AAS File의 `value`가 바뀐다.
 결과 파일 삭제는 저장 시도의 `finally`에서 수행되므로 저장 실패 시에도 원본 파일이 삭제될 수 있다.
 
-`env.file`이 있으면 프로세스 환경에 반영하고 stderr를 stdout에 합쳐 `output.log`에 기록한다.
-종료 코드가 0이 아니면 실패하며 timeout·프로세스 정리는 `CommandExecution`에 위임한다.
+`env.file`이 있으면 프로세스 환경에 반영한다. 파일이 있는데 읽을 수 없으면 프로세스를 시작하지 않고 실패한다.
+stderr는 stdout에 합쳐 `output.log`에 기록하며, 이 파일은 호출마다 덮어쓴다.
+종료 코드가 0이 아니면 `CommandFailedException`(종료 코드 포함)으로 실패한다. 출력 끝부분(최대 4KB)은 예외 객체에만
+담기고 오류 메시지에는 들어가지 않으므로, 원인은 `output.log`에서 확인한다. 기술자의 `timeout`을 넘기면
+`TimeoutException`으로 실패하며, 프로세스 정리는 `CommandExecution`에 위임한다. 자세한 실행 규칙은 utils의
+[async-command-guide](../../../common/utils/docs/async-command-guide.md)를 참고한다.
 호출 종료 시 등록된 변수 파일을 정리하지만, 실패한 모든 파일 준비 과정까지 원자적으로 되돌리는 것은 아니다.
 
 같은 provider의 `m_cmdExec` 필드와 작업 파일명이 공유된다. 병렬 호출이 필요하면 호출별 디렉터리와
@@ -421,13 +433,14 @@ Property가 아니면 실패한다. 기본 script 파일의 읽기 가능 여부
 provider가 실행에 사용하는 폴링 기본값은 3초이며 전체 대기 시간은 설정의 `timeout`을 넘긴다.
 이 값은 개별 HTTP 연결·응답 timeout과 동일한 설정이 아니다.
 RPC 클라이언트에는 세션 DELETE 취소 기능이 있지만 `OperationProvider`의 공개 인터페이스로 노출하지 않는다.
+`timeout`이 지나면 `TimeoutException`으로 끝나지만 원격 세션에 취소(DELETE)를 보내지 않으므로 원격 연산은 계속 실행될 수 있다.
 상위 요청 취소가 원격 취소까지 연결된다고 가정해서는 안 된다.
 
 ## RobotTwin 연산
 
 로봇 연산은 `operations.javas`에 Java 제공자로 등록한다.
 `RobotTwinOperationProvider`는 `arguments.robotTwinConfig`로 접속 정보를 지정한다.
-문자열이면 전역 `robotTwins` 설정의 항목 이름이고, 객체이면 접속 정보이다. 생략하면 전역 설정의 `default` 항목을 사용한다.
+문자열이면 전역 `robotTwins` 설정의 항목 이름이고, 객체이면 접속 정보이다. 생략하면 전역 설정의 `default` 항목을 사용하고, `default`가 없으면 그룹의 첫 항목을 사용한다.
 이전 형식의 `arguments.robotTwinConfigName`도 받지만, `robotTwinConfig`와 함께 쓰면 Provider 생성이 실패한다.
 
 ```json
@@ -891,19 +904,21 @@ HTTP 오류는 `TwinException` 등 클라이언트의 예외로 즉시 전달하
 ## AI 모델 연산
 
 `AIModelOperation`도 Java 제공자다. 일반 HTTP 제공자의 RPC envelope 대신 다음 전용 프로토콜을 사용한다.
+입력·출력 이름은 정해져 있지 않고, AAS Operation에 정의한 변수 이름을 그대로 쓴다.
 
 | 항목 | 계약 |
 |---|---|
-| 설정 | 필수 `arguments.modelId`, 선택 `arguments.modelServer` |
+| 설정 | 필수 `arguments.modelId`, 선택 `arguments.modelServer`, `arguments.version` |
 | 서버 설정 | 전역 `aiModelServers` 그룹의 설정 객체에 `serverUrl` |
-| 입력 | `Samples`: `xs:string` Property |
-| 출력 | `AnomalyScore`: `xs:double`, `Cluster`: `xs:string` |
-| 요청 URL | 끝에 `/`를 보완한 `serverUrl` + URL 인코딩한 `modelId` |
-| 요청 JSON | `{"Inputs":{"Samples":"입력 문자열"}}` |
-| 응답 JSON | `{"Outputs":{"AnomalyScore":0.2,"Cluster":"normal"}}` |
+| 입력 | 모든 입력 변수. 각 변수는 Property여야 하며 값이 null인 변수는 보내지 않음 |
+| 출력 | 응답에서 이름이 같은 항목을 찾아 기존 출력 요소의 타입으로 갱신. 응답에 없는 출력은 그대로 둠 |
+| 요청 URL | 끝에 `/`를 보완한 `serverUrl` + URL 인코딩한 `modelId`. `version`이 있으면 `/<version>`(URL 인코딩)을 덧붙임 |
+| 요청 JSON | `{"Inputs":{"<입력 이름>":"<값 문자열>", ...}}` |
+| 응답 JSON | `{"Outputs":{"<출력 이름>":<값>, ...}}`. `Outputs` 키는 대소문자를 가리지 않음 |
 
-`Samples`는 문자열로 전송한다. 문자열 안의 JSON을 자동으로 객체로 파싱해 보내지 않는다.
-이 구현은 위 입력·출력 이름에 특화되어 있으며 임의 모델의 signature를 자동으로 매핑하지 않는다.
+입력 값은 Property의 `valueType`과 관계없이 문자열 값 그대로 JSON 문자열로 보낸다. 예를 들어 `xs:int` 값 10은
+`"10"`으로 전송되며, 문자열 안의 JSON을 객체로 파싱해 보내지도 않는다. 응답에 `Outputs`가 없으면
+`IllegalStateException`으로 실패한다. 입력에 Property가 아닌 요소가 있으면 `IllegalArgumentException`으로 실패한다.
 
 기본 설정은 다음 형태로 작성할 수 있다. 첫 JSON은 전역 설정의 일부이고, 두 번째는 인스턴스 설정의 일부다.
 
@@ -942,14 +957,15 @@ HTTP 오류는 `TwinException` 등 클라이언트의 예외로 즉시 전달하
 | 대상 Operation 없음 | 출력 정의 조회 실패 | 모델 위치와 Operation 정의 확인 |
 | Java 클래스·생성자 오류 | 로그와 `InternalException` | classpath와 public 생성자 시그니처 확인 |
 | Program 기술자·Script 파일 없음 | 생성 시 `FileNotFoundException` | JVM 작업 디렉터리와 파일 읽기 권한 확인 |
-| 외부 프로세스 비정상 종료 | 실행 오류 전파 | 작업 디렉터리의 `output.log` 확인 |
+| 외부 프로세스 비정상 종료 | `CommandFailedException`(종료 코드 포함) | 작업 디렉터리의 `output.log` 확인 |
 | Script의 개별 출력 변환 실패 | 오류 로그 후 계속 진행 | 성공 응답만으로 출력 완전성 판단 금지 |
 | HTTP 응답의 출력 누락 | 해당 출력 prototype 유지 | 필수 결과가 실제 응답에 있는지 검증 |
 | 일부 결과 반영 후 실패 | 공통 rollback 없음 | 파일 저장·외부 연산 부수효과 별도 확인 |
 | 같은 Program·Script의 동시 호출 | 실행 필드·파일명 공유 | 외부 직렬화 또는 구현의 호출별 격리 필요 |
 
-외부 프로세스의 결과 파일을 실행 전에 모두 지우는 처리는 없으므로, 이전 실패에서 남은 파일을 새 결과로
-읽지 않도록 프로그램이 매번 결과를 새로 작성해야 한다.
+Program 제공자는 출력 전용 변수 파일(`<작업 디렉터리>/<idShort>`)을 실행 전에 지운다(지우지 못하면 호출 실패).
+따라서 프로그램이 출력 변수 파일을 만들지 않으면 이전 결과를 읽는 대신 호출이 실패한다.
+Script의 `outputs.json`은 실행 전에 지우지 않지만, 호출이 끝날 때마다 `finally`에서 삭제를 시도한다.
 `MDTAssetConnectionConfig.equalsIgnoringProviders()`는 현재 항상 false를 반환한다.
 연결 설정의 동등성 비교가 이 메서드에 의존하는 경우 의미상 같은 설정도 같다고 판단하지 않는다.
 
@@ -969,8 +985,9 @@ HTTP 오류는 `TwinException` 등 클라이언트의 예외로 즉시 전달하
 반면 다섯 번째 **제공자 종류**를 추가하려면 `AASOperationConfig`, `OperationsConfig`,
 `MDTInstanceMain.loadAssetConnectionConfigs()`, `MDTOperationProviderConfig`와 구현 선택 분기를 함께 확장한다.
 
-현재 프로젝트에는 `src/test` 디렉터리가 없다. 검증을 추가할 때는 `ServiceContext`에서 출력 prototype을
-반환하도록 mock하고, 제공자가 원본 prototype을 변경하지 않는지부터 확인하는 것이 좋다.
+로봇 연산 제공자는 `src/test/java/mdt/assetconnection/operation/robot`에 mockwebserver 기반 단위 테스트가 있다.
+`MDTOperationProvider`와 Program·Script·HTTP 제공자에는 아직 테스트가 없다. 검증을 추가할 때는 `ServiceContext`에서
+출력 prototype을 반환하도록 mock하고, 제공자가 원본 prototype을 변경하지 않는지부터 확인하는 것이 좋다.
 실제 프로그램·HTTP 서버·로봇을 사용하는 통합 검증은 각각의 배포 환경에서 수행해야 한다.
 
 ## 소스와 관련 문서
@@ -986,7 +1003,7 @@ HTTP 오류는 `TwinException` 등 클라이언트의 예외로 즉시 전달하
 | Java 구현 보조 | [OperationVariables](../src/main/java/mdt/assetconnection/operation/OperationVariables.java), [AbstractJavaOperationProvider](../src/main/java/mdt/assetconnection/operation/AbstractJavaOperationProvider.java) |
 | 로봇 연산 | [operation.robot](../src/main/java/mdt/assetconnection/operation/robot), [RobotTwinConfig](../src/main/java/mdt/RobotTwinConfig.java) |
 | AI 모델·전역 설정 | [AIModelOperation](../src/main/java/mdt/assetconnection/operation/AIModelOperation.java), [MDTGlobalConfigurations](../src/main/java/mdt/MDTGlobalConfigurations.java) |
-| 명령 실행·변수 파일 | [CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java), [CommandVariable](../../../common/utils/src/main/java/utils/async/command/CommandVariable.java) |
+| 명령 실행·변수 파일 | [CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java), [CommandVariable](../../../common/utils/src/main/java/utils/async/command/CommandVariable.java), [async-command-guide](../../../common/utils/docs/async-command-guide.md) |
 | RPC 프로토콜 | [RESTfulAsyncRpcClient](../../../common/utils/src/main/java/utils/rpc/restful/RESTfulAsyncRpcClient.java) |
 | 값 변환 | [ElementValues](../../mdt-client/src/main/api/mdt/model/sm/value/ElementValues.java) |
 | 외부 데이터 값 연결 | [asset persistence 가이드](asset-persistence-guide.md) |

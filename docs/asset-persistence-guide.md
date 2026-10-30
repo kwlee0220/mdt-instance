@@ -4,7 +4,7 @@
 
 예를 들어 `Telemetry:Measurements.Temperature`를 DB의 온도 컬럼에 연결하면, 사용자는 AAS API로 온도를 조회하면서 DB의 값을 읽을 수 있다. `Measurements` Collection 전체를 연결해 온도와 압력을 한 번에 다룰 수도 있다. 연결할 요소의 구조와 타입은 초기 AAS 모델에 미리 정의해야 한다.
 
-이 문서는 MDT 인스턴스를 개발하거나 외부 시스템을 연동하는 개발자를 위한 문서다. 먼저 전체 구조와 공통 동작을 설명하고, 이어서 연결 방식별 설정과 구현상의 주의점을 다룬다. 설명은 2026년 10월 28일 소스를 기준으로 한다. `AssertVariableBasedPersistence`와 `AssertVariableBasedPersistenceConfig`는 실제 코드에 쓰인 클래스 이름이다.
+이 문서는 MDT 인스턴스를 개발하거나 외부 시스템을 연동하는 개발자를 위한 문서다. 먼저 전체 구조와 공통 동작을 설명하고, 이어서 연결 방식별 설정과 구현상의 주의점을 다룬다. 설명은 2026년 10월 30일 소스를 기준으로 한다. `AssertVariableBasedPersistence`와 `AssertVariableBasedPersistenceConfig`는 실제 코드에 쓰인 클래스 이름이다.
 
 - 연동을 설정하려면 [설정 형식과 구현 선택](#설정-형식과-구현-선택)에서 사용할 구현을 고른 뒤 해당 연동 절의 예제를 참고한다.
 - 조회 결과나 갱신 동작을 이해하려면 [조회와 갱신 요청 처리](#조회와-갱신-요청-처리)를 먼저 읽는다.
@@ -257,7 +257,9 @@ JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문�
 
 필드를 생략하거나 null을 지정하면 `default` 이름으로 조회한다. 전역 설정에 그 이름이 없으면 해당 그룹의 첫 항목을 사용하므로, 연결 대상을 분명히 하려면 이름을 직접 지정한다. 새 필드와 이전 이름 필드에 모두 null이 아닌 값을 넣으면 설정 오류다.
 
-설정을 다시 저장할 때는 새 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다.
+설정을 다시 저장할 때는 새 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다. 단, 엔드포인트는 이전 형식인 `mqttBrokerConfigName`을 받지 않는다. 이 필드는 경고 없이 무시되고 `default`가 쓰인다.
+
+인라인 연결 객체에 지원하지 않는 필드가 있으면 JDBC(`jdbcConfig`)와 RobotTwin(`robotTwinConfig`)은 설정 로딩이 실패한다. 예를 들어 이전 버전의 `RobotTwinConfig`에 있던 `operations` 필드가 전역 `robotTwins` 항목이나 인라인 객체에 남아 있으면 읽지 못한다. 반면 MQTT는 해당 필드를 무시하고 경고만 남긴다. 인라인 `jdbcConfig`에는 `maxPoolSize`도 지정할 수 있다.
 
 관련 코드: [ConnectionConfigRef.java](../src/main/java/mdt/ConnectionConfigRef.java), [MDTGlobalConfigurations.java](../src/main/java/mdt/MDTGlobalConfigurations.java).
 
@@ -298,7 +300,7 @@ JDBC·HTTP·RobotTwin의 읽기에서는 외부 호출 직전에 기록한 시�
 
 JDBC 접속 정보는 `jdbcConfig`로 지정한다. 전역 설정 `jdbcs`의 항목 이름이나 접속 정보 객체를 쓸 수 있고, 생략하면 `default`를 사용한다([연결 설정 지정](#연결-설정-지정)).
 
-JDBC 변수는 DB 작업마다 연결을 새로 만들지 않고 연결 풀에서 얻는다. 풀은 utils의 [JdbcConnectionPools](../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 인스턴스(JVM) 단위로 관리하며, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스)가 같으면 변수가 달라도 하나의 풀을 공유한다. 같은 DB를 쓰는 [시계열 조회](timeseries-persistence-guide.md)도 같은 풀을 사용한다. 풀의 동작은 다음과 같다.
+JDBC 변수는 DB 작업마다 연결을 새로 만들지 않고 연결 풀에서 얻는다. 풀은 utils의 [JdbcConnectionPools](../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 인스턴스(JVM) 단위로 관리하며, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스, 드라이버를 별도로 적재한 경우 그 ClassLoader·jar 파일)가 같으면 변수가 달라도 하나의 풀을 공유한다. 같은 DB를 쓰는 [시계열 조회](timeseries-persistence-guide.md)도 같은 풀을 사용한다. 풀의 동작은 다음과 같다.
 
 | 항목 | 값 |
 |---|---|
@@ -324,11 +326,13 @@ MDT 인스턴스는 각자 별도의 JVM이므로 풀도 인스턴스마다 따�
 
 설정을 읽을 때 각 타입이 사용하지 않는 필드가 있으면 무시하되 경고 로그를 남긴다(예: simple 설정의 `table`). 필수 필드가 없거나, 배열이 비었거나, 열거 값이 잘못된 경우에는 `JacksonDeserializationException`으로 설정 로딩이 실패한다. 열거 값(`updateMode`, `onNoRecord`)은 대소문자를 구분하지 않는다.
 
-SQL `NULL`은 Property 값 `null`(값 없음)로 반영한다. 숫자 타입이라도 0으로 바꾸지 않는다.
+SQL `NULL`은 Property 값 `null`(값 없음)로 반영한다. 숫자 타입이라도 0으로 바꾸지 않는다. 반대로 쓰기에서 숫자 Property(`xs:int`·`xs:long`·`xs:short`·`xs:float`·`xs:double`)의 값이 null이거나 빈 문자열이면 SQL `NULL`을 기록한다.
 
-SQL 하나의 실행 제한 시간은 공통 필드 `queryTimeout`으로 정하며, 생략하면 30초다(`"5s"`처럼 지정, 양수만 허용). 변수는 잠금을 잡은 채 SQL을 실행하므로 느린 질의가 같은 변수의 다른 요청까지 붙잡지 않도록 제한을 둔다. 제한 시간을 넘기면 드라이버가 실행을 취소하고 읽기·쓰기가 실패한다. JDBC 제한 시간은 초 단위이므로 1초 미만은 1초로 올린다. 연결 풀에서 연결을 얻는 대기(최대 5초)와는 별개다.
+시간 관련 타입은 다음 규칙으로 변환한다. `xs:dateTime`은 `Timestamp`로 기록하며, 오프셋이 없는 값 문자열은 JVM 기본 시간대로 해석한다. 읽은 값은 오프셋 없는 지역 시각(밀리초까지)으로 표시된다. `xs:duration`은 밀리초 단위 정수로 기록한다. 읽을 때는 정수 컬럼이면 밀리초, 실수 컬럼이면 초, 문자열이면 ISO-8601 기간으로 해석하며, 드라이버 고유의 interval 객체는 지원하지 않는다.
 
-로그와 예외 메시지에 JDBC URL을 출력할 때는 URL에 포함된 비밀번호(`password=`, `pwd=` 파라미터와 `//user:password@host` 형식)를 `****`로 가린다. 전역 설정 이름으로 지정한 변수는 `jdbcs.<이름>`으로 표시한다.
+SQL 하나의 실행 제한 시간은 공통 필드 `queryTimeout`으로 정하며, 생략하면 30초다(`"5s"`처럼 지정, 양수만 허용). 변수는 잠금을 잡은 채 SQL을 실행하므로 느린 질의가 같은 변수의 다른 요청까지 붙잡지 않도록 제한을 둔다. 제한 시간을 넘기면 드라이버가 실행을 취소하고 읽기·쓰기가 실패한다. JDBC 제한 시간은 초 단위이므로 소수 부분은 버리고, 1초 미만은 1초로 올린다(예: `1.9s` → 1초). 연결 풀에서 연결을 얻는 대기(최대 5초)와는 별개다.
+
+로그와 예외 메시지에 JDBC URL을 출력할 때는 URL에 포함된 비밀번호(`password=`·`passwd=`·`pwd=` 파라미터(구분자 `?`, `&`, `;`, 대소문자 무시)와 `//user:password@host` 형식)를 `****`로 가린다. 전역 설정 이름으로 지정한 변수는 `jdbcs.<이름>`으로 표시한다.
 
 `AbstractJdbcAssetVariable`은 변수마다 하나의 `Guard`를 두어 캐시를 읽거나 쓰는 작업이 동시에 실행되지 않도록 한다. 서로 다른 변수는 같은 DB를 사용하더라도 이 잠금을 공유하지 않는다.
 
@@ -426,7 +430,7 @@ sequenceDiagram
 
 `UPDATE` 모드에서는 조건이 없으면 테이블 전체가 갱신되므로 `where`가 필수다. 갱신 SQL에는 `where`만 쓰이고 `orderBy`·`limit`은 쓰이지 않는다. 이 변수는 Collection 하나를 한 행에 연결하므로, 갱신된 행이 없거나 두 행 이상이면 실패로 처리하고 트랜잭션을 되돌린다.
 
-이전 방식인 `whereClause`도 그대로 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회와 갱신 SQL 모두에 붙는다. `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다. `UPDATE` 모드에서 `whereClause`를 쓰면, SQL 주석(`/* */`, `--`)을 지운 뒤 `WHERE` 키워드가 있어야 한다. 예를 들어 `"order by id desc limit 1"`이나 주석만 있는 문자열은 조건이 아니므로 설정 오류다.
+이전 방식인 `whereClause`도 그대로 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회 SQL과 `UPDATE` 모드의 갱신 SQL에 붙는다(`APPEND`의 INSERT에는 붙지 않는다). `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다. `UPDATE` 모드에서 `whereClause`를 쓰면, SQL 주석(`/* */`, `--`)을 지운 뒤 `WHERE` 키워드가 있어야 한다. 예를 들어 `"order by id desc limit 1"`이나 주석만 있는 문자열은 조건이 아니므로 설정 오류다.
 
 값은 PreparedStatement로 바인딩하지만 테이블명, 컬럼 표현식, 조건·정렬 문자열은 직접 SQL 구문이 된다.
 
@@ -466,7 +470,7 @@ sequenceDiagram
 
 원소가 없을 때는 조회할 때마다 결과 컬럼의 메타데이터로 임시 템플릿을 만든 뒤, 원소가 있을 때와 같은 방식으로 행마다 복제해 채운다. 따라서 두 경우의 값 변환 규칙은 같다([값 변환](#값-변환)).
 
-List 원소(Collection)에는 AAS 규칙에 따라 `idShort`를 두지 않는다.
+모델에 원소가 없을 때 만드는 List 원소(Collection)에는 AAS 규칙에 따라 `idShort`를 두지 않는다. 모델의 첫 원소를 템플릿으로 쓸 때는 그 원소를 그대로 복제하므로, 모델 원소에도 `idShort`를 두지 않아야 한다. 대상 요소가 `SubmodelElementList`가 아니면 초기화가 `AssetVariableException`으로 실패한다.
 
 ### 여러 행의 키와 값 매핑
 
@@ -504,7 +508,7 @@ JSON은 타입 정보(`@type`)가 없는 값 형식이다. 예를 들어 `W`, `H
 
 컬럼은 이름이 아니라 위치로 읽는다. 대상 요소는 바인딩이 루트 요소(변수 버퍼, 저장할 값, List의 행 원소)에서 `subPath`로 찾는다. 변환에 실패하면(예: 숫자 Property에 숫자가 아닌 값) 바인딩이 `subPath`, 컬럼 번호·이름, 값을 담은 `AssetVariableException`을 던진다. 숫자 Property는 드라이버가 돌려준 어떤 숫자 객체든 받는다. 예를 들어 `NUMERIC` 컬럼이나 `avg()` 결과의 `BigDecimal`도 `xs:int`·`xs:double` 등으로 변환된다. 정수 타입(`xs:int`, `xs:long`, `xs:short`)으로 바꿀 때 소수 부분이 있으면(`12.75`) 변환에 실패한다. `12.00`처럼 소수 부분이 0이면 통과한다. 따라서 `avg()` 같은 결과를 정수 Property에 넣으려면 SQL에서 `round()`나 형 변환으로 정수로 만든다. 범위를 넘는 값은 검사하지 않는다. 정밀도를 그대로 유지하려면 Property를 `xs:decimal`로 정의한다.
 
-OPC UA처럼 JDBC가 아닌 데이터소스의 값은 [ElementValueSetter.java](../src/main/java/mdt/persistence/asset/ElementValueSetter.java)가 같은 규칙(Property는 `DataType`, 그 밖은 MDT 값 JSON)으로 반영한다.
+`opcua:simple` 변수가 읽은 값은 [ElementValueSetter.java](../src/main/java/mdt/persistence/asset/ElementValueSetter.java)가 JDBC와 같은 규칙(Property는 `DataType`, 그 밖은 MDT 값 JSON)으로 반영한다. `opcua:list`·`opcua:collection`은 값을 `Double`로 반영하고, HTTP와 RobotTwin은 각 클래스가 JSON 값을 직접 변환한다.
 
 ## HTTP 연동
 
@@ -541,7 +545,7 @@ flowchart LR
 | --- | --- |
 | `url` | 필수이며 공백 문자열은 허용하지 않음 |
 | `headers` | 선택적인 헤더 이름과 값 객체 |
-| `timeout` | HTTP 호출 전체의 제한 시간. 생략하면 클라이언트 기본값 사용 |
+| `timeout` | HTTP 호출 전체의 제한 시간. 생략하면 호출 전체 제한은 없고 OkHttp 기본값(연결·읽기·쓰기 각 10초)만 적용 |
 | `valuePointer` | 응답에서 기준 JSON 선택. 기본값 `""`는 전체 응답 |
 | `mappings` | AAS 상대 경로 → 기준 JSON 내부 Pointer. 생략하면 기준 값 전체를 반영 |
 
@@ -559,7 +563,7 @@ JSON Pointer에 `/readings[0]`을 쓰면 배열 첫 항목이 아니라 `reading
 
 요청이나 변환이 실패하면 갱신 시각을 변경하지 않으므로 다음 읽기에서 재시도한다. 다만 HTTP 구현은 내부 버퍼에 여러 매핑을 순서대로 적용한다. 중간에 변환이 실패해도 앞서 변경한 필드를 되돌리지는 않는다.
 
-Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:string` Property일 때 JSON 문자열로 저장할 수 있고, 다른 Property 타입에서는 오류가 된다. 복합 요소에는 MDT 값 형식으로 반영한다.
+Property는 선언된 AAS 타입에 맞춰 변환한다. 다만 RobotTwin 변수와 달리 JSON 값의 종류를 따로 검사하지 않으므로, 숫자 Property에 숫자가 아닌 문자열이나 boolean이 오면 0으로 반영될 수 있다. 응답 본문이 비어 있으면 읽기가 실패한다. 객체·배열은 `xs:string` Property일 때 JSON 문자열로 저장할 수 있고, 다른 Property 타입에서는 오류가 된다. 복합 요소에는 MDT 값 형식으로 반영한다.
 
 현재 설정 파서는 `url`을 사용한다. `AASHubConfig` 레코드와 관련 상수가 있지만 `aasHubName` 또는 `baseUrl`만으로 URL을 조립하는 경로는 연결되어 있지 않다.
 
@@ -588,7 +592,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `mqttBrokerConfig` | `"default"` | 전역 `mqttBrokers`의 항목 이름 또는 연결 설정 객체. 객체 필드는 `brokerUrl`, `connectionTimeout`, `keepAliveInterval`, `reconnectInterval` |
+| `mqttBrokerConfig` | `"default"` | 전역 `mqttBrokers`의 항목 이름 또는 연결 설정 객체. 객체 필드는 `brokerUrl`(생략하면 `tcp://localhost:1883`), `connectionTimeout`, `keepAliveInterval`, `reconnectInterval` |
 | `topic` | 필수 | 발행할 토픽. 비어 있거나 와일드카드(`+`, `#`)가 있으면 설정 오류 |
 | `qos` | `1` | 0, 1, 2 중 선택. 0은 브로커의 수신 확인을 기다리지 않으며, 1·2는 각각 PUBACK·PUBCOMP를 기다림 |
 | `retained` | `false` | 브로커가 마지막 메시지를 보관해 새 구독자에게 전달하도록 지정. 인스턴스를 없애도 브로커의 보관 값은 남음 |
@@ -606,7 +610,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 객체·배열은 `xs:s
 
 연결을 확인한 뒤 실제로 발행하기 전에 연결이 끊긴 경우도 같은 정책으로 처리한다. 그 밖의 발행 오류나 값 변환 실패는 `skip`을 설정했더라도 예외를 던진다.
 
-전달 확인을 기다리는 동안에는 공유 연결의 잠금을 잡고 있지 않다. 따라서 이 대기 자체가 같은 연결을 쓰는 다른 변수의 발행을 잠금으로 막지는 않는다. 다만 바깥 영속성 계층이 요청 전체에 잠금을 걸었다면 같은 잠금이 필요한 요청은 기다려야 한다. 그 범위는 다음 절을 참고한다.
+발행과 전달 확인 대기 모두 공유 연결(`MqttService`)의 잠금 밖에서 수행한다. 따라서 같은 연결을 쓰는 다른 변수의 발행이나 엔드포인트의 메시지 수신을 잠금으로 막지 않는다. 다만 바깥 영속성 계층이 요청 전체에 잠금을 걸었다면 같은 잠금이 필요한 요청은 기다려야 한다. 그 범위는 다음 절을 참고한다.
 
 Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 된다. 영속성 계층이 기본 모델에 저장된 전체 요소를 복사하고 요청 부분을 바꾼 뒤 전체 값을 발행한다. 이때 서로 다른 하위 요소의 갱신이 동시에 진행되면, 각 요청이 만든 전체 값에 다른 요청의 변경이 빠질 수 있다. 예를 들어 온도와 압력을 따로 갱신하면 각 메시지에 이전 압력이나 이전 온도가 포함될 수 있다.
 
@@ -625,7 +629,7 @@ Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 �
 
 등록된 파라미터 경로는 파라미터 Collection 자체의 경로다. 그 아래 `ParameterValue` 경로나 일반 경로인 `Telemetry:Measurements.Temperature`까지 자동으로 보호하지는 않는다. 따라서 **`ConcurrentPersistence`를 추가하는 것만으로 모든 MQTT 부분 갱신의 충돌을 막을 수는 없다.** 전체 값의 일관성이 필요하면 호출 측에서 해당 요소의 갱신 순서를 보장하거나, 읽기·병합·외부 발행·기본 모델 저장 전체를 보호하도록 별도로 구현해야 한다.
 
-JDBC의 변수별 `Guard`, MQTT의 공유 연결 잠금, `ConcurrentPersistence`의 요청 잠금은 각각 보호하는 대상이 다르다. 한 곳에 잠금이 있다는 이유로 전체 저장 과정까지 하나의 작업으로 실행된다고 해석해서는 안 된다.
+JDBC의 변수별 `Guard`와 `ConcurrentPersistence`의 요청 잠금은 각각 보호하는 대상이 다르다. MQTT 변수의 발행에는 잠금이 없다(`MqttService`의 잠금은 구독 목록과 broker 구독·해제만 보호한다). 한 곳에 잠금이 있다는 이유로 전체 저장 과정까지 하나의 작업으로 실행된다고 해석해서는 안 된다.
 
 관련 코드: [ConcurrentPersistence.java](../src/main/java/mdt/persistence/ConcurrentPersistence.java), [MDTModelLookup.java](../src/main/java/mdt/persistence/MDTModelLookup.java).
 
@@ -657,6 +661,8 @@ simple은 반환값을 요소 타입에 맞춰 반영하고, 응답 상태가 Ba
 세 구현 모두 내부 버퍼를 복사한 객체에 조회 값을 반영해 반환한다. List와 Collection은 여러 노드를 순서대로 읽으므로, 반환된 값들이 모두 같은 시점에 측정된 값이라고 볼 수는 없다.
 
 `AutoReconnectingOpcUaClient`는 비동기로 연결을 시도하고 연결이 끊기면 클라이언트를 정리한 뒤 재접속한다. 변수에서 지정하는 재시도 간격은 5초이고, 노드 조회 전에 연결된 클라이언트를 기다리는 제한도 5초다. 이 대기 제한은 뒤이어 수행되는 `readValue(...).get()` 전체의 제한 시간을 뜻하지 않는다.
+
+MQTT 변수와 달리 OPC UA 연결은 공유하지 않는다. 변수마다 생성자에서 자체 `AutoReconnectingOpcUaClient`를 만들어 시작하며, 현재 `close()`에서 이 클라이언트를 멈추지 않는다. 같은 서버를 읽는 변수가 많으면 그만큼 연결이 생긴다는 점을 고려한다.
 
 `OpcUaServerReconnect`는 실제 연결 재시도를 수행한다. `PandaRobotOpcUaReader`는 별도의 로봇 조회 보조 코드이며 `AssetVariableConfigs`에 등록되는 변수 구현은 아니다.
 
@@ -692,7 +698,7 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 
 응답은 `RobotTwinVariable`로 해석한다. `mappings`의 JSON Pointer는 응답의 **`value` 필드 내부**를 기준으로 한다. 예를 들어 `/position/panda_joint1`은 응답 전체에서 보면 `value.position.panda_joint1`에 해당한다. 매핑을 생략하면 `value` 전체를 AAS 요소에 반영한다.
 
-응답 필드는 다음과 같다. 모르는 필드는 무시한다.
+응답 필드는 다음과 같다. 모르는 필드는 무시하지만, 이 변수가 쓰지 않는 필드라도 형식이 맞지 않으면(예: 시간대가 없는 `received_at`) 응답 해석이 실패해 읽기가 실패한다.
 
 | 필드 | 의미 |
 | --- | --- |
@@ -746,6 +752,8 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 | `BOOLEAN` | JSON boolean만 허용. 문자열 `"true"`는 거부 |
 | 그 밖의 타입 | 이 단계의 추가 검사 없이 기존 변환 로직 사용 |
 
+단, 매핑 대상 요소 자체가 `xs:integer`·`xs:byte` Property이면 `DataTypes`가 이 타입을 지원하지 않아 값 변환 단계에서 읽기가 실패한다. 이 두 타입의 검사는 Collection·List의 하위 Property에만 의미가 있으며, HTTP 변수도 같다.
+
 Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range는 `min`·`max`를 따라 검사한다. 복합 값의 내부 구조나 누락 값에 대한 나머지 처리는 `ElementValues.update()`가 담당한다.
 
 모든 매핑을 캐시의 복사본에 적용하고, 처리가 끝나면 캐시를 교체한다. 따라서 중간에 변환 예외가 나면 일부 필드만 바뀐 캐시가 남지 않는다. 다만 누락되거나 `null`인 필드는 의도적으로 이전 값을 유지하므로, 정상 처리된 결과에도 이전 값과 새 값이 함께 있을 수 있다. JDBC·HTTP와 마찬가지로 캐시 갱신과 반환용 복사는 `Guard` 잠금 안에서 수행한다.
@@ -774,6 +782,7 @@ JDBC 구현을 추가한다면 `AbstractJdbcAssetVariable`과 `AbstractJdbcAsset
 | 조회 값이 즉시 바뀌지 않음 | `validPeriod`, 조회 결과가 없는 경우의 기존 값 유지, 외부 null 응답 |
 | 목록은 조회되지만 단일 Submodel 조회가 실패 | `findSubmodels()`의 저장 모델 대체 경고와 외부 데이터소스 오류 |
 | HTTP 매핑에서 일부 필드만 갱신되지 않음 | 기준 `valuePointer`, JSON Pointer의 배열 문법, null, AAS 상대 경로 |
+| HTTP 숫자 값이 0으로 바뀜 | 응답 값이 숫자가 아닌 문자열·boolean인지. HTTP 변수는 JSON 값 종류를 검사하지 않음 |
 | MQTT 메시지가 없는데 AAS 값은 갱신됨 | 기본 정책인 `whenDisconnected: skip`, 시작 직후 연결 상태, 전달 확인 시간 초과 로그 |
 | MQTT 부분 갱신 메시지에 다른 필드의 이전 값이 들어 있음 | 기본 모델 전체 값을 복사해 발행하는 방식과 동시 요청 여부. [잠금 범위](#동시-요청과-잠금-범위) 확인 |
 | OPC UA 값을 읽지 못함 | 전역 `opcuas.default`, namespace 2, 문자열·숫자 NodeId 구분, 반환 타입 |

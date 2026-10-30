@@ -2,7 +2,7 @@
 
 `mdt.assetconnection.operation.robot` 패키지는 AAS Operation의 입력을 로봇 트윈 클라이언트 호출로 변환하고, 실행 결과를 AAS 출력 변수에 반영한다. 로봇 이동, 그리퍼 제어, 파지·놓기 작업, scene 초기화와 관측을 워크플로에서 사용할 때 이 패키지를 이용한다.
 
-이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. 설명 기준은 2026년 10월 25일의 구현이다. AAS 호출 등록과 다른 종류의 Provider는 [assetconnection 가이드](assetconnection-guide.md)를 참고한다.
+이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. 설명 기준은 2026년 10월 30일의 구현이다. AAS 호출 등록과 다른 종류의 Provider는 [assetconnection 가이드](assetconnection-guide.md)를 참고한다.
 
 표의 기본값은 **Provider에서 입력을 생략했을 때 적용하는 값**이다. AAS 모델이나 워크플로가 값을 명시하면 그 값이 우선한다. “서버 설정”은 Provider가 해당 값을 요청에 넣지 않는다는 뜻이며, 특정 배포의 기본값을 클라이언트가 보장한다는 뜻은 아니다.
 
@@ -53,7 +53,7 @@ flowchart TD
     E -.-> N[이 호출의 출력은 반환되지 않음]
 ```
 
-`AbstractJavaOperationProvider`는 `OperationVariable[]`을 각 요소의 `idShort`로 인덱싱한 Map으로 변환한다. 구체 Provider는 `invokeSync()`에서 입력을 읽고 클라이언트 연산을 실행한다. 현재 9개 Provider는 입출력 변수인 `inoutputVariables`를 결과 저장 용도로 사용하지 않는다.
+`AbstractJavaOperationProvider`는 `OperationVariable[]`을 각 요소의 `idShort`로 인덱싱한 Map으로 변환한다. 구체 Provider는 `invokeSync()`에서 입력을 읽고 클라이언트 연산을 실행한다. 현재 11개 Provider 모두 입출력 변수(`inoutputVariables`)를 결과 저장 용도로 사용하지 않는다. `MoveLinearProvider`만 지원하지 않는 이전 입력을 거부하려고 입출력 변수 이름을 검사한다.
 
 AAS 비동기 호출은 Provider의 실행을 비동기로 감싼다. 이것과 로봇 트윈 서버의 동기·비동기 연산 구분은 별개다. 클라이언트는 서버의 연산 카탈로그에 따라 즉시 결과를 받거나 세션을 폴링한다. `GetSceneObjects`와 `WaitUntilObjectStill`은 상태 변수 조회이므로 원격 연산 세션을 만들지 않는다.
 
@@ -66,9 +66,9 @@ AAS 비동기 호출은 Provider의 실행을 비동기로 감싼다. 이것과 
 | 변수 배열 변환 | 입력·입출력·출력 배열을 각각 이름별 Map으로 변환 |
 | 필수 변수 접근 | 변수가 없거나 요구한 AAS 형식과 다르면 예외 |
 | 선택 변수 접근 | 변수가 없으면 null 반환. 존재하면 형식 검사 |
-| 숫자·Boolean 변환 | 선택 값이 null 또는 공백이면 미지정으로 처리. 숫자 문자열의 앞뒤 공백은 제거 |
+| 숫자·Boolean 변환 | 선택 값이 null 또는 공백이면 미지정으로 처리. 숫자 문자열의 앞뒤 공백은 제거. Boolean은 `true`/`false`/`1`/`0`(대소문자 무시)만 받음 |
 | 문자열 접근 | 원래 문자열을 반환. 공백 제거·빈 문자열 허용 여부는 각 연산이 결정 |
-| Provider 설정 접근 | `arguments`의 직접 설정 또는 이름으로 지정한 전역 설정 조회 |
+| Provider 설정 접근 | `arguments`의 직접 설정 또는 이름으로 지정한 전역 설정 조회. 로봇 Provider는 이 기능 대신 `ConnectionConfigRef`로 `robotTwinConfig`(이름 문자열 또는 객체)를 해석한다(3.1절) |
 
 Property의 `valueType`도 계약의 일부다. 예를 들어 `VelocityScaling`의 `xs:float`를 임의로 `xs:double`로 바꾸면 일반 Property 접근에서 거부된다. SMC 내부의 관절·자세 변환은 별도의 `Ros2SerDes` 규칙을 따른다.
 
@@ -84,7 +84,8 @@ Property의 `valueType`도 계약의 일부다. 예를 들어 `VelocityScaling`�
 | `throwIfRemoteFailed()` | 원격 실패를 로그에 남기고 `OperationFailedException` 발생 |
 | `handleMotionResult()` | 관절·이름 자세 이동의 도달 확인 로그와 최종 출력 갱신 |
 | `updateFinalState()` | `final_pose`, `final_joints`를 AAS 출력에 반영. 누락된 쪽은 경고 후 기존 값 유지 |
-| `describeStop()` | Grasp·Place에서 실행 중 중단과 단계 사이 중단을 구분 |
+| `describeStop()` | Grasp·Pick·Place에서 실행 중 중단과 단계 사이 중단을 구분 |
+| `sceneObjectsOrNull()` | 선택 출력 `Objects`의 변환 실패를 경고로 처리하고 기존 값 유지(Pick·AlignHeldObject·WaitUntilObjectStill) |
 
 ## 2 공통 실행 계약
 
@@ -180,7 +181,7 @@ Joints             SMC
 └─ ...             이동 대상 관절 이름
 ```
 
-`Orientation`은 Euler angle이 아닌 쿼터니언이다. 목표 자세의 모든 성분은 유한한 숫자여야 하고, 호출자는 유효한 회전을 나타내는 쿼터니언을 전달해야 한다. Grasp·Place는 클라이언트에서도 0 쿼터니언을 거부한다. 단일 MoveLinear의 공통 입력 검사는 유한값 확인까지이므로 이를 회전의 유효성 검증으로 해석하지 않는다. 목표 좌표에는 기본값이 없으므로 호출자가 채워야 한다.
+`Orientation`은 Euler angle이 아닌 쿼터니언이다. 목표 자세의 모든 성분은 유한한 숫자여야 하고, 호출자는 유효한 회전을 나타내는 쿼터니언을 전달해야 한다. Grasp·Pick·Place는 클라이언트에서도 0 쿼터니언을 거부한다. 단일 MoveLinear의 공통 입력 검사는 유한값 확인까지이므로 이를 회전의 유효성 검증으로 해석하지 않는다. 목표 좌표에는 기본값이 없으므로 호출자가 채워야 한다.
 
 Pose 입력에는 Frame 필드가 없다. 기준 좌표계와 도구 기준점은 서버의 이동 설정에 맞춰야 한다. 물체 중심, TCP, `panda_link8`, 펑션베이의 grasp center는 같은 점이 아니므로 관측한 물체 좌표를 그대로 팔 목표로 사용하지 않는다. 필요한 TCP 보정과 접근 높이는 호출자가 계산한다.
 
@@ -407,7 +408,7 @@ flowchart LR
 
 `GraspAttempted=true`는 명령 전송·파지 성공의 증거가 아니다. 복구 시 그리퍼가 무언가를 쥐었을 가능성을 고려하는 정보다. false도 실행 전부터 빈손이었다는 보장은 아니다.
 
-단계 목표 미확인과 하위 원격 `FAILED`·`CANCELLED`는 `GoalsReached=false`로 정상 반환하고 후속 단계를 실행하지 않는다. 접수 거부·통신 오류·인터럽트는 예외다. 예외일 때는 진행 진단을 로그에 남기지만 출력은 워크플로에 전달되지 않는다. 단계 사이 중단은 성공한 앞 단계를 실패로 표시하지 않고 “APPROACH 완료 후 DESCEND 진입 전 중단”처럼 기록한다.
+단계 목표 미확인과 하위 원격 `FAILED`·`CANCELLED`는 `GoalsReached=false`로 정상 반환하고 후속 단계를 실행하지 않는다. 접수 거부·통신 오류·대기 시간 초과·인터럽트는 예외다. 하위 비동기 연산이 `TimeoutSec` 안에 끝나지 않으면 `OperationTimeoutException`이 발생하며, 이때 원격 연산은 취소되지 않고 계속 실행된다. 예외일 때는 진행 진단을 로그에 남기지만 출력은 워크플로에 전달되지 않는다. 단계 사이 중단은 성공한 앞 단계를 실패로 표시하지 않고 “APPROACH 완료 후 DESCEND 진입 전 중단”처럼 기록한다.
 
 자동 개방·상승·복귀·재시도는 하지 않는다. `GoalsReached=true`는 위치 도달과 그리퍼 목표 보고의 조합이며 실제 물체 파지를 보장하지 않는다.
 
@@ -454,7 +455,7 @@ flowchart LR
 
 `ReleaseAttempted`는 실제 해제의 증거가 아니다. false도 물체를 계속 쥐고 있음을 보장하지 않는다. `FailedStage=RETREAT`이면 개방 목표는 확인했고 후퇴만 확인하지 못한 상태다.
 
-Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached=false` 정상 결과이며, 접수 거부·통신 오류·인터럽트는 예외다. 자동 재파지·복귀·재시도는 하지 않는다. 개방 후 중단되면 후퇴하지 않은 상태일 수 있으며, 정상 결과라도 물체의 실제 분리·안착은 별도 관측이 필요하다.
+Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached=false` 정상 결과이며, 접수 거부·통신 오류·대기 시간 초과·인터럽트는 예외다. 자동 재파지·복귀·재시도는 하지 않는다. 개방 후 중단되면 후퇴하지 않은 상태일 수 있으며, 정상 결과라도 물체의 실제 분리·안착은 별도 관측이 필요하다.
 
 ## 10 ResetSceneProvider
 
@@ -481,6 +482,8 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 원격 `FAILED`·`CANCELLED`는 `OperationFailedException`, `COMPLETED`라도 적용 미확인이면 `TaskException`이다. 이 경우 출력은 반환하지 않는다.
 
+`Objects`를 바인딩했다면 명령 배치를 AAS로 바꿀 때 물체 이름이 AAS idShort 규칙에 맞아야 한다. `red-cube`처럼 쓸 수 없는 이름이 있으면 리셋이 이미 적용된 뒤에 예외로 실패한다. 다른 Provider와 달리 이 변환 실패는 경고로 넘기지 않는다.
+
 상태 변수 갱신을 5초 안에 확인하지 못하면 WARN을 남기고 명령 배치를 정상 반환한다. 반면 관측 통신 오류·인터럽트는 예외로 전달하며 출력을 반환하지 않는다. 예외가 이미 적용된 리셋을 취소하거나 되돌리지는 않는다.
 
 새 발행을 확인해도 물리적 정착까지 증명하지는 않는다. 실제 배치는 `GetSceneObjects`, 물체 정착은 `WaitUntilObjectStill`로 구분해서 확인한다.
@@ -499,7 +502,7 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 | STALE 재조회 예산 소진 | 조회 횟수와 사유를 포함한 `TaskException` |
 | HTTP 오류 또는 인터럽트 | 재시도하지 않고 예외 전달 |
 
-10초는 **추가 요청을 시작할 수 있는 기간**이다. 이미 시작한 요청의 OK 응답은 예산 이후 도착해도 사용하므로 전체 호출 시간이 10초를 넘을 수 있다. 재조회 후 회복하면 조회 횟수와 경과 시간을 INFO로 남긴다.
+10초는 **추가 요청을 시작할 수 있는 기간**이다. 남은 예산이 재조회 간격보다 짧으면 기다리지 않고 바로 실패한다. 이미 시작한 요청의 OK 응답은 예산 이후 도착해도 사용하므로 전체 호출 시간이 10초를 넘을 수 있다. 재조회 후 회복하면 조회 횟수와 경과 시간을 INFO로 남긴다.
 
 ### 11.2 입력과 출력
 
@@ -552,7 +555,7 @@ STALE·잘못된 표본, 시각 역행, frame 변경, 허용 범위를 넘는 �
 
 TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어도 마지막 유효 표본이 있으면 `Objects`를 갱신하지만, 이를 정착의 증거로 사용해서는 안 된다. 유효 표본이 없으면 `Objects`를 갱신하지 않는다.
 
-통신 오류·인터럽트는 예외이며 출력이 반환되지 않는다. 입력 오류와 물체 변환 오류도 출력 반영 전에 처리한다. 대상 물체의 pose가 유효해도 전체 scene을 AAS로 변환하는 과정에서 다른 물체의 구조 때문에 실패할 수 있다. 좌표가 필요하지 않다면 선택 출력 `Objects`를 생략할 수 있다.
+통신 오류·인터럽트는 예외이며 출력이 반환되지 않는다. 입력 오류는 통신 전에 예외로 처리한다. 반면 `Objects` 변환에 실패하면(예: AAS idShort로 쓸 수 없는 다른 물체 이름) 경고 로그만 남기고 `Objects`는 기존 값으로 둔 채 `Settled`·`Outcome`·`Diagnostics`는 정상 반영해 반환한다. 즉 대상 물체의 pose가 유효해도 다른 물체 때문에 `Objects`만 갱신되지 않을 수 있다. 좌표가 필요하지 않다면 선택 출력 `Objects`를 생략할 수 있다.
 
 ## 13 연산 선택과 워크플로 구성
 
@@ -564,6 +567,8 @@ TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어�
 | 관절 목표 또는 이름 자세로 이동 | MoveToJoints / MoveToNamedTarget | 출력은 서버 스냅샷. 개루프에서 별도 정착 확인 없이 도달로 단정하지 않음 |
 | 그리퍼만 제어 | MoveGripperToTarget | `ReachedGoal`; 실제 물체 파지·해제와 구분 |
 | 접근과 하강을 포함한 파지 | Grasp | `GoalsReached`, 실패 시 `GraspAttempted`·`FailedStage` |
+| 파지 후 들어 올리기와 유지 확인 | Pick | `GoalsReached`, 실패 시 `GraspAttempted`·`FailedStage`(`MEASURE_HELD` 포함) |
+| 쥔 물체를 입구 위로 정렬 | AlignHeldObject | `Aligned`. 정렬 실패도 예외가 아닌 정상 반환 |
 | 접근과 후퇴를 포함한 놓기 | Place | `GoalsReached`, 실패 시 `ReleaseAttempted`·`FailedStage` |
 | scene을 레시피로 재배치 | ResetScene | 출력은 명령 배치. 실제 위치·정착은 별도 조회 |
 | 현재 scene 조회 | GetSceneObjects | 반환한 값은 조회 시점의 상태이며 정착 판정이 아님 |
@@ -571,12 +576,13 @@ TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어�
 
 ### 13.2 실패 처리 비교
 
-| 연산 | 목표·관측 미확인 | 원격 FAILED/CANCELLED | 통신 오류·인터럽트 |
+| 연산 | 목표·관측 미확인 | 원격 FAILED/CANCELLED | 통신 오류·대기 시간 초과·인터럽트 |
 |---|---|---|---|
 | MoveLinear | 기본 정상 반환. RequireReached=true이면 예외 | 예외 | 예외 |
 | MoveToJoints / MoveToNamedTarget | 로그 후 정상 반환 | 예외 | 예외 |
 | MoveGripperToTarget | COMPLETED의 목표 false는 정상 반환 | 예외 | 예외 |
-| Grasp / Place | 진단 출력과 정상 반환 | 진단 출력과 정상 반환 | 예외 |
+| Grasp / Pick / Place | 진단 출력과 정상 반환 | 진단 출력과 정상 반환 | 예외 |
+| AlignHeldObject | Aligned=false와 정상 반환 | Aligned=false(StopReason=STEP_FAILED)와 정상 반환 | 예외 |
 | ResetScene | 적용 미확인은 예외. 갱신 관측 미확인은 WARN 후 정상 반환 | 예외 | 예외 |
 | GetSceneObjects | STALE 재조회 후에도 사용 불가이면 예외 | 해당 없음 | 예외 |
 | WaitUntilObjectStill | Settled=false와 정상 반환 | 해당 없음 | 예외 |
@@ -602,7 +608,7 @@ flowchart TD
     WC -- false --> D[Outcome과 Diagnostics 확인]
 ```
 
-위 그림은 정상 반환 결과의 분기를 보여 준다. 각 호출에서 예외가 발생하면 별도의 오류 경로로 빠져야 한다. `Grasp`에는 상승이 없고, `Place`에는 물체 안착을 기다리는 단계가 없으므로 필요한 이동·관측을 워크플로에서 연결한다.
+위 그림은 정상 반환 결과의 분기를 보여 준다. 각 호출에서 예외가 발생하면 별도의 오류 경로로 빠져야 한다. `Grasp`에는 상승이 없고, `Place`에는 물체 안착을 기다리는 단계가 없으므로 필요한 이동·관측을 워크플로에서 연결한다. 상승과 유지 확인까지 한 번에 하려면 `Grasp` 대신 `Pick`을 쓸 수 있다([assetconnection-guide](assetconnection-guide.md)). peg 삽입처럼 들기 전에 판정해야 하는 작업이라면 `Grasp` 뒤에 별도로 들어 올린다.
 
 ## 14 새 Provider를 추가할 때
 
