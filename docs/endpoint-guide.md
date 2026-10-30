@@ -243,7 +243,7 @@ MQTT 자산 변수의 `mqttBrokerConfig`와 같은 규칙이다.
 | 객체 | `"mqttBrokerConfig": { "brokerUrl": "tcp://192.168.0.10:1883" }` | 인스턴스 설정에 직접 기술 |
 | 생략 | — | 전역 설정 `mqttBrokers.default` |
 
-숫자나 배열처럼 문자열도 객체도 아닌 값은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다. 이전 형식인 `mqttBrokerConfigName`(전역 설정 이름)도 받지만 `mqttBrokerConfig`와 함께 쓰면 오류이며, 설정을 다시 저장하면 `mqttBrokerConfig`로 기록된다.
+숫자나 배열처럼 문자열도 객체도 아닌 값은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다. MQTT 자산 변수와 달리 이전 형식인 `mqttBrokerConfigName`은 받지 않는다. 이 필드가 있으면 `'mqttBrokerConfigName' is not supported` 오류로 거부되므로, 전역 설정 이름도 `mqttBrokerConfig`에 문자열로 적는다.
 
 broker 설정 항목은 다음과 같다. 현재 사용자명·비밀번호·인증서 항목은 없고, 모르는 항목(예: 오타인 `connectTimeout`)은 무시하되 설정을 읽을 때 경고를 남긴다.
 

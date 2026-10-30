@@ -28,7 +28,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-@JsonIncludeProperties({ "mqttBrokerConfig", "mqttBrokerConfigName", "subscribers" })
+@JsonIncludeProperties({ "mqttBrokerConfig", "subscribers" })
 public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 	private final MDTConfig m_conf;
 
@@ -70,14 +70,16 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 	 * }
 	 * }</pre>
 	 * {@code mqttBrokerConfig}를 생략하면 전역 설정의 {@code default}를 사용한다. MQTT 자산 변수
-	 * ({@code mdt:asset:mqtt})의 같은 이름 필드와 같은 규칙이다({@link ConnectionConfigRef}). 이전 형식인
-	 * {@code mqttBrokerConfigName}(전역 설정 이름)도 받지만 {@code mqttBrokerConfig}와 함께 쓸 수는 없다.
+	 * ({@code mdt:asset:mqtt})의 같은 이름 필드와 같은 규칙이다({@link ConnectionConfigRef}). 단, 자산 변수와 달리
+	 * 이전 형식인 {@code mqttBrokerConfigName}은 받지 않으며, 적혀 있으면 설정을 읽는 단계에서 거부한다.
 	 * {@code subscribers}는 반드시 하나 이상 있어야 하며, 없거나 비어 있으면 설정을 읽는 단계에서 거부한다.
 	 */
+	// 'mqttBrokerConfigName'은 지원하지 않지만 목록에 둔다. 목록에 없는 필드는 생성자에 전달되기 전에 버려지므로,
+	// 빼면 거부하지 못하고 조용히 'default' broker를 쓰게 된다.
 	@JsonIncludeProperties({ "mqttBrokerConfig", "mqttBrokerConfigName", "subscribers" })
 	public static class MDTConfig {
 		private static final String FIELD_BROKER_CONFIG = "mqttBrokerConfig";
-		private static final String FIELD_BROKER_CONFIG_NAME = "mqttBrokerConfigName";	// 이전 형식
+		private static final String FIELD_LEGACY_BROKER_CONFIG_NAME = "mqttBrokerConfigName";	// 지원하지 않는 이전 형식
 		private static final String FIELD_SUBSCRIBERS = "subscribers";
 
 		private ConnectionConfigRef<MqttBrokerConfig> m_brokerRef;
@@ -88,19 +90,22 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 		 *
 		 * @param brokerConfig	{@code mqttBrokerConfig} 값. 문자열은 전역 설정 이름, 객체는 broker 설정이며,
 		 * 						없으면 전역 설정의 {@code default}.
-		 * @param brokerConfigName	이전 형식의 {@code mqttBrokerConfigName} 값(전역 설정 이름). 없으면 {@code null}.
+		 * @param legacyBrokerConfigName	이전 형식의 {@code mqttBrokerConfigName} 값. 지원하지 않으므로 있으면 거부한다.
 		 * @param subscribers	구독 목록. 반드시 하나 이상 있어야 한다.
-		 * @throws IOException	{@code mqttBrokerConfig}가 문자열도 객체도 아니거나 broker 설정으로 읽지 못한 경우,
-		 * 						또는 {@code mqttBrokerConfig}와 {@code mqttBrokerConfigName}을 함께 쓴 경우.
-		 * @throws IllegalArgumentException	{@code subscribers}가 없거나 비어 있거나 {@code null} 항목이 있는 경우.
+		 * @throws IOException	{@code mqttBrokerConfig}가 문자열도 객체도 아니거나 broker 설정으로 읽지 못한 경우.
+		 * @throws IllegalArgumentException	{@code mqttBrokerConfigName}이 있거나, {@code subscribers}가 없거나
+		 * 									비어 있거나 {@code null} 항목이 있는 경우.
 		 */
 		@JsonCreator
 		public MDTConfig(@JsonProperty(FIELD_BROKER_CONFIG) @Nullable JsonNode brokerConfig,
-						@JsonProperty(FIELD_BROKER_CONFIG_NAME) @Nullable JsonNode brokerConfigName,
+						@JsonProperty(FIELD_LEGACY_BROKER_CONFIG_NAME) @Nullable JsonNode legacyBrokerConfigName,
 						@JsonProperty(FIELD_SUBSCRIBERS) @Nullable List<MqttElementSubscriber> subscribers)
 			throws IOException {
-			m_brokerRef = ConnectionConfigRef.load(brokerConfig, FIELD_BROKER_CONFIG,
-													brokerConfigName, FIELD_BROKER_CONFIG_NAME, MqttBrokerConfig.class);
+			// 이전 형식을 조용히 무시하면 의도와 다른 'default' broker에 연결되므로 명시적으로 거부한다.
+			Preconditions.checkArgument(legacyBrokerConfigName == null || legacyBrokerConfigName.isNull(),
+										"'%s' is not supported: use '%s' (a global config name or an inline broker config)",
+										FIELD_LEGACY_BROKER_CONFIG_NAME, FIELD_BROKER_CONFIG);
+			m_brokerRef = ConnectionConfigRef.fromNode(brokerConfig, FIELD_BROKER_CONFIG, MqttBrokerConfig.class);
 			m_subscribers = checkSubscribers(subscribers);
 		}
 		

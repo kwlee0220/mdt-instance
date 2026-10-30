@@ -50,17 +50,13 @@ public class MqttEndpointConfigTest {
 	}
 
 	@Test
-	public void testLegacyBrokerConfigName() throws Exception {
-		// 이전 형식도 자산 변수와 같은 규칙으로 받는다. 다시 저장하면 새 필드로 기록한다.
-		MqttEndpointConfig.MDTConfig conf = read("{ \"mqttBrokerConfigName\": \"factory\", " + SUBSCRIBERS + " }");
-		assertEquals("factory", conf.getMqttBrokerConfigRef().name());
-		JsonNode json = MDTModelSerDe.getJsonMapper().valueToTree(conf);
-		assertEquals("factory", json.get("mqttBrokerConfig").asText());
-		assertNull(json.get("mqttBrokerConfigName"));
-
-		Exception e = assertThrows(Exception.class,
-							() -> read("{ \"mqttBrokerConfig\": \"a\", \"mqttBrokerConfigName\": \"b\", " + SUBSCRIBERS + " }"));
-		assertTrue(e.getMessage(), e.getMessage().contains("cannot be used together"));
+	public void testLegacyBrokerConfigNameIsRejected() {
+		// 이전 형식은 받지 않는다. 조용히 무시하면 'default' broker에 연결되므로 새 필드를 쓰라고 알린다.
+		for ( String mqtt: new String[] { "{ \"mqttBrokerConfigName\": \"factory\", " + SUBSCRIBERS + " }",
+										"{ \"mqttBrokerConfig\": \"a\", \"mqttBrokerConfigName\": \"b\", " + SUBSCRIBERS + " }" } ) {
+			Exception e = assertThrows(mqtt, Exception.class, () -> read(mqtt));
+			assertTrue(e.getMessage(), e.getMessage().contains("'mqttBrokerConfigName' is not supported"));
+		}
 	}
 
 	@Test

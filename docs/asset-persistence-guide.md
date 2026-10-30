@@ -257,7 +257,7 @@ JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문�
 
 필드를 생략하거나 null을 지정하면 `default` 이름으로 조회한다. 전역 설정에 그 이름이 없으면 해당 그룹의 첫 항목을 사용하므로, 연결 대상을 분명히 하려면 이름을 직접 지정한다. 새 필드와 이전 이름 필드에 모두 null이 아닌 값을 넣으면 설정 오류다.
 
-설정을 다시 저장할 때는 새 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다. 이전 형식인 `mqttBrokerConfigName`도 같은 규칙으로 받는다.
+설정을 다시 저장할 때는 새 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다. 단, 엔드포인트는 이전 형식인 `mqttBrokerConfigName`을 받지 않고 설정 오류로 거부한다.
 
 인라인 연결 객체에 지원하지 않는 필드가 있으면 JDBC(`jdbcConfig`)와 RobotTwin(`robotTwinConfig`)은 설정 로딩이 실패한다. 예를 들어 이전 버전의 `RobotTwinConfig`에 있던 `operations` 필드가 전역 `robotTwins` 항목이나 인라인 객체에 남아 있으면 읽지 못한다. 반면 MQTT는 해당 필드를 무시하고 경고만 남긴다. 인라인 `jdbcConfig`에는 `maxPoolSize`도 지정할 수 있다.
 
