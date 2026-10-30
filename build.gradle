@@ -37,71 +37,68 @@ configurations {
 repositories {
 	mavenCentral()
 }
-ext {
-	faaast_version = '1.3.0'
-}
 dependencies {
 	implementation project(":utils")
 	implementation project(":mdt-client")
 	implementation project(":mdt-robot-client")
 	// implementation project(":faaast-starter-3")
-	implementation "de.fraunhofer.iosb.ilt.faaast.service:starter:${faaast_version}"
+	implementation libs.faaast.starter
 	
 	// @Nullable, @GuardedBy
-	compileOnly "com.google.code.findbugs:jsr305:${findbugs_version}"
+	compileOnly libs.findbugs.jsr305
 	
-	implementation "ch.qos.logback:logback-classic:${logback_version}"
+	implementation libs.logback.classic
 
 	// Guava (from the project :utils)
-	implementation "com.google.guava:guava:${guava_version}"
+	implementation libs.guava
 
 	// Lombok (from the project :utils)
-	compileOnly "org.projectlombok:lombok:${lombok_version}"
-	annotationProcessor "org.projectlombok:lombok:${lombok_version}"
+	compileOnly libs.lombok
+	annotationProcessor libs.lombok
 	
 	// jackson json parser
-	implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jackson_version}"
+	implementation libs.jackson.datatype.jsr310
 	
 	// AAS model
-	implementation "org.eclipse.digitaltwin.aas4j:aas4j-dataformat-json:${aas4j_version}"
+	implementation libs.aas4j.dataformat.json
 	
 	// commons-logging은 configurations.all에서 일괄 제외한다.
-	implementation "commons-beanutils:commons-beanutils:${commons_beanutils_version}"
+	implementation libs.commons.beanutils
 		
 	// picocli command line parser
-	implementation "info.picocli:picocli:${picocli_version}"
+	implementation libs.picocli
 		
 	// HTTP Client
-	implementation group: 'com.squareup.okhttp3', name: 'okhttp', version: "${okhttp_version}"
+	implementation libs.okhttp
 	
 	// Hibernate
-	implementation "org.hibernate.orm:hibernate-core:${hibernate_version}"
-	implementation "com.zaxxer:HikariCP:${hikaricp_version}"
-	shadowFirst "com.zaxxer:HikariCP:${hikaricp_version}"
+	implementation libs.hibernate.core
+	implementation libs.hikaricp
+	shadowFirst libs.hikaricp
 	
 	// PostgreSQL
-	implementation "org.postgresql:postgresql:${postgresql_version}"
+	implementation libs.postgresql
 	
 	// MariaDB
-	implementation "org.mariadb.jdbc:mariadb-java-client:${mariadb_version}"
+	implementation libs.mariadb
 	
 	// Apache libraries (utils도 같은 버전을 api로 제공한다)
-	implementation "org.apache.commons:commons-text:${commons_text_version}"
+	implementation libs.commons.text
 	
 	// MQTT
-	implementation "org.eclipse.paho:org.eclipse.paho.client.mqttv3:${paho_version}"
+	implementation libs.paho.mqttv3
 	
 	// OPC UA client
-	implementation "org.eclipse.milo:sdk-client:${milo_version}"
+	implementation libs.milo.sdk.client
 	
 	// Spring Framework
-	implementation "org.springframework.data:spring-data-jpa:${spring_data_version}"
+	implementation libs.spring.data.jpa
 	
-	testImplementation "junit:junit:${junit_version}"
-	testImplementation "com.squareup.okhttp3:mockwebserver:${okhttp_version}"
-	testImplementation "org.mockito:mockito-core:${mockito_version}"
-	testRuntimeOnly "org.junit.platform:junit-platform-launcher:${junit_jupiter_version}"
-	testRuntimeOnly "org.junit.vintage:junit-vintage-engine:${junit_jupiter_version}"
+	testImplementation libs.junit4
+	testImplementation libs.okhttp.mockwebserver
+	testImplementation libs.mockito.core
+	testRuntimeOnly libs.junit.platform.launcher
+	testRuntimeOnly libs.junit.vintage.engine
 }
 
 test {
