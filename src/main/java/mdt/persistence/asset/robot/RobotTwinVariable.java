@@ -15,8 +15,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 /**
  * 로봇 트윈 REST API로 조회한 상태 변수 하나의 값과 메타 정보.
  * <p>
- * {@code GET /api/v1/robot_twins/{twin}/variables?names=...} 응답의
- * {@code values} 항목 하나에 해당한다.
+ * {@link RobotStateVariable}이 {@code GET /api/v1/robot_twins/{twin}/variables/{variable}} 응답을
+ * 이 타입으로 읽는다.
  *
  * @author Kang-Woo Lee (ETRI)
  */

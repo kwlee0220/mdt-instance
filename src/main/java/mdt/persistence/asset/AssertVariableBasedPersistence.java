@@ -238,7 +238,8 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 	 * <p>
 	 * base persistence가 반환한 객체를 변경하지 않도록 사본을 만들어 반영한다.
 	 * 서로 다른 하위 요소에 대한 갱신이 동시에 들어오면, 기록되는 전체 값에 다른 갱신의 변경이
-	 * 빠질 수 있다. 이를 막으려면 {@code ConcurrentPersistence}로 요청을 직렬화한다.
+	 * 빠질 수 있다. {@code ConcurrentPersistence}는 파라미터 경로와 Data Submodel 요청만 직렬화하므로
+	 * 일반 경로의 부분 갱신까지 막지는 못한다. 전체 값의 일관성이 필요하면 호출 측에서 갱신 순서를 보장해야 한다.
 	 *
 	 * @param var		쓰기 전용 AssetVariable.
 	 * @param relPath	AssetVariable의 요소를 기준으로 한 하위 요소의 상대 경로.

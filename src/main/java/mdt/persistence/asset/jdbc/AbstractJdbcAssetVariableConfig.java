@@ -114,9 +114,9 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	}
 
 	/**
-	 * 캐시 유효 기간을 반환한다.
+	 * SQL 하나의 실행 제한 시간을 반환한다.
 	 *
-	 * @return 유효 기간. 설정되지 않은 경우 {@link Duration#ZERO}(캐시하지 않음).
+	 * @return 제한 시간. 설정되지 않은 경우 기본값(30초).
 	 */
 	public Duration getQueryTimeout() {
 		return (m_queryTimeout != null) ? m_queryTimeout : DEFAULT_QUERY_TIMEOUT;

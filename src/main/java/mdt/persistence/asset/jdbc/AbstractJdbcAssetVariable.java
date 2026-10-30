@@ -351,12 +351,6 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 	}
 
 	/**
-	 * DBMS와의 Connection을 연결 풀에서 얻는다.
-	 *
-	 * @return	Connection 객체. 호출자가 닫는다.
-	 * @throws SQLException	접속이 실패한 경우.
-	 */
-	/**
 	 * 조회 결과가 없을 때 값을 비우는 정책({@link NoRecordPolicy#CLEAR})을 모든 바인딩에 적용할 수 있는지 확인한다.
 	 * <p>
 	 * JSON으로 주고받는 요소는 비울 수 없으므로, 그런 요소가 있으면 {@code CLEAR}가 일부 요소에만 적용되어
@@ -381,6 +375,12 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 		}
 	}
 
+	/**
+	 * DBMS와의 Connection을 연결 풀에서 얻는다.
+	 *
+	 * @return	Connection 객체. 호출자가 닫는다.
+	 * @throws SQLException	접속이 실패한 경우.
+	 */
 	protected Connection connect() throws SQLException {
 		return m_jdbc.connect();
 	}
