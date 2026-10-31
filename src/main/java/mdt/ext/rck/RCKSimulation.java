@@ -36,6 +36,7 @@ import utils.websocket.States;
 import utils.websocket.States.CompletedState;
 import utils.websocket.States.FailedState;
 import utils.websocket.States.StoppedState;
+import utils.websocket.WebSocketClosedException;
 import utils.websocket.WebSocketStateChart;
 
 import mdt.ext.rck.VideoMessages.VideoInfo;
@@ -60,6 +61,8 @@ import mdt.ext.rck.VideoMessages.VideoReady;
  * </ol>
  * 응답을 기다리는 상태들은 메시지 없이 응답 대기 시간({@link #setResponseTimeout(Duration)}, 기본 2분)이 지나면
  * {@link TimeoutException}을 원인으로 {@code Failed}로 전이한다. 메시지를 받을 때마다 대기 시간이 다시 시작된다.
+ * 영상 정보를 받기 전에 시뮬레이터가 연결을 닫으면 정상 close 코드라도 {@link WebSocketClosedException}을 원인으로
+ * {@code Failed}로 전이한다(사용자가 취소한 것이 아니므로).
  * <p>
  * 시뮬레이션을 멈추는 방법은 두 가지다.
  * <ul>
@@ -310,8 +313,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * <p>
 	 * 하위 클래스는 생성자에서 {@link #onMessage(String, Transition)} 등으로 {@code type}별 처리기를 등록하고,
 	 * 진입 시 보낼 명령이 있으면 {@link #sendRequest()}를 재정의한다. 등록되지 않은 {@code type}은 경고 로그만 남기고
-	 * 머문다. 공통으로 {@link #STOP_REQUESTED}는 {@code Stopping}으로, 명령 전송 실패({@link SendFailed})와 메시지
-	 * 처리 중 예외, 응답 대기 시간 초과는 실패 원인을 문맥에 기록하고 {@code Failed}로 전이한다.
+	 * 머문다. 공통으로 {@link #STOP_REQUESTED}는 {@code Stopping}으로, 명령 전송 실패({@link SendFailed}), 메시지
+	 * 처리 중 예외, 응답 대기 시간 초과, 시뮬레이터의 연결 종료({@link ConnectionClosed})는 {@code Failed}로 전이한다.
+	 * 연결 종료를 처리하지 않으면 정상 close 코드일 때 {@link WebSocketStateChart}의 대체 종료가 차트를 취소하는데,
+	 * 시뮬레이션 도중 끊긴 것은 사용자의 취소가 아니라 실패다.
 	 */
 	private abstract class JsonMessageState extends WaitingState {
 		private final Map<String, CheckedFunctionX<JsonNode,Transition<RCKSimulationContext>,Exception>> m_handlers
@@ -322,6 +327,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 			on(STOP_REQUESTED, Transitions.to(STATE_STOPPING));
 			on(SendFailed.class, failed -> failWith(failed.cause()));
+			on(ConnectionClosed.class, closed -> {
+				getLogger().warn("simulator closed the connection: code={}, reason={}, state={}",
+								closed.getStatusCode(), closed.getReason(), getPath());
+				return failWith(new WebSocketClosedException(closed.getStatusCode(), closed.getReason()));
+			});
 		}
 
 		/**
@@ -650,23 +660,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 	/**
 	 * 시뮬레이션이 오류로 종료된 상태. 연결되어 있으면 시뮬레이터에 중지 명령을 보낸 뒤 WebSocket 연결을 종료하고,
-	 * 실패 원인을 기록하며 관찰자에게 상태를 알린다.
+	 * 실패 원인을 기록하며 관찰자에게 상태를 알린다. 실패 원인은 들어오는 전이({@link Transitions#fail})가 설정한다.
 	 */
 	private class Failed extends FailedState<RCKSimulationContext> {
 		Failed(String path, RCKSimulationContext context) {
 			super(path, context);
-		}
-
-		/**
-		 * 실패 원인을 반환한다.
-		 * <p>
-		 * 메시지 처리 상태들은 원인을 컨텍스트에 기록하므로 그 값을 우선 사용한다. 컨텍스트에 원인이 없으면
-		 * (예: {@code ConnectingWebSocket}의 접속 실패) 이 상태에 설정된 원인을 사용한다.
-		 */
-		@Override
-		public Throwable getFailureCause() {
-			Throwable cause = getContext().getFailureCause();
-			return (cause != null) ? cause : super.getFailureCause();
 		}
 
 		@Override
@@ -699,11 +697,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 실패 원인을 문맥에 기록하고 {@code Failed}로 가는 전이를 돌려준다.
+	 * 주어진 원인으로 {@code Failed}에 가는 전이를 돌려준다. 원인은 전이가 {@code Failed} 상태에 설정한다.
 	 */
 	private Transition<RCKSimulationContext> failWith(Throwable cause) {
-		getContext().setFailureCause(cause);
-		return Transitions.to(STATE_FAILED);
+		return Transitions.fail(STATE_FAILED, signal -> cause);
 	}
 
 	private void startResponseTimer(Duration timeout) {
@@ -830,43 +827,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		}
 		catch ( JsonProcessingException e ) {
 			throw new RuntimeException("failed to serialize JSON message: " + json, e);
-		}
-	}
-
-	/**
-	 * 시뮬레이션을 단독 실행하기 위한 개발/테스트용 진입점.
-	 * <p>
-	 * 시뮬레이터 서버 주소·공정명·레이아웃을 지정하여 {@link RCKSimulation}을 생성·구동하고 종료를 기다린다.
-	 *
-	 * @param args	사용되지 않음
-	 * @throws Exception	시뮬레이션 구동 중 오류가 발생한 경우
-	 */
-	public static final void main(String... args) throws Exception {
-        String serverUrl = "wss://press.rck.dscloud.biz";
-//        String serverUrl = "ws://localhost:4000/rck/simulator";
-        String processName = "press";
-//		String layoutName = "프레스 공정_사람+설비추가_NOCON.vcmx";
-//		String layoutName = "프레스 공정_AMR_NOCON.vcmx";
-//		String layoutName = "프레스 공정_설비추가_NOCON.vcmx";
-		String layoutName = "프레스 공정_사람_NOCON.vcmx";
-
-		RCKSimulationContext ctxt = new RCKSimulationContext(serverUrl, "mdt", processName, layoutName);
-        RCKSimulation sim = new RCKSimulation(ctxt);
-        sim.setPingInterval(Duration.ofSeconds(30));
-        sim.setPongTimeout(Duration.ofSeconds(5));
-        sim.start();
-
-        try {
-        	sim.waitForFinished(50, TimeUnit.MINUTES);
-
-        	VideoInfo video = ctxt.getVideoInfo();
-	        System.out.println("Simulation video url: " + (video != null ? video.downloadUrl() : "(none)"));
-		}
-		catch ( TimeoutException e ) {
-	        if ( sim.isRunning() ) {
-	        	sim.requestStop();
-	        	sim.waitForFinished();
-			}
 		}
 	}
 }

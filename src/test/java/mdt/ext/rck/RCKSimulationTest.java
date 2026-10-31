@@ -7,17 +7,17 @@ import static org.junit.Assert.assertTrue;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.After;
 import org.junit.Test;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+
+import utils.async.AsyncResult;
+import utils.websocket.WebSocketClosedException;
 
 
 /**
@@ -29,90 +29,8 @@ import okhttp3.mockwebserver.MockWebServer;
  * @author Kang-Woo Lee (ETRI)
  */
 public class RCKSimulationTest {
-	private static final ObjectMapper MAPPER = new ObjectMapper();
-
 	private MockWebServer m_server;
 	private RCKSimulation m_sim;
-
-	/** 등록 → 레이아웃 → 시작에 응답하고, 받은 명령과 close 프레임을 순서대로 기록하는 가짜 RCK 서버. */
-	private static class FakeRckServer extends okhttp3.WebSocketListener {
-		final List<String> m_events = Collections.synchronizedList(new ArrayList<>());
-		final CountDownLatch m_closing = new CountDownLatch(1);
-		private final boolean m_answerStop;
-		private final boolean m_failAfterStart;
-		/** 시작 응답 뒤 보낼 메시지들(텍스트 또는 byte[]). */
-		private final List<Object> m_afterStart = new ArrayList<>();
-		/** layout 요청에 응답하지 않는다(응답 대기 시간 초과 시험용). */
-		boolean m_ignoreLayout = false;
-
-		FakeRckServer(boolean answerStop, boolean failAfterStart) {
-			m_answerStop = answerStop;
-			m_failAfterStart = failAfterStart;
-		}
-
-		FakeRckServer thenSend(Object... messages) {
-			m_afterStart.addAll(List.of(messages));
-			return this;
-		}
-
-		@Override
-		public void onMessage(okhttp3.WebSocket ws, String text) {
-			try {
-				JsonNode msg = MAPPER.readTree(text);
-				if ( msg.has("register") ) {
-					m_events.add("register");
-					ws.send("{\"type\":\"connected\"}");
-					return;
-				}
-				String type = msg.path("type").asText();
-				m_events.add(type);
-				switch ( type ) {
-					case "layout":
-						if ( !m_ignoreLayout ) {
-							ws.send("{\"type\":\"facility\",\"message\":{}}");
-						}
-						break;
-					case "command":
-						ws.send("{\"type\":\"simulation_start\"}");
-						if ( m_failAfterStart ) {
-							ws.send("not a json message");
-						}
-						for ( Object next: m_afterStart ) {
-							if ( next instanceof byte[] bytes ) {
-								ws.send(okio.ByteString.of(bytes));
-							}
-							else {
-								ws.send((String)next);
-							}
-						}
-						break;
-					case "stop":
-						if ( m_answerStop ) {
-							ws.send("{\"type\":\"simulation_stop\"}");
-						}
-						break;
-				}
-			}
-			catch ( Exception e ) {
-				m_events.add("error: " + e);
-			}
-		}
-
-		@Override
-		public void onClosing(okhttp3.WebSocket ws, int code, String reason) {
-			m_events.add("close");
-			ws.close(code, null);
-			m_closing.countDown();
-		}
-
-		void assertStopBeforeClose() throws InterruptedException {
-			assertTrue("connection was not closed", m_closing.await(5, TimeUnit.SECONDS));
-			List<String> events = new ArrayList<>(m_events);
-			int stop = events.indexOf("stop");
-			assertTrue("stop command was not delivered: " + events, stop >= 0);
-			assertTrue("stop must precede close: " + events, stop < events.indexOf("close"));
-		}
-	}
 
 	@After
 	public void tearDown() throws Exception {
@@ -244,10 +162,10 @@ public class RCKSimulationTest {
 		server.assertStopBeforeClose();
 	}
 
-	private static final String STATUS
+	static final String STATUS
 		= "{\"type\":\"simulation_status\",\"message\":{\"Progress\":100,"
 			+ "\"Conveyor_6\":{\"Production\":7},\"e1\":{\"Name\":\"TP-75 #1\",\"Utilization\":40}}}";
-	private static String videoInfo(long fileSize) {
+	static String videoInfo(long fileSize) {
 		// 모르는 필드(extra)가 있어도 실패하지 않아야 한다.
 		return "{\"type\":\"video_info\",\"status\":\"ready\",\"fileName\":\"v.mp4\",\"fileSize\":" + fileSize
 				+ ",\"downloadUrl\":\"http://video/v.mp4\",\"extra\":1}";
@@ -262,8 +180,8 @@ public class RCKSimulationTest {
 		SimulationObserver observer = new SimulationObserver() {
 			@Override
 			public void onStatus(RCKSimulationStatus status) {
-				events.add("status:" + status.getProgress() + "/" + status.getProduction()
-							+ "/" + status.getAverageUtilizations());
+				events.add("status:" + status.progress() + "/" + status.production()
+							+ "/" + status.averageUtilizations());
 			}
 			@Override
 			public void onVideoReady(String downloadUrl) {
@@ -285,7 +203,7 @@ public class RCKSimulationTest {
 		assertTrue(m_sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Completed", m_sim.getCurrentState().getPath());
 		assertEquals("http://video/v.mp4", ctx.getVideoInfo().downloadUrl());
-		assertEquals(100, ctx.getLatestStatus().getProgress());
+		assertEquals(100, ctx.getLatestStatus().progress());
 		assertTrue(events.toString(), events.contains("status:100/7/{TP-75=40.0}"));
 		assertTrue(events.toString(), events.contains("video:http://video/v.mp4"));
 		assertTrue(events.toString(), events.indexOf("/ReceivingVideo") < events.indexOf("/Completed"));
@@ -319,10 +237,30 @@ public class RCKSimulationTest {
 		sim.setResponseTimeout(java.time.Duration.ofMillis(300));
 		sim.start();
 
-		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isFailed());
+		AsyncResult<RCKSimulationContext> result = sim.waitForFinished(5, TimeUnit.SECONDS);
+		assertTrue(result.isFailed());
 		assertEquals("/Failed", sim.getCurrentState().getPath());
-		assertTrue("" + sim.getContext().getFailureCause(),
-					sim.getContext().getFailureCause() instanceof java.util.concurrent.TimeoutException);
+		assertTrue("" + result.getFailureCause(), result.getFailureCause() instanceof TimeoutException);
 		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void connection_closed_by_simulator_while_running_fails() throws Exception {
+		// 시뮬레이션 도중 시뮬레이터가 정상 close해도 사용자가 취소한 것이 아니므로 Failed로 끝난다(이전에는 CANCELLED).
+		FakeRckServer server = new FakeRckServer(false, false) {
+			@Override
+			public void onMessage(okhttp3.WebSocket ws, String text) {
+				super.onMessage(ws, text);
+				if ( text.contains("\"command\"") ) {
+					ws.close(1000, "bye");
+				}
+			}
+		}.thenSend(STATUS);
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+
+		AsyncResult<RCKSimulationContext> result = sim.waitForFinished(5, TimeUnit.SECONDS);
+		assertTrue(result.isFailed());
+		assertEquals("/Failed", sim.getCurrentState().getPath());
+		assertTrue("" + result.getFailureCause(), result.getFailureCause() instanceof WebSocketClosedException);
 	}
 }

@@ -70,10 +70,10 @@ public class MDTSimulationOutputs implements SimulationObserver {
 
 	@Override
 	public void onStatus(RCKSimulationStatus status) {
-		write(m_progressRef, "Progress", PropertyValue.INTEGER(status.getProgress()));
-		write(m_productionRef, "Production", PropertyValue.INTEGER(status.getProduction()));
+		write(m_progressRef, "Progress", PropertyValue.INTEGER(status.progress()));
+		write(m_productionRef, "Production", PropertyValue.INTEGER(status.production()));
 		write(m_utilizationRef, "AverageUtilization",
-				PropertyValue.STRING(toUtilizationJson(status.getAverageUtilizations())));
+				PropertyValue.STRING(toUtilizationJson(status.averageUtilizations())));
 	}
 
 	@Override

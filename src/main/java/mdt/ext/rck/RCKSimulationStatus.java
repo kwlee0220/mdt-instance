@@ -1,8 +1,11 @@
 package mdt.ext.rck;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -12,48 +15,40 @@ import utils.func.Funcs;
 import utils.stream.FStream;
 
 /**
- * 시뮬레이터의 {@code simulation_status} 메시지 한 건이 알려 준 진행 상황(진척도·생산량·설비 유형별 평균 이용률).
+ * 시뮬레이터의 {@code simulation_status} 메시지 한 건이 알려 준 진행 상황.
  *
+ * @param progress				진척도(%)
+ * @param production			생산량
+ * @param averageUtilizations	설비 유형별 평균 이용률. 유형 이름 순으로 정렬된 변경 불가 맵.
  * @author Kang-Woo Lee (ETRI)
  */
-public class RCKSimulationStatus {
+public record RCKSimulationStatus(int progress, int production, Map<String,Float> averageUtilizations) {
 	private static final Set<String> EQUIP_TYPES
 			= Set.of("TP-75", "파츠피더", "가열로", "세척기", "템퍼링호");
-	
-	private final int m_progress;
-	private final int m_production;
-	private final Map<String,Float> m_utilizations;
-	
-	private RCKSimulationStatus(int progress, int production, Map<String,Float> utilization) {
-		m_progress = progress;
-		m_production = production;
-		m_utilizations = utilization;
+	private static final RCKSimulationStatus EMPTY = new RCKSimulationStatus(0, 0, Map.of());
+
+	public RCKSimulationStatus {
+		Preconditions.checkNotNullArgument(averageUtilizations, "averageUtilizations is null");
+		averageUtilizations = Collections.unmodifiableMap(new TreeMap<>(averageUtilizations));
 	}
-	
-	public int getProgress() {
-		return m_progress;
+
+	/**
+	 * 아직 진행 보고를 받지 않은 상태(진척도·생산량 0, 이용률 없음)를 반환한다.
+	 *
+	 * @return	빈 진행 상황
+	 */
+	public static RCKSimulationStatus empty() {
+		return EMPTY;
 	}
-	
-	public int getProduction() {
-		return m_production;
-	}
-	
-	public Map<String,Float> getAverageUtilizations() {
-		return m_utilizations;
-	}
-	
+
 	@Override
 	public String toString() {
 		return String.format("progress(%d), productions(%d), utilizations: %s",
-							m_progress, m_production, m_utilizations);
+							progress, production, averageUtilizations);
 	}
-	
-	public static RCKSimulationStatus empty() {
-		return new RCKSimulationStatus(0, 0, Map.of());
-	}
-	
+
 	/**
-	 * 시뮬레이터가 보낸 {@code simulation_status} 메시지의 본문을 파싱하여 시뮬레이션 결과를 생성한다.
+	 * 시뮬레이터가 보낸 {@code simulation_status} 메시지의 본문을 파싱하여 진행 상황을 생성한다.
 	 * <p>
 	 * 필드 부재는 다음과 같이 서로 다르게 다룬다.
 	 * <ul>
@@ -63,9 +58,10 @@ public class RCKSimulationStatus {
 	 *   <li>설비의 {@code Name} / {@code Utilization} - 둘 중 하나라도 없는 설비는 이용률 집계에서
 	 *       제외한다.</li>
 	 * </ul>
+	 * 설비 이용률은 실수로 읽어 설비 유형별로 평균을 내고 소수 셋째 자리까지 반올림한다.
 	 *
 	 * @param progressReport	{@code simulation_status} 메시지의 {@code message} 부분. ({@code null} 불가)
-	 * @return	파싱된 시뮬레이션 결과.
+	 * @return	파싱된 진행 상황.
 	 * @throws IllegalArgumentException	{@code progressReport}가 {@code null}이거나 {@code Progress}
 	 * 									필드를 갖지 않는 경우.
 	 */
@@ -80,15 +76,11 @@ public class RCKSimulationStatus {
 		int progress = progressNode.asInt();
 		int production = progressReport.path("Conveyor_6").path("Production").asInt();
 
-		List<JsonNode> equipList = new LeafObjectNodeCollector(progressReport).collect();
 		Map<String, Float> utilsMap
-				= FStream.from(equipList)
+				= FStream.from(collectLeafObjects(progressReport))
 						.filter(equip -> equip.has("Name") && equip.has("Utilization"))
-						.mapToKeyValue(equip -> {
-							String name = equip.get("Name").asText();
-							int util = equip.get("Utilization").asInt();
-							return KeyValue.of(name, util);
-						})
+						.mapToKeyValue(equip -> KeyValue.of(equip.get("Name").asText(),
+															equip.get("Utilization").asDouble()))
 						.mapKey(k -> {
 							var type = Funcs.findFirst(EQUIP_TYPES, t -> k.startsWith(t));
 							return type != null ? type : "";
@@ -97,14 +89,39 @@ public class RCKSimulationStatus {
 						.groupByKey()
 						.fstream()
 						.mapValue(values -> {
-							float avgUtil = (float)values.stream()
-														.mapToInt(Integer::intValue)
-														.average()
-														.orElse(0.0);
-							return (float)(Math.round(avgUtil * 1000f) / 1000f);
+							double avgUtil = values.stream()
+													.mapToDouble(Double::doubleValue)
+													.average()
+													.orElse(0.0);
+							return (float)(Math.round(avgUtil * 1000) / 1000.0);
 						})
 						.toMap();
-		
+
 		return new RCKSimulationStatus(progress, production, utilsMap);
+	}
+
+	/**
+	 * 주어진 JSON 트리에서 리프 객체 노드(하위에 객체나 배열을 갖지 않는 객체)를 모두 모은다. 시뮬레이터의
+	 * 상태 보고에서 설비 하나가 리프 객체 하나에 해당한다.
+	 */
+	private static List<JsonNode> collectLeafObjects(JsonNode root) {
+		List<JsonNode> leaves = new ArrayList<>();
+		collectLeafObjects(root, leaves);
+		return leaves;
+	}
+
+	private static void collectLeafObjects(JsonNode node, List<JsonNode> collected) {
+		if ( node.isContainerNode() ) {
+			int containerChildCount = 0;
+			for ( JsonNode child: node ) {
+				if ( child.isContainerNode() ) {
+					++containerChildCount;
+					collectLeafObjects(child, collected);
+				}
+			}
+			if ( node.isObject() && containerChildCount == 0 ) {
+				collected.add(node);
+			}
+		}
 	}
 }

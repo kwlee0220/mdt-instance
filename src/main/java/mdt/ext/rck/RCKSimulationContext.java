@@ -1,7 +1,5 @@
 package mdt.ext.rck;
 
-import java.util.Objects;
-
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Preconditions;
@@ -15,7 +13,7 @@ import mdt.ext.rck.VideoMessages.VideoInfo;
  * <p>
  * {@link RCKSimulation} 상태 차트와 짝을 이루며, 시뮬레이션 한 건을 식별하는 불변 정보
  * (클라이언트 ID, 공정명, 레이아웃명)와 차트가 진행되면서 채워지는 가변 결과 정보
- * (설비 정보, 최근 진행 상황, 결과 영상 정보, 실패 원인)를 함께 보유한다.
+ * (설비 정보, 최근 진행 상황, 결과 영상 정보)를 함께 보유한다.
  * <p>
  * 불변 식별 정보는 생성 시점에 확정되며, 가변 결과 정보는 {@link RCKSimulation}의 각 상태
  * 핸들러가 WebSocket 메시지를 처리하는 과정에서 갱신한 뒤, 차트 종료 후 호출자가 조회한다.
@@ -31,7 +29,6 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	private JsonNode m_facility;
 	private RCKSimulationStatus m_latestStatus;
 	private VideoInfo m_videoInfo;
-	private Throwable m_failureCause;
 	
 	/**
 	 * RCK 시뮬레이션 컨텍스트를 생성한다.
@@ -138,50 +135,6 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 		m_videoInfo = videoInfo;
 	}
 
-	/**
-	 * 시뮬레이션 실패 원인을 반환한다.
-	 *
-	 * @return	실패 원인 예외. 실패하지 않았으면 {@code null}.
-	 */
-	public Throwable getFailureCause() {
-		return m_failureCause;
-	}
-
-	/**
-	 * 시뮬레이션 실패 원인을 설정한다.
-	 *
-	 * @param failureCause	실패 원인 예외
-	 */
-	public void setFailureCause(Throwable failureCause) {
-		m_failureCause = failureCause;
-	}
-	
-	/**
-	 * 두 컨텍스트가 동일한 시뮬레이션을 가리키는지 비교한다.
-	 * <p>
-	 * 서버 URL, 공정명, 레이아웃명이 모두 같으면 동치로 본다. 가변 결과 필드
-	 * (설비 정보, 진행 상황, 영상 정보, 실패 원인)는 비교에 포함하지 않는다.
-	 */
-	@Override
-	public boolean equals(Object obj) {
-		if ( this == obj ) {
-			return true;
-		}
-		if ( obj == null || !(obj instanceof RCKSimulationContext) ) {
-			return false;
-		}
-
-		RCKSimulationContext other = (RCKSimulationContext) obj;
-		return getServerUrl().equals(other.getServerUrl())
-				&& m_processName.equals(other.m_processName)
-				&& m_layoutName.equals(other.m_layoutName);
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(getServerUrl(), m_processName, m_layoutName);
-	}
-	
 	@Override
 	public String toString() {
 		return "RCKSimulationContext[serverUrl=" + getServerUrl() + ",processName=" + m_processName
