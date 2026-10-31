@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import utils.Preconditions;
 import utils.func.Result;
 import utils.Throwables;
-import utils.async.Executions;
 import utils.func.CheckedFunctionX;
 import utils.statechart.AbstractState;
 import utils.statechart.Signal;
@@ -656,7 +655,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 			sendStopCommand().whenComplete((ws, e) -> {
 				if ( e != null ) {
-					postSignal(new SendFailed(Throwables.unwrapThrowable(e)));
+					postSignalAsync(new SendFailed(Throwables.unwrapThrowable(e)));
 				}
 			});
 		}
@@ -749,9 +748,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private void startResponseTimer(Duration timeout) {
 		cancelResponseTimer();
 		long generation = m_responseTimerGeneration.get();
-		m_responseTimer = Executions.getExecutor().schedule(
-								() -> postSignal(new ResponseTimedOut(generation, timeout)),
-								timeout.toMillis(), TimeUnit.MILLISECONDS);
+		m_responseTimer = RCKExecutors.schedule(() -> postSignal(new ResponseTimedOut(generation, timeout)), timeout);
 	}
 
 	private void cancelResponseTimer() {
@@ -765,6 +762,14 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 	private boolean isCurrentResponseTimer(ResponseTimedOut timedOut) {
 		return timedOut.generation() == m_responseTimerGeneration.get();
+	}
+
+	/**
+	 * 신호를 RCK 전용 스레드({@link RCKExecutors#WORKERS})에서 보낸다. 전송 future의 완료 콜백처럼 공용 스레드에서
+	 * 신호를 보낼 때 쓴다. 바로 보내면 한가한 차트가 그 공용 스레드에서 전이(중지 명령 전송 대기 포함)를 실행한다.
+	 */
+	private void postSignalAsync(Signal signal) {
+		RCKExecutors.WORKERS.execute(() -> postSignal(signal));
 	}
 
 	/**
@@ -866,7 +871,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		future.whenComplete((ws, e) -> {
 			if ( e != null ) {
 				getLogger().error("failed to send command: {}", ""+Throwables.unwrapThrowable(e));
-				postSignal(new SendFailed(Throwables.unwrapThrowable(e)));
+				postSignalAsync(new SendFailed(Throwables.unwrapThrowable(e)));
 			}
 		});
 	}

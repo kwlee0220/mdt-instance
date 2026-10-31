@@ -262,6 +262,73 @@ public class RCKSimulationTest {
 	}
 
 	@Test(timeout = 15_000)
+	public void connection_error_while_receiving_video_completes() throws Exception {
+		// 영상 수신 중의 연결 오류는 URL을 이미 받았으므로 Completed로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false).thenSend(videoInfo(1000));
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+		awaitState(sim, "/ReceivingVideo");
+
+		sim.handleSignal(new WebSocketError(sim.getWebSocket(), new java.io.IOException("pong timeout")));
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Completed", sim.getCurrentState().getPath());
+		assertEquals("http://video/v.mp4", sim.getContext().getVideoInfo().downloadUrl());
+	}
+
+	@Test(timeout = 15_000)
+	public void request_stop_while_receiving_video_goes_through_stopping() throws Exception {
+		FakeRckServer server = new FakeRckServer(true, false).thenSend(videoInfo(1000));
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+		awaitState(sim, "/ReceivingVideo");
+
+		sim.requestStop();
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Stopped", sim.getCurrentState().getPath());
+		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void connection_error_while_stopping_finishes_as_stopped() throws Exception {
+		// 중지 명령에 응답하지 않는 시뮬레이터. Stopping에서 연결 오류가 나면 Stopped로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false);
+		RCKSimulation sim = createSimulation(server, new MockResponse());
+		sim.setStopResponseTimeout(java.time.Duration.ofSeconds(30));
+		sim.start();
+		awaitState(sim, "/Running");
+		sim.requestStop();
+		awaitState(sim, "/Stopping");
+
+		sim.handleSignal(new WebSocketError(sim.getWebSocket(), new java.io.IOException("pong timeout")));
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Stopped", sim.getCurrentState().getPath());
+	}
+
+	@Test(timeout = 15_000)
+	public void connection_closed_while_stopping_finishes_as_stopped() throws Exception {
+		// 시뮬레이터가 중지 명령에 응답하지 않고 연결을 닫으면 Stopped로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false) {
+			@Override
+			public void onMessage(okhttp3.WebSocket ws, String text) {
+				super.onMessage(ws, text);
+				if ( text.contains("\"stop\"") ) {
+					ws.close(1000, "stopped");
+				}
+			}
+		};
+		RCKSimulation sim = createSimulation(server, new MockResponse());
+		sim.setStopResponseTimeout(java.time.Duration.ofSeconds(30));
+		sim.start();
+		awaitState(sim, "/Running");
+
+		sim.requestStop();
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Stopped", sim.getCurrentState().getPath());
+	}
+
+	@Test(timeout = 15_000)
 	public void cancel_reports_cancelled_finish() throws Exception {
 		// 종료 상태를 거치지 않는 취소도 관찰자에게 알린다(이전에는 State가 진행 중 상태에 멈췄다).
 		FakeRckServer server = new FakeRckServer(false, false);

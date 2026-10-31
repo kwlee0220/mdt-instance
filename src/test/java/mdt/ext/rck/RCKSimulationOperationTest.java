@@ -167,6 +167,21 @@ public class RCKSimulationOperationTest {
 	}
 
 	@Test
+	public void callback_failures_follow_the_default_operation_provider_rules() {
+		// 원인을 꺼낸 뒤 시간 초과·취소·실행 실패 등만 ExecutionException으로 감싸고, 나머지는 그대로 넘긴다.
+		java.io.IOException io = new java.io.IOException("down");
+		assertEquals(io, RCKSimulationOperation.toCallbackFailure(new ExecutionException(io)));
+
+		TimeoutException timeout = new TimeoutException("late");
+		Throwable wrapped = RCKSimulationOperation.toCallbackFailure(new ExecutionException(timeout));
+		assertTrue("" + wrapped, wrapped instanceof ExecutionException && wrapped.getCause() == timeout);
+
+		Throwable cancelled = RCKSimulationOperation.toCallbackFailure(
+															new java.util.concurrent.CancellationException());
+		assertTrue("" + cancelled, cancelled instanceof ExecutionException);
+	}
+
+	@Test
 	public void empty_layout_name_is_rejected() throws Exception {
 		RCKSimulationOperation op = operation(config("ws://127.0.0.1:1/rck", Map.of()));
 

@@ -6,7 +6,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -26,8 +25,8 @@ import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
+import utils.Throwables;
 import utils.UnitUtils;
-import utils.async.Executions;
 import utils.func.FOption;
 import utils.func.Result;
 
@@ -39,6 +38,7 @@ import mdt.config.MDTService;
 import mdt.model.instance.MDTInstanceManager;
 import mdt.model.sm.value.ElementValues;
 import mdt.model.sm.value.PropertyValue;
+import mdt.task.TaskException;
 
 
 /**
@@ -130,10 +130,9 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			try {
 				Exception failure = outcome.failure();
 				if ( failure != null ) {
-					// 기본 invokeAsync와 같이 실패 원인을 ExecutionException으로 감싸 전달한다.
-					s_logger.error("Failed to invoke AASOperation: {}", ""+failure);
-					callbackFailure.accept((failure instanceof ExecutionException) ? failure
-																					: new ExecutionException(failure));
+					Throwable reported = toCallbackFailure(failure);
+					s_logger.error("Failed to invoke AASOperation: {}", ""+reported);
+					callbackFailure.accept(reported);
 					return;
 				}
 				outputs.write(outcome.simulation());
@@ -193,11 +192,12 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		sim.setPongTimeout(m_pongTimeout);
 
 		AtomicBoolean timedOut = new AtomicBoolean();
-		ScheduledFuture<?> timer = Executions.getExecutor().schedule(() -> {
+		// 취소는 중지 명령 전송을 기다리므로 공용 스케줄러가 아니라 RCK 전용 스레드에서 한다.
+		ScheduledFuture<?> timer = RCKExecutors.schedule(() -> {
 			s_logger.warn("simulation did not finish within {}; cancelling it", m_maxDuration);
 			timedOut.set(true);
 			sim.cancel(true);
-		}, m_maxDuration.toMillis(), TimeUnit.MILLISECONDS);
+		}, m_maxDuration);
 		sim.whenFinishedAsync(result -> {
 			timer.cancel(false);
 			onFinished.accept(new Outcome(sim, result, timedOut.get(), m_maxDuration));
@@ -214,6 +214,22 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			}
 		}
 		return sim;
+	}
+
+	/**
+	 * 실패 콜백에 넘길 예외를 만든다. 기본 {@code OperationProvider.invokeAsync}와 같은 규칙을 따른다: 원인을 꺼낸 뒤,
+	 * 시간 초과·작업 실패·취소·실행 실패·인터럽트 예외만 {@link ExecutionException}으로 감싸고 나머지는 그대로 넘긴다.
+	 */
+	static Throwable toCallbackFailure(Throwable failure) {
+		Throwable cause = Throwables.unwrapThrowable(failure);
+		if ( cause instanceof TimeoutException
+			|| cause instanceof TaskException
+			|| cause instanceof CancellationException
+			|| cause instanceof ExecutionException
+			|| cause instanceof InterruptedException ) {
+			return new ExecutionException(cause);
+		}
+		return cause;
 	}
 
 	/**
