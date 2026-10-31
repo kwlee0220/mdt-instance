@@ -99,7 +99,7 @@ public class RCKSimulationOperationTest {
 
 		assertEquals("100", value(outputs, "Progress"));
 		assertEquals("7", value(outputs, "Production"));
-		assertEquals("/Completed", value(outputs, "FinalState"));
+		assertEquals("Completed", value(outputs, "FinalState"));
 		assertEquals(MDTSimulationOutputs.toUtilizationJson(Map.of("TP-75", 40f)), value(outputs, "AverageUtilization"));
 		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
 	}

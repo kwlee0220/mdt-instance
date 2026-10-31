@@ -18,7 +18,8 @@ import mdt.model.sm.value.PropertyValue;
  * 시뮬레이션 진행을 MDT 인스턴스의 {@code PressSimulation} 오퍼레이션 출력 인자에 반영하는 {@link SimulationObserver}.
  * <p>
  * 반영하는 출력 인자는 {@code State}, {@code Progress}, {@code Production}, {@code AverageUtilization}(JSON 문자열),
- * {@code SimulationVideoUrl}이다. 인자마다 따로 준비하고 갱신하므로, 한 인자를 준비하거나 갱신하지 못해도 경고 로그만
+ * {@code SimulationVideoUrl}이다. {@code State}에는 사람이 보는 표시 이름(예: {@code 시뮬레이션 진행중})을 쓴다.
+ * 프로그램이 읽는 결과 코드는 오퍼레이션의 {@code FinalState} 출력이다({@link RCKSimulationOperation} 참조). 인자마다 따로 준비하고 갱신하므로, 한 인자를 준비하거나 갱신하지 못해도 경고 로그만
  * 남기고 나머지 인자는 계속 반영한다.
  *
  * @author Kang-Woo Lee (ETRI)

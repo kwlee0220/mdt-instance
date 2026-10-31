@@ -35,6 +35,16 @@ import mdt.model.sm.value.PropertyValue;
  * 출력 변수에 기록한다. 구동하는 동안에는 {@link MDTSimulationOutputs}로 이 인스턴스의 출력 인자에 진행 상황을
  * 반영한다.
  * <p>
+ * 상태를 담는 출력은 두 가지이며 용도가 다르다.
+ * <ul>
+ *   <li>{@code FinalState} - 프로그램이 읽는 결과 코드. 최종 상태 경로에서 앞의 {@code /}를 뗀 값
+ *       ({@code Completed}, {@code Stopped})이며, 오퍼레이션이 정상 반환할 때만 기록된다. 실패·취소·시간 초과는
+ *       예외로 알린다.</li>
+ *   <li>{@code State} - 사람이 보는 실시간 표시 이름(예: {@code 시뮬레이션 진행중}). 진행 중 상태가 바뀔 때마다
+ *       {@link MDTSimulationOutputs}가 갱신하며, 실패로 끝난 경우에도 {@code 시뮬레이션 실패}가 남는다. 표시 문구는
+ *       바뀔 수 있으므로 분기 조건으로 쓰지 않는다.</li>
+ * </ul>
+ * <p>
  * 설정 인자:
  * <ul>
  *   <li>{@code clientId} / {@code processName} / {@code rckServerUrl} (필수) - 시뮬레이터 등록 ID, 공정명,
@@ -125,7 +135,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		RCKSimulationStatus status = ctx.getLatestStatus();
 		ElementValues.update(progressProp, PropertyValue.INTEGER(status.progress()));
 		ElementValues.update(productionProp, PropertyValue.INTEGER(status.production()));
-		ElementValues.update(stateProp, PropertyValue.STRING(sim.getCurrentState().getPath()));
+		ElementValues.update(stateProp, PropertyValue.STRING(toResultCode(sim.getCurrentState().getPath())));
 		ElementValues.update(avgUtil, MDTSimulationOutputs.toUtilizationJson(status.averageUtilizations()));
 
 		// 영상 정보를 받기 전에 끝났으면(중지 등) URL은 빈 문자열로 둔다.
@@ -133,6 +143,14 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		ElementValues.update(videoUrlProp, (video != null) ? video.downloadUrl() : "");
 	}
 
+	/**
+	 * 최종 상태 경로를 {@code FinalState} 결과 코드로 바꾼다(앞의 {@code /}를 뗀다. 예: {@code "/Completed"} →
+	 * {@code "Completed"}).
+	 */
+	static String toResultCode(String statePath) {
+		return statePath.startsWith("/") ? statePath.substring(1) : statePath;
+	}
+	
 	/**
 	 * 시뮬레이션 진행을 이 인스턴스의 출력 인자에 반영할 관찰자를 만든다.
 	 * <p>

@@ -91,7 +91,20 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 | `pingInterval` / `pongTimeout` | 설정(선택) | 연결 유지 ping 간격 / pong 대기 시간. 기본 10초 / 2초 |
 | `maxDuration` | 설정(선택) | 시뮬레이션 전체 최대 수행 시간. 넘으면 취소하고 `TimeoutException`으로 실패. 기본 무제한 |
 | `LayoutName` | 입력 변수 | 시뮬레이션할 레이아웃 이름 |
-| `Progress` / `Production` / `AverageUtilization` / `FinalState` / `SimulationVideoUrl` | 출력 변수 | 마지막 진행 상황, 이용률 JSON 문자열, 최종 상태 경로, 영상 다운로드 URL(영상 정보가 없으면 빈 문자열) |
+| `Progress` / `Production` / `AverageUtilization` / `FinalState` / `SimulationVideoUrl` | 출력 변수 | 마지막 진행 상황, 이용률 JSON 문자열, 결과 코드(아래), 영상 다운로드 URL(영상 정보가 없으면 빈 문자열) |
+
+### `FinalState`와 `State`
+
+상태를 담는 출력은 두 가지이며 용도가 다르다.
+
+| 출력 | 용도 | 값 | 기록 시점 |
+|------|------|----|-----------|
+| `FinalState` (오퍼레이션 출력 변수) | 프로그램이 읽는 결과 코드 | `Completed` / `Stopped` (최종 상태 경로에서 `/`를 뗀 값) | 오퍼레이션이 정상 반환할 때 한 번 |
+| `State` (`MDTSimulationOutputs`가 반영하는 출력 인자) | 사람이 보는 실시간 표시 | `시뮬레이션 진행중`, `시뮬레이션 완료`, `시뮬레이션 실패` 등 | 상태가 바뀔 때마다 |
+
+- 실패·취소·시간 초과는 오퍼레이션이 예외로 알리므로 출력 변수가 기록되지 않는다. 그런 경우의 마지막 상태는 `State`에만
+  남는다(MDT 인스턴스에 접속했을 때).
+- `State`의 표시 문구는 바뀔 수 있으므로 분기 조건으로 쓰지 않는다. 분기에는 `FinalState`나 오퍼레이션의 성공/실패를 쓴다.
 
 ## MDT 연동
 

@@ -1,7 +1,7 @@
 # `mdt.ext.rck` 검토 항목
 
 - 대상: `src/main/java/mdt/ext/rck/` 전체(8개 파일)와 `src/test/java/mdt/ext/rck/RCKSimulationTest.java`
-- 기준 커밋: `ae6f84a` (2026-10-31). 1차 작업(#1~#5, #22, #23, #27 및 함께 해결된 항목)은 `9083280`. 2차 작업(나머지, #18 제외)은 2026-10-31, 미커밋.
+- 기준 커밋: `ae6f84a` (2026-10-31). 1차 작업(#1~#5, #22, #23, #27 및 함께 해결된 항목)은 `9083280`. 2차 작업(나머지, #18 제외)은 `33240dd`. #18은 2026-10-31, 미커밋.
 - 상태 값: `대기` · `진행` · `완료` · `보류`(결정 필요) · `기각`
 - 항목을 처리하면 요약표의 상태를 바꾸고, 해당 항목의 **결과**에 커밋과 처리 내용을 적는다.
 - 1차 작업 항목의 결과에 적힌 "미커밋"은 `9083280`으로 커밋되었다.
@@ -27,7 +27,7 @@
 | 15 | 문서 | 낮음 | README가 코드와 다름 | 완료 |
 | 16 | 문서 | 낮음 | `WaitingVideo` Javadoc 복사 오류, 없는 메소드 참조 | 완료 |
 | 17 | 정리 | 낮음 | MDT `State` 표시 이름 오타 | 완료 |
-| 18 | 정리 | 낮음 | `FinalState`(경로)와 `State`(한글 이름) 값 형식 불일치 | 보류 |
+| 18 | 정리 | 낮음 | `FinalState`(경로)와 `State`(한글 이름) 값 형식 불일치 | 완료 |
 | 19 | 정리 | 낮음 | 로깅 불일치(`System.out`, `s_logger`/`getLogger()`) | 완료 |
 | 20 | 정리 | 낮음 | 운영 코드 안의 개발용 `main()` | 완료 |
 | 21 | 정리 | 낮음 | `RCKSimulationContext.equals/hashCode` 불필요 | 완료 |
@@ -184,7 +184,7 @@
 
 - 위치: [RCKSimulationOperation.java:97](../../src/main/java/mdt/ext/rck/RCKSimulationOperation.java#L97), [RCKSimulation.java:869-879](../../src/main/java/mdt/ext/rck/RCKSimulation.java#L869-L879)
 - 내용: 중간 반영(`State`)은 한글 이름("시뮬레이션 완료")을, 오퍼레이션 결과(`FinalState`)는 경로("/Completed")를 쓴다. 소비자가 두 형식을 모두 알아야 한다. 한쪽으로 통일하거나, 기계가 읽는 값(경로/코드)과 표시용 값을 분리한다.
-- 결과: 보류(결정 필요). 기계가 읽는 `FinalState`(경로)와 표시용 `State`(한글)를 그대로 둘지, 하나로 통일할지 정해야 한다. 바꾸면 `FinalState`를 읽는 쪽에 영향이 있다.
+- 결과: 1번(역할 분리) 채택, 미커밋. `FinalState`는 프로그램이 읽는 결과 코드로, 최종 상태 경로에서 `/`를 뗀 값(`Completed`/`Stopped`, `RCKSimulationOperation.toResultCode`)이다. `State`는 사람이 보는 실시간 표시 이름으로 그대로 둔다. 두 출력의 용도와 "실패·취소는 예외로 알리므로 `FinalState`가 기록되지 않고 `State`에만 남는다"는 점을 오퍼레이션 Javadoc, `MDTSimulationOutputs` Javadoc, README(`FinalState`와 `State` 절)에 적었다. 검토 중 확인한 사실: 오퍼레이션이 정상 반환하는 경로는 사실상 `Completed`뿐이다(`requestStop()`을 부르지 않음).
 
 ### #19 로깅 불일치 — 낮음
 
