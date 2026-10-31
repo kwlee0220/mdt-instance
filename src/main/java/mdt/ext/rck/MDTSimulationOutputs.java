@@ -1,13 +1,19 @@
 package mdt.ext.rck;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+import javax.annotation.concurrent.GuardedBy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import utils.json.JacksonUtils;
 
-import mdt.client.HttpMDTManager;
 import mdt.model.instance.MDTInstanceManager;
 import mdt.model.sm.ref.ElementReference;
 import mdt.model.sm.ref.ElementReferences;
@@ -19,8 +25,13 @@ import mdt.model.sm.value.PropertyValue;
  * <p>
  * 반영하는 출력 인자는 {@code State}, {@code Progress}, {@code Production}, {@code AverageUtilization}(JSON 문자열),
  * {@code SimulationVideoUrl}이다. {@code State}에는 사람이 보는 표시 이름(예: {@code 시뮬레이션 진행중})을 쓴다.
- * 프로그램이 읽는 결과 코드는 오퍼레이션의 {@code FinalState} 출력이다({@link RCKSimulationOperation} 참조). 인자마다 따로 준비하고 갱신하므로, 한 인자를 준비하거나 갱신하지 못해도 경고 로그만
- * 남기고 나머지 인자는 계속 반영한다.
+ * 프로그램이 읽는 결과 코드는 오퍼레이션의 {@code FinalState} 출력이다({@link RCKSimulationOperation} 참조).
+ * 인자마다 따로 준비하고 갱신하므로, 한 인자를 준비하거나 갱신하지 못해도 경고 로그만 남기고 나머지 인자는 계속
+ * 반영한다.
+ * <p>
+ * 관찰자 메소드는 시뮬레이션의 신호 처리 스레드에서 차트 lock을 쥔 채 불리므로, 갱신 요청을 기록만 하고 바로
+ * 반환한다. 실제 갱신(MDT 인스턴스로의 HTTP 요청)은 별도 스레드가 한다. 갱신이 밀려 있는 동안 같은 인자에 새 값이
+ * 오면 최신 값만 쓴다. 그래서 MDT가 느려도 시뮬레이션 메시지 처리가 밀리지 않는다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -37,23 +48,45 @@ public class MDTSimulationOutputs implements SimulationObserver {
 	private final MDTArgumentReference m_utilizationRef;
 	private final MDTArgumentReference m_videoUrlRef;
 
+	/** 갱신을 수행하는 공용 스레드 풀. 인스턴스마다 한 번에 하나의 갱신 작업만 돌린다. */
+	private static final Executor WRITER_POOL = Executors.newCachedThreadPool(task -> {
+		Thread thread = new Thread(task, "rck-mdt-outputs");
+		thread.setDaemon(true);
+		return thread;
+	});
+
+	private record PendingWrite(String argName, MDTArgumentReference ref, PropertyValue<?> value) { }
+
+	private final Object m_lock = new Object();
+	/** 아직 쓰지 않은 갱신. 인자 이름별로 최신 값만 남는다. */
+	@GuardedBy("m_lock") private final Map<String,PendingWrite> m_pending = new LinkedHashMap<>();
+	@GuardedBy("m_lock") private boolean m_flushing = false;
+
 	/**
-	 * 기본 설정으로 MDT 인스턴스 매니저에 접속하여 주어진 인스턴스의 출력 인자를 준비한다.
+	 * 주어진 인스턴스의 출력 인자를 준비한다. 준비하지 못한 인자는 경고 로그를 남기고 반영하지 않는다.
 	 *
+	 * @param manager		MDT 인스턴스 매니저
 	 * @param instanceId	대상 인스턴스 식별자
-	 * @return	준비된 출력 인자 묶음
-	 * @throws RuntimeException	MDT 인스턴스 매니저에 접속하지 못한 경우
 	 */
-	public static MDTSimulationOutputs connect(String instanceId) {
-		return new MDTSimulationOutputs(HttpMDTManager.connectWithDefault().getInstanceManager(), instanceId);
+	public MDTSimulationOutputs(MDTInstanceManager manager, String instanceId) {
+		this(findArgument(manager, instanceId, "State"),
+			findArgument(manager, instanceId, "Progress"),
+			findArgument(manager, instanceId, "Production"),
+			findArgument(manager, instanceId, "AverageUtilization"),
+			findArgument(manager, instanceId, "SimulationVideoUrl"));
 	}
 
-	public MDTSimulationOutputs(MDTInstanceManager manager, String instanceId) {
-		m_stateRef = findArgument(manager, instanceId, "State");
-		m_progressRef = findArgument(manager, instanceId, "Progress");
-		m_productionRef = findArgument(manager, instanceId, "Production");
-		m_utilizationRef = findArgument(manager, instanceId, "AverageUtilization");
-		m_videoUrlRef = findArgument(manager, instanceId, "SimulationVideoUrl");
+	/**
+	 * 준비된 출력 인자 reference들로 생성한다. {@code null}인 인자는 반영하지 않는다(테스트용).
+	 */
+	MDTSimulationOutputs(MDTArgumentReference stateRef, MDTArgumentReference progressRef,
+						MDTArgumentReference productionRef, MDTArgumentReference utilizationRef,
+						MDTArgumentReference videoUrlRef) {
+		m_stateRef = stateRef;
+		m_progressRef = progressRef;
+		m_productionRef = productionRef;
+		m_utilizationRef = utilizationRef;
+		m_videoUrlRef = videoUrlRef;
 	}
 
 	/**
@@ -83,6 +116,15 @@ public class MDTSimulationOutputs implements SimulationObserver {
 	}
 
 	/**
+	 * 최종 상태의 표시 이름을 {@code State}에 쓴다. 종료 상태를 거치지 않고 끝난 경우(연결 오류, 취소)에도 불리므로,
+	 * {@code State}가 진행 중 상태에 멈추지 않는다.
+	 */
+	@Override
+	public void onFinished(String resultCode, String displayName, Throwable cause) {
+		write(m_stateRef, "State", PropertyValue.STRING(displayName));
+	}
+
+	/**
 	 * 설비 유형별 평균 이용률을 {@code AverageUtilization} 출력 인자에 기록하는 JSON 문자열로 만든다.
 	 * 진행 중 반영과 {@link RCKSimulationOperation}의 최종 출력이 같은 형식을 쓰도록 한 곳에 둔다.
 	 *
@@ -93,13 +135,44 @@ public class MDTSimulationOutputs implements SimulationObserver {
 		return JacksonUtils.toObjectNodeFloats(utilizations).toPrettyString();
 	}
 
-	private static void write(MDTArgumentReference ref, String argName, PropertyValue<?> value) {
-		if ( ref != null ) {
-			try {
-				ref.updatePropertyValue(value);
+	/**
+	 * 갱신 요청을 기록하고, 갱신 작업이 돌고 있지 않으면 시작시킨다. 바로 반환한다.
+	 */
+	private void write(MDTArgumentReference ref, String argName, PropertyValue<?> value) {
+		if ( ref == null ) {
+			return;
+		}
+		synchronized ( m_lock ) {
+			m_pending.put(argName, new PendingWrite(argName, ref, value));
+			if ( m_flushing ) {
+				return;
 			}
-			catch ( Exception e ) {
-				s_logger.warn("failed to update simulation output '{}': {}", argName, ""+e);
+			m_flushing = true;
+		}
+		WRITER_POOL.execute(this::flush);
+	}
+
+	/**
+	 * 밀린 갱신을 모두 쓴다. 쓰는 동안 들어온 갱신도 이어서 쓰고, 더 없으면 끝낸다.
+	 */
+	private void flush() {
+		while ( true ) {
+			List<PendingWrite> batch;
+			synchronized ( m_lock ) {
+				if ( m_pending.isEmpty() ) {
+					m_flushing = false;
+					return;
+				}
+				batch = new ArrayList<>(m_pending.values());
+				m_pending.clear();
+			}
+			for ( PendingWrite write: batch ) {
+				try {
+					write.ref().updatePropertyValue(write.value());
+				}
+				catch ( Exception e ) {
+					s_logger.warn("failed to update simulation output '{}': {}", write.argName(), ""+e);
+				}
 			}
 		}
 	}

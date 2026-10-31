@@ -13,7 +13,7 @@ public interface SimulationObserver {
 	public static final SimulationObserver NONE = new SimulationObserver() { };
 
 	/**
-	 * 시뮬레이션이 새 상태에 진입했다.
+	 * 시뮬레이션이 새 상태에 진입했다. 종료 상태는 {@link #onFinished(String, String, Throwable)}로 알린다.
 	 *
 	 * @param statePath		진입한 상태의 경로 (예: {@code "/Running"})
 	 * @param displayName	사용자에게 보일 상태 이름 (예: {@code "시뮬레이션 진행중"})
@@ -33,4 +33,15 @@ public interface SimulationObserver {
 	 * @param downloadUrl	결과 영상 다운로드 URL
 	 */
 	public default void onVideoReady(String downloadUrl) { }
+
+	/**
+	 * 시뮬레이션이 끝났다. 종료 상태({@code Completed}/{@code Stopped}/{@code Failed})에 들어간 경우뿐 아니라, 연결
+	 * 오류로 인한 대체 종료나 취소처럼 종료 상태를 거치지 않고 끝난 경우에도 정확히 한 번 호출된다.
+	 *
+	 * @param resultCode	결과 코드. {@code Completed}, {@code Stopped}, {@code Failed}, {@code Cancelled} 중 하나.
+	 * 						{@code Completed}/{@code Stopped}는 오퍼레이션의 {@code FinalState} 출력과 같은 값이다.
+	 * @param displayName	사용자에게 보일 최종 상태 이름 (예: {@code "시뮬레이션 실패"})
+	 * @param cause			실패 원인. 실패가 아니면 {@code null}.
+	 */
+	public default void onFinished(String resultCode, String displayName, Throwable cause) { }
 }

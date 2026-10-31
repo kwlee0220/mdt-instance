@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import utils.Preconditions;
+import utils.func.Result;
 import utils.Throwables;
 import utils.async.Executions;
 import utils.func.CheckedFunctionX;
@@ -32,6 +33,7 @@ import utils.statechart.Transitions;
 import utils.websocket.Signals.BinaryMessage;
 import utils.websocket.Signals.ConnectionClosed;
 import utils.websocket.Signals.TextMessage;
+import utils.websocket.Signals.WebSocketError;
 import utils.websocket.States;
 import utils.websocket.States.CompletedState;
 import utils.websocket.States.FailedState;
@@ -39,9 +41,6 @@ import utils.websocket.States.StoppedState;
 import utils.websocket.WebSocketClosedException;
 import utils.websocket.WebSocketStateChart;
 
-import mdt.ext.rck.VideoMessages.VideoInfo;
-import mdt.ext.rck.VideoMessages.VideoProgress;
-import mdt.ext.rck.VideoMessages.VideoReady;
 
 
 /**
@@ -74,8 +73,9 @@ import mdt.ext.rck.VideoMessages.VideoReady;
  *       규약을 따른다.</li>
  * </ul>
  * <p>
- * 진행 상황(상태, 진척도, 영상 URL)은 생성자에 준 {@link SimulationObserver}에 알린다. MDT 인스턴스에 반영하려면
- * {@link MDTSimulationOutputs}를 넘긴다.
+ * 진행 상황(상태, 진척도, 영상 URL)은 생성자에 준 {@link SimulationObserver}에 알린다. 끝날 때는 어떤 경로로
+ * 끝나든(종료 상태, 연결 오류로 인한 대체 종료, 취소) {@link SimulationObserver#onFinished}가 한 번 불린다. MDT
+ * 인스턴스에 반영하려면 {@link MDTSimulationOutputs}를 넘긴다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -104,6 +104,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		Map.entry(STATE_STOPPED, "시뮬레이션 중지됨"),
 		Map.entry(STATE_FAILED, "시뮬레이션 실패")
 	);
+	/** 종료 상태를 거치지 않고 취소로 끝났을 때의 결과 코드와 표시 이름. */
+	private static final String RESULT_CANCELLED = "Cancelled";
+	private static final String DISPLAY_CANCELLED = "시뮬레이션 취소됨";
 
 	/** 응답을 기다리는 상태들의 기본 응답 대기 시간. */
 	public static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofMinutes(2);
@@ -124,6 +127,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	// 세대 번호로 이미 취소된 타이머가 늦게 보낸 신호를 구분한다.
 	private final AtomicLong m_responseTimerGeneration = new AtomicLong();
 	private volatile ScheduledFuture<?> m_responseTimer;
+
+	// 들어간 종료 상태의 경로. 종료 알림(notifyFinished)이 결과 코드를 정하는 데 쓴다.
+	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
+	private volatile String m_finalStatePath;
 
 	/**
 	 * 진행 상황을 외부에 알리지 않는 RCK 시뮬레이션 상태 차트를 생성한다.
@@ -148,7 +155,14 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		setLogger(s_logger);
 
 		addState(new States.WebSocketConnectingState<>(STATE_CONNECTING_WEBSOCKET, getContext(),
-														STATE_REGISTERING, STATE_FAILED));
+														STATE_REGISTERING, STATE_FAILED) {
+			@Override
+			public void enter() {
+				// 관찰자에게 알리지 않으면 접속하는 동안 이전 실행의 상태가 그대로 보인다.
+				notifyStateChanged(getPath());
+				super.enter();
+			}
+		});
 		addState(new Registering(STATE_REGISTERING, getContext()));
 		addState(new LayoutLoading(STATE_LAYOUT_LOADING, getContext()));
 		addState(new SimulationStarting(STATE_SIMULATION_STARTING, getContext()));
@@ -160,6 +174,18 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		addState(new Stopped(STATE_STOPPED, getContext()));
 
 		setInitialState(STATE_CONNECTING_WEBSOCKET);
+		whenFinished(this::notifyFinished);
+	}
+
+	/**
+	 * 종료 상태 경로를 결과 코드로 바꾼다(앞의 {@code /}를 뗀다. 예: {@code "/Completed"} → {@code "Completed"}).
+	 * 오퍼레이션의 {@code FinalState} 출력과 {@link SimulationObserver#onFinished}의 결과 코드가 이 값을 쓴다.
+	 *
+	 * @param statePath	종료 상태 경로
+	 * @return	결과 코드
+	 */
+	static String toResultCode(String statePath) {
+		return statePath.startsWith("/") ? statePath.substring(1) : statePath;
 	}
 
 	/**
@@ -264,8 +290,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 지나면 {@link #onResponseTimeout(Duration)}이 고른 전이를 수행한다. 하위 클래스는 메시지를 받을 때
 	 * {@link #restartResponseTimer()}로 대기 시간을 다시 시작한다. 그 밖의 신호는 전이 표({@code on(...)})로 처리한다.
 	 */
-	private abstract class WaitingState extends AbstractState<RCKSimulationContext> {
-		protected WaitingState(String path, RCKSimulationContext context) {
+	private abstract class ResponseWaitingState extends AbstractState<RCKSimulationContext> {
+		protected ResponseWaitingState(String path, RCKSimulationContext context) {
 			super(path, context);
 		}
 
@@ -314,11 +340,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 하위 클래스는 생성자에서 {@link #onMessage(String, Transition)} 등으로 {@code type}별 처리기를 등록하고,
 	 * 진입 시 보낼 명령이 있으면 {@link #sendRequest()}를 재정의한다. 등록되지 않은 {@code type}은 경고 로그만 남기고
 	 * 머문다. 공통으로 {@link #STOP_REQUESTED}는 {@code Stopping}으로, 명령 전송 실패({@link SendFailed}), 메시지
-	 * 처리 중 예외, 응답 대기 시간 초과, 시뮬레이터의 연결 종료({@link ConnectionClosed})는 {@code Failed}로 전이한다.
+	 * 처리 중 예외, 응답 대기 시간 초과, 시뮬레이터의 연결 종료({@link ConnectionClosed}), 연결 오류
+	 * ({@link WebSocketError}: pong 시간 초과 등)는 {@code Failed}로 전이한다. 연결 오류를 처리하지 않으면 대체 종료가
+	 * 차트를 바로 실패시켜 {@code Failed} 상태의 정리(중지 명령 전송)를 거치지 않는다.
 	 * 연결 종료를 처리하지 않으면 정상 close 코드일 때 {@link WebSocketStateChart}의 대체 종료가 차트를 취소하는데,
 	 * 시뮬레이션 도중 끊긴 것은 사용자의 취소가 아니라 실패다.
 	 */
-	private abstract class JsonMessageState extends WaitingState {
+	private abstract class JsonMessageState extends ResponseWaitingState {
 		private final Map<String, CheckedFunctionX<JsonNode,Transition<RCKSimulationContext>,Exception>> m_handlers
 																									= new HashMap<>();
 
@@ -332,6 +360,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 								closed.getStatusCode(), closed.getReason(), getPath());
 				return failWith(new WebSocketClosedException(closed.getStatusCode(), closed.getReason()));
 			});
+			on(WebSocketError.class, error -> failWith(error.getError()));
 		}
 
 		/**
@@ -475,8 +504,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	/**
 	 * 시뮬레이션이 진행되는 동안 상태 메시지를 수신하는 상태.
 	 * <p>
-	 * {@code simulation_status} 메시지마다 진행 상황을 파싱하여 문맥에 저장하고 관찰자에게 알린다. 영상 생성 중에 오는
-	 * {@code video_progress} / {@code video_ready}는 기록만 한다. {@code video_info}를 받으면 영상 정보를 문맥에
+	 * {@code simulation_status} 메시지마다 진행 상황을 파싱하여 문맥에 저장하고 관찰자에게 알린다. 형식이 잘못된 진행
+	 * 보고는 경고만 남기고 무시한다. 영상 생성 중에 오는 {@code video_progress} / {@code video_ready}는 원본 그대로
+	 * 로그에만 남긴다. {@code video_info}를 받으면 영상 정보를 문맥에
 	 * 저장하고 다운로드 URL을 관찰자에게 알린 뒤 {@code ReceivingVideo}로 전이한다. 영상 크기가 0이면 받을 것이 없으므로
 	 * 바로 {@code Completed}로 전이한다.
 	 */
@@ -485,19 +515,28 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			super(path, context);
 
 			onMessage("simulation_status", msg -> {
-				RCKSimulationStatus status = RCKSimulationStatus.parse(msg.get("message"));
+				RCKSimulationStatus status;
+				try {
+					status = RCKSimulationStatus.parse(msg.get("message"));
+				}
+				catch ( RuntimeException e ) {
+					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
+					getLogger().warn("ignored malformed simulation status: cause={}, message={}", ""+e, msg);
+					return Transitions.stay();
+				}
 				getLogger().info("received simulation status: {}", status);
 
 				getContext().setLatestStatus(status);
 				notifyObserver(() -> m_observer.onStatus(status));
 				return Transitions.stay();
 			});
+			// 영상 생성 진행 알림은 기록만 한다. 로그를 위해 역직렬화하지 않는다(형식이 달라도 실패하지 않도록).
 			onMessage("video_progress", msg -> {
-				getLogger().debug("received video progress: {}", MAPPER.treeToValue(msg, VideoProgress.class));
+				getLogger().debug("received video progress: {}", msg);
 				return Transitions.stay();
 			});
 			onMessage("video_ready", msg -> {
-				getLogger().debug("received: {}", MAPPER.treeToValue(msg, VideoReady.class));
+				getLogger().debug("received video ready: {}", msg);
 				return Transitions.stay();
 			});
 			onMessage("video_info", msg -> {
@@ -516,10 +555,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * <p>
 	 * 영상 내용은 저장하지 않고 받은 크기만 센다(결과로는 {@code video_info}의 다운로드 URL만 쓴다). 받은 크기가
 	 * {@code video_info}의 파일 크기에 이르면 {@code Completed}로 전이한다. 다운로드 URL은 이미 정해졌으므로, 수신
-	 * 도중 연결이 끊기거나({@link ConnectionClosed}) 응답 대기 시간이 지나도 {@code Completed}로 끝낸다. 수신 도중
+	 * 도중 연결이 끊기거나({@link ConnectionClosed}) 연결 오류({@link WebSocketError})가 나거나 응답 대기 시간이 지나도
+	 * {@code Completed}로 끝낸다. 수신 도중
 	 * {@link #STOP_REQUESTED}를 받으면 {@code Stopping}으로 전이한다.
 	 */
-	private final class ReceivingVideo extends WaitingState {
+	private final class ReceivingVideo extends ResponseWaitingState {
 		/** 수신 진행 로그를 남기는 간격(바이트). */
 		private static final long PROGRESS_LOG_STEP = 1024 * 1024;	// 1MB
 
@@ -537,6 +577,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			});
 			on(ConnectionClosed.class, closed -> {
 				getLogger().warn("connection closed while receiving video: remains={}", m_remains);
+				return Transitions.to(STATE_COMPLETED);
+			});
+			on(WebSocketError.class, error -> {
+				getLogger().warn("connection error while receiving video: remains={}, cause={}",
+								m_remains, ""+error.getError());
 				return Transitions.to(STATE_COMPLETED);
 			});
 		}
@@ -584,18 +629,19 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 *   <li>{@code simulation_stop} 응답 - {@code Stopped}</li>
 	 *   <li>응답 대기 시간({@link #setStopResponseTimeout(Duration)}, 기본 10초) 초과 - 명령은 보냈으므로 경고를
 	 *       남기고 {@code Stopped}</li>
-	 *   <li>연결 종료({@link ConnectionClosed}) - {@code Stopped}</li>
+	 *   <li>연결 종료({@link ConnectionClosed}) 또는 연결 오류({@link WebSocketError}) - {@code Stopped}</li>
 	 *   <li>중지 명령 전송 실패({@link SendFailed}) - 시뮬레이터가 멈췄다고 볼 수 없으므로 {@code Failed}</li>
 	 * </ul>
 	 * 그 사이 도착하는 다른 메시지(진행 상황, 영상 등)는 무시한다.
 	 */
-	private class Stopping extends WaitingState {
+	private class Stopping extends ResponseWaitingState {
 		Stopping(String path, RCKSimulationContext context) {
 			super(path, context);
 
 			on(STOP_REQUESTED, Transitions.stay());
 			on(BinaryMessage.class, Transitions.stay());
 			on(ConnectionClosed.class, Transitions.to(STATE_STOPPED));
+			on(WebSocketError.class, Transitions.to(STATE_STOPPED));
 			on(SendFailed.class, failed -> failWith(failed.cause()));
 		}
 
@@ -640,8 +686,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 시뮬레이션이 정상 완료된 종료 상태. 시뮬레이터에 중지 명령을 보낸 뒤 WebSocket 연결을 정상 종료하고 관찰자에게
-	 * 상태를 알린다. 연결을 닫은 뒤에는 명령을 보낼 수 없으므로 중지 명령을 먼저 보낸다.
+	 * 시뮬레이션이 정상 완료된 종료 상태. 시뮬레이터에 중지 명령을 보낸 뒤 WebSocket 연결을 정상 종료한다. 연결을 닫은
+	 * 뒤에는 명령을 보낼 수 없으므로 중지 명령을 먼저 보낸다. 관찰자에게는 차트가 끝날 때 {@code notifyFinished}가 알린다.
 	 */
 	private class Completed extends CompletedState<RCKSimulationContext> {
 		Completed(String path, RCKSimulationContext context) {
@@ -650,17 +696,16 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
+			m_finalStatePath = getPath();
 			trySendStopCommand();
 			super.enter();
 			getLogger().info("simulation completed");
-
-			notifyStateChanged(getPath());
 		}
 	}
 
 	/**
 	 * 시뮬레이션이 오류로 종료된 상태. 연결되어 있으면 시뮬레이터에 중지 명령을 보낸 뒤 WebSocket 연결을 종료하고,
-	 * 실패 원인을 기록하며 관찰자에게 상태를 알린다. 실패 원인은 들어오는 전이({@link Transitions#fail})가 설정한다.
+	 * 실패 원인을 기록한다. 실패 원인은 들어오는 전이({@link Transitions#fail})가 설정한다.
 	 */
 	private class Failed extends FailedState<RCKSimulationContext> {
 		Failed(String path, RCKSimulationContext context) {
@@ -669,17 +714,16 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
+			m_finalStatePath = getPath();
 			trySendStopCommand();
 			super.enter();
 			getLogger().info("simulation failed: cause={}", ""+getFailureCause());
-
-			notifyStateChanged(getPath());
 		}
 	}
 
 	/**
 	 * 사용자 요청으로 시뮬레이션을 멈춘 종료 상태. {@code Stopping}에서만 도달하며 중지 명령은 이미 보냈다.
-	 * WebSocket 연결을 종료하고 관찰자에게 상태를 알린다. 차트의 실행 결과는 {@code COMPLETED}다
+	 * WebSocket 연결을 종료한다. 차트의 실행 결과는 {@code COMPLETED}다
 	 * ({@link StoppedState} 참조).
 	 */
 	private class Stopped extends StoppedState<RCKSimulationContext> {
@@ -689,10 +733,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
+			m_finalStatePath = getPath();
 			super.enter();
 			getLogger().info("simulation stopped");
-
-			notifyStateChanged(getPath());
 		}
 	}
 
@@ -732,6 +775,35 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private void notifyStateChanged(String statePath) {
 		String displayName = STATE_NAMES.getOrDefault(statePath, statePath);
 		notifyObserver(() -> m_observer.onStateChanged(statePath, displayName));
+	}
+
+	/**
+	 * 차트가 끝났음을 관찰자에게 알린다. 종료 리스너로 등록되어, 종료 상태를 거치지 않고 끝난 경우(연결 오류로 인한
+	 * 대체 종료, 취소)에도 한 번 불린다.
+	 * <p>
+	 * 시작 전 취소의 종료 리스너는 실행 결과 lock만 쥔 채 불리므로, 차트 lock을 잡는 {@code getCurrentState()} 대신
+	 * {@code m_finalStatePath}를 읽는다.
+	 */
+	private void notifyFinished(Result<RCKSimulationContext> result) {
+		String resultCode;
+		String displayName;
+		Throwable cause = null;
+		if ( result.isSuccessful() ) {
+			String path = (m_finalStatePath != null) ? m_finalStatePath : STATE_COMPLETED;
+			resultCode = toResultCode(path);
+			displayName = STATE_NAMES.getOrDefault(path, path);
+		}
+		else if ( result.isFailed() ) {
+			resultCode = toResultCode(STATE_FAILED);
+			displayName = STATE_NAMES.get(STATE_FAILED);
+			cause = result.getCause();
+		}
+		else {
+			resultCode = RESULT_CANCELLED;
+			displayName = DISPLAY_CANCELLED;
+		}
+		Throwable failureCause = cause;
+		notifyObserver(() -> m_observer.onFinished(resultCode, displayName, failureCause));
 	}
 
 	/**

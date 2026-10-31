@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.Preconditions;
 import utils.websocket.WebSocketContext;
 
-import mdt.ext.rck.VideoMessages.VideoInfo;
 
 
 /**

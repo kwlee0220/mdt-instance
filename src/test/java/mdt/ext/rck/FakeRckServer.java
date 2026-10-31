@@ -24,6 +24,8 @@ class FakeRckServer extends okhttp3.WebSocketListener {
 	private final List<Object> m_afterStart = new ArrayList<>();
 	/** layout 요청에 응답하지 않는다(응답 대기 시간 초과 시험용). */
 	boolean m_ignoreLayout = false;
+	/** 시작 명령에 응답하기 전에 기다릴 시간(밀리초). 비동기 호출이 기다리지 않는지 시험할 때 쓴다. */
+	volatile long m_startDelayMillis = 0;
 
 	FakeRckServer(boolean answerStop, boolean failAfterStart) {
 		m_answerStop = answerStop;
@@ -53,6 +55,9 @@ class FakeRckServer extends okhttp3.WebSocketListener {
 					}
 					break;
 				case "command":
+					if ( m_startDelayMillis > 0 ) {
+						Thread.sleep(m_startDelayMillis);
+					}
 					ws.send("{\"type\":\"simulation_start\"}");
 					if ( m_failAfterStart ) {
 						ws.send("not a json message");

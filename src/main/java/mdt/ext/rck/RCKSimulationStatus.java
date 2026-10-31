@@ -43,7 +43,7 @@ public record RCKSimulationStatus(int progress, int production, Map<String,Float
 
 	@Override
 	public String toString() {
-		return String.format("progress(%d), productions(%d), utilizations: %s",
+		return String.format("progress(%d), production(%d), utilizations: %s",
 							progress, production, averageUtilizations);
 	}
 

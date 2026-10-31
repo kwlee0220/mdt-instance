@@ -2,14 +2,20 @@ package mdt.ext.rck;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
+import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultOperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultProperty;
 import org.junit.After;
 import org.junit.Test;
@@ -113,6 +119,50 @@ public class RCKSimulationOperationTest {
 		RCKSimulationOperation op = operation(config(url, Map.of("maxDuration", "500ms")));
 
 		assertThrows(TimeoutException.class, () -> op.invokeSync(inputs("layout"), Map.of(), outputs()));
+		server.assertStopBeforeClose();
+	}
+
+	private static OperationVariable[] toVars(Map<String,SubmodelElement> vars) {
+		return vars.values().stream()
+					.map(sme -> new DefaultOperationVariable.Builder().value(sme).build())
+					.toArray(OperationVariable[]::new);
+	}
+
+	@Test(timeout = 15_000)
+	public void invoke_async_returns_at_once_and_reports_outputs_on_completion() throws Exception {
+		// 비동기 호출은 시뮬레이션을 시작만 하고 반환한다. 끝나면 출력 변수를 채워 성공 콜백을 부른다.
+		FakeRckServer server = new FakeRckServer(false, false)
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0));
+		server.m_startDelayMillis = 500;
+		String url = startServer(server);
+		Map<String,SubmodelElement> outputs = outputs();
+		CompletableFuture<OperationVariable[]> success = new CompletableFuture<>();
+
+		long started = System.nanoTime();
+		operation(config(url, Map.of())).invokeAsync(toVars(inputs("layout")), new OperationVariable[0],
+													toVars(outputs), (out, inout) -> success.complete(out),
+													success::completeExceptionally);
+		long elapsedMillis = (System.nanoTime() - started) / 1_000_000;
+
+		assertTrue("invokeAsync must not wait for the simulation: " + elapsedMillis + "ms", elapsedMillis < 400);
+		success.get(5, TimeUnit.SECONDS);
+		assertEquals("Completed", value(outputs, "FinalState"));
+		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
+	}
+
+	@Test(timeout = 15_000)
+	public void invoke_async_reports_max_duration_as_timeout_failure() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_ignoreLayout = true;
+		String url = startServer(server);
+		CompletableFuture<Throwable> failure = new CompletableFuture<>();
+
+		operation(config(url, Map.of("maxDuration", "500ms")))
+			.invokeAsync(toVars(inputs("layout")), new OperationVariable[0], toVars(outputs()),
+						(out, inout) -> failure.complete(null), failure::complete);
+
+		Throwable cause = failure.get(5, TimeUnit.SECONDS);
+		assertTrue("" + cause, cause instanceof ExecutionException && cause.getCause() instanceof TimeoutException);
 		server.assertStopBeforeClose();
 	}
 

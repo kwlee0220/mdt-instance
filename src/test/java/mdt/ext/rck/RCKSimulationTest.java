@@ -17,6 +17,7 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 
 import utils.async.AsyncResult;
+import utils.websocket.Signals.WebSocketError;
 import utils.websocket.WebSocketClosedException;
 
 
@@ -51,12 +52,43 @@ public class RCKSimulationTest {
 
 	private RCKSimulation createSimulation(okhttp3.WebSocketListener serverListener, MockResponse response)
 		throws Exception {
+		return createSimulation(serverListener, response, SimulationObserver.NONE);
+	}
+
+	/** 받은 알림을 순서대로 기록하는 관찰자. */
+	static class RecordingObserver implements SimulationObserver {
+		final List<String> m_events = Collections.synchronizedList(new ArrayList<>());
+
+		@Override
+		public void onStateChanged(String statePath, String displayName) {
+			m_events.add(statePath);
+		}
+		@Override
+		public void onStatus(RCKSimulationStatus status) {
+			m_events.add("status:" + status.progress() + "/" + status.production() + "/" + status.averageUtilizations());
+		}
+		@Override
+		public void onVideoReady(String downloadUrl) {
+			m_events.add("video:" + downloadUrl);
+		}
+		@Override
+		public void onFinished(String resultCode, String displayName, Throwable cause) {
+			m_events.add("finished:" + resultCode + ":" + displayName + ":" + cause);
+		}
+
+		String last() {
+			return m_events.get(m_events.size() - 1);
+		}
+	}
+
+	private RCKSimulation createSimulation(okhttp3.WebSocketListener serverListener, MockResponse response,
+											SimulationObserver observer) throws Exception {
 		m_server = new MockWebServer();
 		m_server.enqueue(response.withWebSocketUpgrade(serverListener));
 		m_server.start();
 
 		String url = "ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck";
-		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"));
+		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"), observer);
 		return m_sim;
 	}
 
@@ -176,29 +208,11 @@ public class RCKSimulationTest {
 		// video_info는 한 번만 온다. 받으면 바로 영상 수신으로 가고, 영상을 다 받으면 Completed로 끝난다.
 		FakeRckServer server = new FakeRckServer(false, false)
 									.thenSend(STATUS, videoInfo(6), new byte[] {1, 2, 3}, new byte[] {4, 5, 6});
-		List<String> events = Collections.synchronizedList(new ArrayList<>());
-		SimulationObserver observer = new SimulationObserver() {
-			@Override
-			public void onStatus(RCKSimulationStatus status) {
-				events.add("status:" + status.progress() + "/" + status.production()
-							+ "/" + status.averageUtilizations());
-			}
-			@Override
-			public void onVideoReady(String downloadUrl) {
-				events.add("video:" + downloadUrl);
-			}
-			@Override
-			public void onStateChanged(String statePath, String displayName) {
-				events.add(statePath);
-			}
-		};
-		m_server = new MockWebServer();
-		m_server.enqueue(new MockResponse().withWebSocketUpgrade(server));
-		m_server.start();
-		String url = "ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck";
-		RCKSimulationContext ctx = new RCKSimulationContext(url, "test-client", "press", "layout");
-		m_sim = new RCKSimulation(ctx, observer);
-		m_sim.start();
+		RecordingObserver observer = new RecordingObserver();
+		List<String> events = observer.m_events;
+		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
+		RCKSimulationContext ctx = sim.getContext();
+		sim.start();
 
 		assertTrue(m_sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Completed", m_sim.getCurrentState().getPath());
@@ -206,8 +220,59 @@ public class RCKSimulationTest {
 		assertEquals(100, ctx.getLatestStatus().progress());
 		assertTrue(events.toString(), events.contains("status:100/7/{TP-75=40.0}"));
 		assertTrue(events.toString(), events.contains("video:http://video/v.mp4"));
-		assertTrue(events.toString(), events.indexOf("/ReceivingVideo") < events.indexOf("/Completed"));
+		// 접속 단계부터 알리고(이전 실행의 상태가 남지 않게), 종료는 onFinished로 한 번 알린다.
+		assertEquals(events.toString(), "/ConnectingWebSocket", events.get(0));
+		assertTrue(events.toString(), events.indexOf("/ReceivingVideo") >= 0);
+		assertEquals(events.toString(), "finished:Completed:시뮬레이션 완료:null", observer.last());
 		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void malformed_progress_messages_are_ignored() throws Exception {
+		// 형식이 잘못된 진행 보고와 예상 밖 형식의 video_progress는 경고만 남기고 시뮬레이션을 계속한다.
+		FakeRckServer server = new FakeRckServer(false, false)
+				.thenSend("{\"type\":\"simulation_status\",\"message\":{}}",
+						"{\"type\":\"video_progress\",\"progress\":{\"percent\":10}}",
+						"{\"type\":\"video_ready\",\"fileSize\":\"big\"}",
+						STATUS, videoInfo(0));
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals(100, sim.getContext().getLatestStatus().progress());
+	}
+
+	@Test(timeout = 15_000)
+	public void connection_error_fails_through_failed_state_and_reports_finish() throws Exception {
+		// pong 시간 초과 같은 연결 오류도 Failed 상태를 거쳐야 한다: 중지 명령을 보내고 관찰자에게 끝을 알린다.
+		FakeRckServer server = new FakeRckServer(false, false);
+		RecordingObserver observer = new RecordingObserver();
+		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
+		sim.start();
+		awaitState(sim, "/Running");
+
+		java.io.IOException error = new java.io.IOException("pong timeout");
+		sim.handleSignal(new WebSocketError(sim.getWebSocket(), error));
+
+		AsyncResult<RCKSimulationContext> result = sim.waitForFinished(5, TimeUnit.SECONDS);
+		assertTrue(result.isFailed());
+		assertEquals(error, result.getFailureCause());
+		assertEquals("/Failed", sim.getCurrentState().getPath());
+		assertEquals("finished:Failed:시뮬레이션 실패:" + error, observer.last());
+		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void cancel_reports_cancelled_finish() throws Exception {
+		// 종료 상태를 거치지 않는 취소도 관찰자에게 알린다(이전에는 State가 진행 중 상태에 멈췄다).
+		FakeRckServer server = new FakeRckServer(false, false);
+		RecordingObserver observer = new RecordingObserver();
+		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
+		sim.start();
+		awaitState(sim, "/Running");
+
+		assertTrue(sim.cancel(true));
+
+		assertEquals("finished:Cancelled:시뮬레이션 취소됨:null", observer.last());
 	}
 
 	@Test(timeout = 15_000)
