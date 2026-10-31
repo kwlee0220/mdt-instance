@@ -12,10 +12,11 @@ import utils.func.Funcs;
 import utils.stream.FStream;
 
 /**
+ * 시뮬레이터의 {@code simulation_status} 메시지 한 건이 알려 준 진행 상황(진척도·생산량·설비 유형별 평균 이용률).
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class RCKSimulationResult {
+public class RCKSimulationStatus {
 	private static final Set<String> EQUIP_TYPES
 			= Set.of("TP-75", "파츠피더", "가열로", "세척기", "템퍼링호");
 	
@@ -23,7 +24,7 @@ public class RCKSimulationResult {
 	private final int m_production;
 	private final Map<String,Float> m_utilizations;
 	
-	private RCKSimulationResult(int progress, int production, Map<String,Float> utilization) {
+	private RCKSimulationStatus(int progress, int production, Map<String,Float> utilization) {
 		m_progress = progress;
 		m_production = production;
 		m_utilizations = utilization;
@@ -37,7 +38,7 @@ public class RCKSimulationResult {
 		return m_production;
 	}
 	
-	public Map<String,Float> getUtilizations() {
+	public Map<String,Float> getAverageUtilizations() {
 		return m_utilizations;
 	}
 	
@@ -47,8 +48,8 @@ public class RCKSimulationResult {
 							m_progress, m_production, m_utilizations);
 	}
 	
-	public static RCKSimulationResult empty() {
-		return new RCKSimulationResult(0, 0, Map.of());
+	public static RCKSimulationStatus empty() {
+		return new RCKSimulationStatus(0, 0, Map.of());
 	}
 	
 	/**
@@ -68,7 +69,7 @@ public class RCKSimulationResult {
 	 * @throws IllegalArgumentException	{@code progressReport}가 {@code null}이거나 {@code Progress}
 	 * 									필드를 갖지 않는 경우.
 	 */
-	public static RCKSimulationResult parse(JsonNode progressReport) {
+	public static RCKSimulationStatus parse(JsonNode progressReport) {
 		Preconditions.checkNotNullArgument(progressReport, "progressReport is null");
 
 		JsonNode progressNode = progressReport.get("Progress");
@@ -104,6 +105,6 @@ public class RCKSimulationResult {
 						})
 						.toMap();
 		
-		return new RCKSimulationResult(progress, production, utilsMap);
+		return new RCKSimulationStatus(progress, production, utilsMap);
 	}
 }

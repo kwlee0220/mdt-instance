@@ -14,10 +14,11 @@ import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
-import utils.json.JacksonUtils;
+import utils.UnitUtils;
 
 import mdt.assetconnection.operation.AbstractJavaOperationProvider;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
+import mdt.ext.rck.VideoMessages.VideoInfo;
 import mdt.model.sm.value.ElementValues;
 import mdt.model.sm.value.PropertyValue;
 
@@ -32,6 +33,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private final String m_clientId;
 	private final String m_rckServerUrl;
 	private final String m_processName;
+	private final Duration m_responseTimeout;
 
 	public RCKSimulationOperation(ServiceContext serviceContext, Reference opRef,
 									JavaOperationProviderConfig config)
@@ -54,6 +56,15 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		if ( m_rckServerUrl == null || m_rckServerUrl.isEmpty() ) {
 			throw new ConfigurationInitializationException("invalid argument: 'rckServerUrl' is not defined "
 														+ "in the arguments of JavaOperationProviderConfig");
+		}
+		
+		try {
+			String timeoutStr = getStringArgument("responseTimeout");
+			m_responseTimeout = (timeoutStr != null) ? UnitUtils.parseDuration(timeoutStr)
+													: RCKSimulation.DEFAULT_RESPONSE_TIMEOUT;
+		}
+		catch ( RuntimeException e ) {
+			throw new ConfigurationInitializationException("invalid argument 'responseTimeout': " + e.getMessage());
 		}
 		
 		if ( s_logger.isInfoEnabled() ) {
@@ -80,7 +91,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		Property videoUrlProp = getPropertyVariable(outputVarList, "SimulationVideoUrl", DataTypeDefXsd.STRING);
 		
 		var ctx = new RCKSimulationContext(m_rckServerUrl, m_clientId, m_processName, layoutName);
-		RCKSimulation sim = new RCKSimulation(ctx);
+		RCKSimulation sim = new RCKSimulation(ctx, connectMdtOutputs());
+		sim.setResponseTimeout(m_responseTimeout);
 
 		Duration pingInterval = Duration.ofSeconds(10);
 		Duration pongTimeout = Duration.ofSeconds(2);
@@ -91,14 +103,39 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		// 시뮬레이션이 종료될 때까지 대기한다. (시뮬레이션이 실패한 경우 ExecutionException이 발생한다)
 		sim.get();
 
-		RCKSimulationResult result = ctx.getSimulationResult();
-		ElementValues.update(progressProp, PropertyValue.INTEGER(result.getProgress()));
-		ElementValues.update(productionProp, PropertyValue.INTEGER(result.getProduction()));
+		RCKSimulationStatus status = ctx.getLatestStatus();
+		ElementValues.update(progressProp, PropertyValue.INTEGER(status.getProgress()));
+		ElementValues.update(productionProp, PropertyValue.INTEGER(status.getProduction()));
 		ElementValues.update(stateProp, PropertyValue.STRING(sim.getCurrentState().getPath()));
+		ElementValues.update(avgUtil, MDTSimulationOutputs.toUtilizationJson(status.getAverageUtilizations()));
 		
-		String utilsJson = JacksonUtils.toObjectNodeFloats(result.getUtilizations()).toPrettyString();
-		ElementValues.update(avgUtil, utilsJson);
-		
-		ElementValues.update(videoUrlProp, ctx.getSimulationVideoInfo().downloadUrl());
+		// 영상 정보를 받기 전에 끝났으면(중지, 영상 대기 중 연결 종료 등) URL은 빈 문자열로 둔다.
+		VideoInfo video = ctx.getVideoInfo();
+		ElementValues.update(videoUrlProp, (video != null) ? video.downloadUrl() : "");
+	}
+	
+	/**
+	 * 시뮬레이션 진행을 이 인스턴스의 출력 인자에 반영할 관찰자를 만든다.
+	 * <p>
+	 * 인스턴스 식별자({@code MDT_INSTANCE_ID} 환경변수)가 없거나 MDT 인스턴스 매니저에 접속하지 못하면 경고 로그를
+	 * 남기고, 진행 상황을 반영하지 않는 관찰자를 돌려준다(시뮬레이션은 그대로 수행한다).
+	 */
+	private SimulationObserver connectMdtOutputs() {
+		String instanceId = System.getenv("MDT_INSTANCE_ID");
+		if ( instanceId == null ) {
+			s_logger.warn("MDT_INSTANCE_ID is not set; simulation progress is not reported to MDT");
+			return SimulationObserver.NONE;
+		}
+		try {
+			MDTSimulationOutputs outputs = MDTSimulationOutputs.connect(instanceId);
+			outputs.reset();
+			s_logger.info("reporting simulation progress to MDT instance: {}", instanceId);
+			
+			return outputs;
+		}
+		catch ( Exception e ) {
+			s_logger.warn("failed to connect MDT InstanceManager; simulation progress is not reported: {}", ""+e);
+			return SimulationObserver.NONE;
+		}
 	}
 }

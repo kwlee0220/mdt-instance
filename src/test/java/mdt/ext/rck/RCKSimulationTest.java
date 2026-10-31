@@ -40,10 +40,19 @@ public class RCKSimulationTest {
 		final CountDownLatch m_closing = new CountDownLatch(1);
 		private final boolean m_answerStop;
 		private final boolean m_failAfterStart;
+		/** 시작 응답 뒤 보낼 메시지들(텍스트 또는 byte[]). */
+		private final List<Object> m_afterStart = new ArrayList<>();
+		/** layout 요청에 응답하지 않는다(응답 대기 시간 초과 시험용). */
+		boolean m_ignoreLayout = false;
 
 		FakeRckServer(boolean answerStop, boolean failAfterStart) {
 			m_answerStop = answerStop;
 			m_failAfterStart = failAfterStart;
+		}
+
+		FakeRckServer thenSend(Object... messages) {
+			m_afterStart.addAll(List.of(messages));
+			return this;
 		}
 
 		@Override
@@ -59,12 +68,22 @@ public class RCKSimulationTest {
 				m_events.add(type);
 				switch ( type ) {
 					case "layout":
-						ws.send("{\"type\":\"facility\",\"message\":{}}");
+						if ( !m_ignoreLayout ) {
+							ws.send("{\"type\":\"facility\",\"message\":{}}");
+						}
 						break;
 					case "command":
 						ws.send("{\"type\":\"simulation_start\"}");
 						if ( m_failAfterStart ) {
 							ws.send("not a json message");
+						}
+						for ( Object next: m_afterStart ) {
+							if ( next instanceof byte[] bytes ) {
+								ws.send(okio.ByteString.of(bytes));
+							}
+							else {
+								ws.send((String)next);
+							}
 						}
 						break;
 					case "stop":
@@ -107,13 +126,19 @@ public class RCKSimulationTest {
 
 	private RCKSimulation startSimulation(okhttp3.WebSocketListener serverListener, MockResponse response)
 		throws Exception {
+		RCKSimulation sim = createSimulation(serverListener, response);
+		sim.start();
+		return sim;
+	}
+
+	private RCKSimulation createSimulation(okhttp3.WebSocketListener serverListener, MockResponse response)
+		throws Exception {
 		m_server = new MockWebServer();
 		m_server.enqueue(response.withWebSocketUpgrade(serverListener));
 		m_server.start();
 
 		String url = "ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck";
-		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"), false);
-		m_sim.start();
+		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"));
 		return m_sim;
 	}
 
@@ -137,7 +162,7 @@ public class RCKSimulationTest {
 		sim.requestStop();
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
-		assertEquals("/Cancelled", sim.getCurrentState().getPath());
+		assertEquals("/Stopped", sim.getCurrentState().getPath());
 		server.assertStopBeforeClose();
 	}
 
@@ -180,8 +205,7 @@ public class RCKSimulationTest {
 
 	@Test(timeout = 15_000)
 	public void requestStop_before_start_cancels_chart() throws Exception {
-		m_sim = new RCKSimulation(new RCKSimulationContext("ws://127.0.0.1:1/rck", "test-client", "press", "layout"),
-									false);
+		m_sim = new RCKSimulation(new RCKSimulationContext("ws://127.0.0.1:1/rck", "test-client", "press", "layout"));
 
 		m_sim.requestStop();
 
@@ -197,7 +221,7 @@ public class RCKSimulationTest {
 								.withWebSocketUpgrade(new FakeRckServer(true, false)));
 		m_server.start();
 		String url = "ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck";
-		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"), false);
+		m_sim = new RCKSimulation(new RCKSimulationContext(url, "test-client", "press", "layout"));
 		m_sim.whenStarted(m_sim::requestStop);
 
 		m_sim.start();
@@ -216,7 +240,89 @@ public class RCKSimulationTest {
 		sim.requestStop();
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
-		assertEquals("/Cancelled", sim.getCurrentState().getPath());
+		assertEquals("/Stopped", sim.getCurrentState().getPath());
+		server.assertStopBeforeClose();
+	}
+
+	private static final String STATUS
+		= "{\"type\":\"simulation_status\",\"message\":{\"Progress\":100,"
+			+ "\"Conveyor_6\":{\"Production\":7},\"e1\":{\"Name\":\"TP-75 #1\",\"Utilization\":40}}}";
+	private static String videoInfo(long fileSize) {
+		// 모르는 필드(extra)가 있어도 실패하지 않아야 한다.
+		return "{\"type\":\"video_info\",\"status\":\"ready\",\"fileName\":\"v.mp4\",\"fileSize\":" + fileSize
+				+ ",\"downloadUrl\":\"http://video/v.mp4\",\"extra\":1}";
+	}
+
+	@Test(timeout = 15_000)
+	public void video_info_reports_url_and_completes_after_receiving_video() throws Exception {
+		// video_info는 한 번만 온다. 받으면 바로 영상 수신으로 가고, 영상을 다 받으면 Completed로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false)
+									.thenSend(STATUS, videoInfo(6), new byte[] {1, 2, 3}, new byte[] {4, 5, 6});
+		List<String> events = Collections.synchronizedList(new ArrayList<>());
+		SimulationObserver observer = new SimulationObserver() {
+			@Override
+			public void onStatus(RCKSimulationStatus status) {
+				events.add("status:" + status.getProgress() + "/" + status.getProduction()
+							+ "/" + status.getAverageUtilizations());
+			}
+			@Override
+			public void onVideoReady(String downloadUrl) {
+				events.add("video:" + downloadUrl);
+			}
+			@Override
+			public void onStateChanged(String statePath, String displayName) {
+				events.add(statePath);
+			}
+		};
+		m_server = new MockWebServer();
+		m_server.enqueue(new MockResponse().withWebSocketUpgrade(server));
+		m_server.start();
+		String url = "ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck";
+		RCKSimulationContext ctx = new RCKSimulationContext(url, "test-client", "press", "layout");
+		m_sim = new RCKSimulation(ctx, observer);
+		m_sim.start();
+
+		assertTrue(m_sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Completed", m_sim.getCurrentState().getPath());
+		assertEquals("http://video/v.mp4", ctx.getVideoInfo().downloadUrl());
+		assertEquals(100, ctx.getLatestStatus().getProgress());
+		assertTrue(events.toString(), events.contains("status:100/7/{TP-75=40.0}"));
+		assertTrue(events.toString(), events.contains("video:http://video/v.mp4"));
+		assertTrue(events.toString(), events.indexOf("/ReceivingVideo") < events.indexOf("/Completed"));
+		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void connection_closed_while_receiving_video_completes_with_url() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false) {
+			@Override
+			public void onMessage(okhttp3.WebSocket ws, String text) {
+				super.onMessage(ws, text);
+				if ( text.contains("\"command\"") ) {
+					ws.close(1000, "done");
+				}
+			}
+		}.thenSend(videoInfo(1000));
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
+		assertEquals("/Completed", sim.getCurrentState().getPath());
+		assertEquals("http://video/v.mp4", sim.getContext().getVideoInfo().downloadUrl());
+	}
+
+	@Test(timeout = 15_000)
+	public void no_response_fails_after_response_timeout() throws Exception {
+		// 시뮬레이터가 연결만 유지하고 응답하지 않으면 응답 대기 시간 뒤 Failed로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_ignoreLayout = true;
+		RCKSimulation sim = createSimulation(server, new MockResponse());
+		sim.setResponseTimeout(java.time.Duration.ofMillis(300));
+		sim.start();
+
+		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isFailed());
+		assertEquals("/Failed", sim.getCurrentState().getPath());
+		assertTrue("" + sim.getContext().getFailureCause(),
+					sim.getContext().getFailureCause() instanceof java.util.concurrent.TimeoutException);
 		server.assertStopBeforeClose();
 	}
 }

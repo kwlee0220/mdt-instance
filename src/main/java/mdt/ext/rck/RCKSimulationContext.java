@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import utils.Preconditions;
 import utils.websocket.WebSocketContext;
 
-import mdt.ext.rck.VideoInfoMessages.VideoInfo;
+import mdt.ext.rck.VideoMessages.VideoInfo;
 
 
 /**
@@ -15,7 +15,7 @@ import mdt.ext.rck.VideoInfoMessages.VideoInfo;
  * <p>
  * {@link RCKSimulation} 상태 차트와 짝을 이루며, 시뮬레이션 한 건을 식별하는 불변 정보
  * (클라이언트 ID, 공정명, 레이아웃명)와 차트가 진행되면서 채워지는 가변 결과 정보
- * (장비 속성, 시뮬레이션 결과, 결과 비디오, 실패 원인)를 함께 보유한다.
+ * (설비 정보, 최근 진행 상황, 결과 영상 정보, 실패 원인)를 함께 보유한다.
  * <p>
  * 불변 식별 정보는 생성 시점에 확정되며, 가변 결과 정보는 {@link RCKSimulation}의 각 상태
  * 핸들러가 WebSocket 메시지를 처리하는 과정에서 갱신한 뒤, 차트 종료 후 호출자가 조회한다.
@@ -28,9 +28,9 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	private final String m_processName;
 	private final String m_layoutName;
 
-	private JsonNode m_equipmentProperties;
-	private RCKSimulationResult m_simulationResult;
-	private VideoInfo m_simulationVideoInfo;
+	private JsonNode m_facility;
+	private RCKSimulationStatus m_latestStatus;
+	private VideoInfo m_videoInfo;
 	private Throwable m_failureCause;
 	
 	/**
@@ -52,7 +52,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 		m_clientId = clientId;
 		m_processName = processName;
 		m_layoutName = layoutName;
-		m_simulationResult = RCKSimulationResult.empty();
+		m_latestStatus = RCKSimulationStatus.empty();
 	}
 	
 	/**
@@ -83,60 +83,59 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	}
 
 	/**
-	 * 시뮬레이션 시작 시 서버로 전송할 장비 속성 정보를 반환한다.
+	 * 시뮬레이터가 {@code facility} 메시지로 보낸 설비 정보를 반환한다. 시뮬레이션 시작 명령에 그대로 담아 보낸다.
 	 *
-	 * @return	장비 속성 JSON. 아직 설정되지 않았으면 {@code null}.
+	 * @return	설비 정보 JSON. 아직 받지 않았으면 {@code null}.
 	 */
-	public JsonNode getEquipmentProperties() {
-		return m_equipmentProperties;
+	public JsonNode getFacility() {
+		return m_facility;
 	}
 
 	/**
-	 * 시뮬레이션 시작 시 서버로 전송할 장비 속성 정보를 설정한다.
+	 * 시뮬레이터가 보낸 설비 정보를 설정한다.
 	 *
-	 * @param equipmentProperties	장비 속성 JSON
+	 * @param facility	설비 정보 JSON
 	 */
-	public void setEquipmentProperties(JsonNode equipmentProperties) {
-		m_equipmentProperties = equipmentProperties;
+	public void setFacility(JsonNode facility) {
+		m_facility = facility;
 	}
 
 	/**
-	 * 현재까지 수신된 시뮬레이션 결과를 반환한다.
+	 * 시뮬레이터가 마지막으로 보고한 진행 상황을 반환한다.
 	 * <p>
-	 * 생성 직후에는 {@link RCKSimulationResult#empty()}로 초기화되어 있으며,
-	 * 시뮬레이션이 진행되면서 최신 진행 보고로 갱신된다.
+	 * 생성 직후에는 {@link RCKSimulationStatus#empty()}이며, {@code simulation_status} 메시지를 받을 때마다 갱신된다.
 	 *
-	 * @return	시뮬레이션 결과 (non-null)
+	 * @return	최근 진행 상황 (non-null)
 	 */
-	public RCKSimulationResult getSimulationResult() {
-		return m_simulationResult;
+	public RCKSimulationStatus getLatestStatus() {
+		return m_latestStatus;
 	}
 
 	/**
-	 * 시뮬레이션 결과를 설정한다.
+	 * 최근 진행 상황을 설정한다.
 	 *
-	 * @param simulationResult	시뮬레이션 결과
+	 * @param status	진행 상황
 	 */
-	public void setSimulationResult(RCKSimulationResult simulationResult) {
-		m_simulationResult = simulationResult;
+	public void setLatestStatus(RCKSimulationStatus status) {
+		m_latestStatus = status;
 	}
 	
 	/**
-	 * 시뮬레이션 결과 비디오 정보를 반환한다.
+	 * 결과 영상 정보({@code video_info})를 반환한다.
 	 *
-	 * @return	시뮬레이션 결과 비디오 정보. 아직 수신되지 않았으면 {@code null}.
+	 * @return	결과 영상 정보. 아직 받지 않았으면 {@code null}.
 	 */
-	public VideoInfo getSimulationVideoInfo() {
-		return m_simulationVideoInfo;
+	public VideoInfo getVideoInfo() {
+		return m_videoInfo;
 	}
 	
 	/**
-	 * 시뮬레이션 결과 비디오 정보를 설정한다.
+	 * 결과 영상 정보를 설정한다.
 	 *
-	 * @param videoInfo	시뮬레이션 결과 비디오 정보
+	 * @param videoInfo	결과 영상 정보
 	 */
-	public void setSimulationVideoInfo(VideoInfo videoInfo) {
-		m_simulationVideoInfo = videoInfo;
+	public void setVideoInfo(VideoInfo videoInfo) {
+		m_videoInfo = videoInfo;
 	}
 
 	/**
@@ -161,7 +160,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	 * 두 컨텍스트가 동일한 시뮬레이션을 가리키는지 비교한다.
 	 * <p>
 	 * 서버 URL, 공정명, 레이아웃명이 모두 같으면 동치로 본다. 가변 결과 필드
-	 * (장비 속성, 시뮬레이션 결과, 비디오, 실패 원인)는 비교에 포함하지 않는다.
+	 * (설비 정보, 진행 상황, 영상 정보, 실패 원인)는 비교에 포함하지 않는다.
 	 */
 	@Override
 	public boolean equals(Object obj) {
