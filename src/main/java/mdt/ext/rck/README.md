@@ -28,23 +28,42 @@ WebSocket 연결 위에서 다음 상태들을 순차적으로 거친다. 각 �
 `type` 필드로 다음 전이를 결정한다.
 
 ```
-OpenWebSocket                 # WebSocket 연결 수립
+OpenWebSocket                 # WebSocket 연결 수립 (utils States.WebSocketConnectingState)
    → Connecting               # register 전송, "connected" 대기
    → LayoutLoading            # layout 요청, "facility"(설비 정보) 수신
    → SimulationStarting       # command(시작) 전송, "simulation_start" 대기
    → Running                  # "simulation_status" 수신(진행), "video_info" 수신 시 →
-   → ReceivingVideo           # 이진 메시지로 결과 영상 수신·파일 저장
+   → WaitingVideo / ReceivingVideo   # 결과 영상 정보 수신, 이진 메시지로 영상 수신·파일 저장
    → Completed                # 정상 종료
 
-   (사용자 cancel 요청 시)
-   ... → Stopping             # stop 전송, "simulation_stop" 대기 → Cancelled
-   (오류 발생 시)
+   (requestStop() 호출 시, 접속 이후 상태에서)
+   ... → Stopping             # stop 전송, "simulation_stop" 응답(최대 10초) 대기 → Cancelled
+                              #   stop 전송 실패 → Failed
+   (오류 발생 시, 명령 전송 실패 포함)
    ... → Failed
 ```
 
-- 종료 상태 `Completed` / `Failed` / `Cancelled` 진입 시 WebSocket을 정상 종료하고 MDT `State` 인자를
-  최종 상태로 반영한다.
+- 종료 상태 `Completed` / `Failed` 진입 시, 연결이 열려 있으면 **먼저** 시뮬레이터에 stop을 보내고(전송 완료까지
+  최대 2초) 그다음 WebSocket을 닫는다. `Cancelled`는 `Stopping`에서 이미 stop을 보냈으므로 연결만 닫는다.
+  세 상태 모두 MDT `State` 인자를 최종 상태로 반영한다.
 - 영상 수신 중 연결이 끊기면(`ConnectionClosed`) 시뮬레이션 자체는 종료된 것으로 보아 `Completed`로 전이한다.
+- 명령(register, layout, start) 전송이 실패하면 상태가 `Failed`로 전이한다. 전송 결과를 확인하지 않으면 명령이
+  사라져도 응답만 기다리게 되기 때문이다.
+
+### 중지와 취소
+
+| 호출 | 동작 | 차트 결과 / 최종 상태 |
+|------|------|------|
+| `requestStop()` | 접속 이후면 `Stopping`을 거쳐 시뮬레이터의 확인을 받고 끝남. 시작 전·접속 중이면 취소. 상태 콜백이나 `whenStarted` 리스너 안에서 불러 STOP이 큐에 들어갔다 접속 상태에서 처리되어도 취소됨(`onUnhandledSignal`) | `COMPLETED` / `/Cancelled` (시작 전·접속 중이면 `CANCELLED`) |
+| `cancel(true)` | 연결되어 있으면 stop을 먼저 보낸 뒤(응답은 기다리지 않음) 즉시 취소. `Future.cancel` 규약을 따름 | `CANCELLED` |
+
+2026-10-31 이전에는 다음 문제가 있었다.
+- 종료 상태가 연결을 닫은 **뒤** stop을 보내 명령이 시뮬레이터에 전달되지 않았다(전송 실패도 확인하지 않음).
+- 문서의 `Stopping` 상태가 실제로는 없었다. STOP 신호는 곧바로 `Cancelled`로 갔다.
+- `cancel()`은 STOP 신호만 보내고 항상 `true`를 반환했다. 시작 전·접속 중에는 아무 일도 하지 않았다.
+
+`RCKSimulationOperation`은 `cancel()`을 부르지 않는다(`sim.get()`으로 끝을 기다린다). 개발용 `main()`은
+시간 초과 시 `requestStop()`을 부른다.
 
 자세한 메시지 프로토콜과 전이 조건은 `RCKSimulation`의 Javadoc 및 각 상태 내부 클래스를 참고한다.
 
