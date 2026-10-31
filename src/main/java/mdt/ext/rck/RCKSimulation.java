@@ -3,13 +3,18 @@ package mdt.ext.rck;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+
+import javax.annotation.concurrent.GuardedBy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,6 +135,15 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	// 들어간 종료 상태의 경로. 종료 알림(notifyFinished)이 결과 코드를 정하는 데 쓴다.
 	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
 	private volatile String m_finalStatePath;
+
+	// 송신 체인. JDK WebSocket은 텍스트 송신을 한 번에 하나만 받으므로(이전 송신이 끝나기 전의 송신은 실패한다),
+	// 모든 송신을 직전 송신이 끝난 뒤에 이어서 보낸다.
+	private final Object m_sendLock = new Object();
+	@GuardedBy("m_sendLock") private CompletableFuture<?> m_lastSend = CompletableFuture.completedFuture(null);
+
+	// 반복되는 경고를 줄이기 위한 기록: 처음 한 번만 WARN, 이후는 DEBUG.
+	private final Set<String> m_warnedMessageTypes = ConcurrentHashMap.newKeySet();
+	private final AtomicBoolean m_warnedMalformedStatus = new AtomicBoolean();
 
 	/**
 	 * 진행 상황을 외부에 알리지 않는 RCK 시뮬레이션 상태 차트를 생성한다.
@@ -415,7 +429,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				String type = msg.path("type").asText();
 				var handler = m_handlers.get(type);
 				if ( handler == null ) {
-					getLogger().warn("unexpected message type: {} (state={})", type, getPath());
+					if ( m_warnedMessageTypes.add(getPath() + ":" + type) ) {
+						getLogger().warn("unexpected message type: {} (state={}); further ones are logged at DEBUG",
+										type, getPath());
+					}
+					else {
+						getLogger().debug("unexpected message type: {} (state={})", type, getPath());
+					}
 					return Transitions.stay();
 				}
 				return handler.apply(msg);
@@ -520,7 +540,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				}
 				catch ( RuntimeException e ) {
 					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
-					getLogger().warn("ignored malformed simulation status: cause={}, message={}", ""+e, msg);
+					if ( m_warnedMalformedStatus.compareAndSet(false, true) ) {
+						getLogger().warn("ignored malformed simulation status: cause={}, message={}; "
+										+ "further ones are logged at DEBUG", ""+e, msg);
+					}
+					else {
+						getLogger().debug("ignored malformed simulation status: cause={}, message={}", ""+e, msg);
+					}
 					return Transitions.stay();
 				}
 				getLogger().info("received simulation status: {}", status);
@@ -877,13 +903,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 주어진 키-값 쌍으로 JSON 객체를 만들어 텍스트 메시지로 송신한다.
+	 * 주어진 키-값 쌍으로 JSON 객체를 만들어 텍스트 메시지로 송신한다. 테스트에서도 쓴다.
 	 *
 	 * @param kvs	JSON 객체를 구성하는 키-값 쌍의 맵
 	 * @return	전송이 끝나면 완료되는 future. 전송에 실패하면 예외로 완료된다.
 	 * @throws RuntimeException	JSON 직렬화에 실패한 경우
 	 */
-	private CompletableFuture<WebSocket> sendJson(Map<String,String> kvs) {
+	CompletableFuture<WebSocket> sendJson(Map<String,String> kvs) {
 		ObjectNode msg = MAPPER.createObjectNode();
 		for ( Map.Entry<String,String> kv: kvs.entrySet() ) {
 			msg.put(kv.getKey(), kv.getValue());
@@ -893,17 +919,30 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 	/**
 	 * 주어진 JSON 객체를 텍스트 메시지로 직렬화하여 WebSocket으로 송신한다.
+	 * <p>
+	 * JDK WebSocket은 텍스트 송신을 한 번에 하나만 받고, 이전 송신이 끝나기 전에 보낸 송신은 future가
+	 * {@link IllegalStateException}으로 실패한다. 신호 처리 스레드의 명령 송신과 다른 스레드의 {@link #cancel(boolean)}이
+	 * 보내는 중지 명령, 또는 시작 명령 직후의 중지 명령이 겹칠 수 있으므로, 모든 송신을 직전 송신이 끝난 뒤에 이어서
+	 * 보낸다. 직전 송신이 실패해도 다음 송신은 보낸다.
 	 *
 	 * @param json	송신할 JSON 객체
-	 * @return	전송이 끝나면 완료되는 future. 전송에 실패하면 예외로 완료된다.
+	 * @return	전송이 끝나면 완료되는 future. 전송(또는 송신 준비)에 실패하면 예외로 완료된다.
 	 * @throws RuntimeException	JSON 직렬화에 실패한 경우
 	 */
 	private CompletableFuture<WebSocket> sendJson(ObjectNode json) {
+		String text;
 		try {
-			return sendText(MAPPER.writeValueAsString(json));
+			text = MAPPER.writeValueAsString(json);
 		}
 		catch ( JsonProcessingException e ) {
 			throw new RuntimeException("failed to serialize JSON message: " + json, e);
+		}
+
+		synchronized ( m_sendLock ) {
+			CompletableFuture<WebSocket> send = m_lastSend.handle((result, error) -> null)
+															.thenCompose(ignored -> sendText(text));
+			m_lastSend = send;
+			return send;
 		}
 	}
 }

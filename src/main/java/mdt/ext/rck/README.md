@@ -142,6 +142,10 @@ oparg:{instanceId}:PressSimulation:out:{argName}
 스레드)에서 신호를 보내지 않는다. 응답 대기 타이머, 명령 전송 실패 신호, `maxDuration` 취소, MDT 출력 갱신은 모두
 `RCKExecutors`의 데몬 스레드에서 실행된다.
 
+JDK `WebSocket`은 텍스트 송신을 한 번에 하나만 받는다(이전 송신이 끝나기 전의 송신은 `IllegalStateException`으로
+실패한다). 신호 처리 스레드의 명령 송신과 다른 스레드의 `cancel()`이 보내는 중지 명령, 시작 명령 직후의 중지 명령이
+겹칠 수 있으므로, RCK는 모든 송신을 직전 송신이 끝난 뒤에 이어서 보낸다.
+
 ## 의존 라이브러리
 
 - `utils.statechart` / `utils.websocket` — 상태 차트 및 WebSocket 연동 기반.

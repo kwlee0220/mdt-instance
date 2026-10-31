@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -326,6 +327,36 @@ public class RCKSimulationTest {
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Stopped", sim.getCurrentState().getPath());
+	}
+
+	@Test(timeout = 30_000)
+	public void back_to_back_sends_are_serialized() throws Exception {
+		// JDK WebSocket은 텍스트 송신을 한 번에 하나만 받는다. 큰 메시지를 연달아 보내면 소켓 버퍼가 차서 앞 송신이
+		// 밀린다. 그래도 실패하지 않고 순서대로 가야 한다(이전에는 시작 명령 직후의 중지 명령 등이
+		// IllegalStateException("Send pending")으로 실패할 수 있었다). 메시지 하나는 OkHttp 서버의 한도(16MB)보다 작게 한다.
+		FakeRckServer server = new FakeRckServer(false, false);
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+		awaitState(sim, "/Running");
+
+		String payload = "x".repeat(8 * 1024 * 1024);
+		List<java.util.concurrent.CompletableFuture<?>> sends = new ArrayList<>();
+		for ( int i = 1; i <= 4; ++i ) {
+			sends.add(sim.sendJson(Map.of("type", "probe" + i, "payload", payload)));
+		}
+		sends.add(sim.sendJson(Map.of("type", "probe5")));
+		for ( var send: sends ) {
+			send.get(10, TimeUnit.SECONDS);
+		}
+
+		long due = System.currentTimeMillis() + 10_000;
+		while ( !server.m_events.contains("probe5") && System.currentTimeMillis() < due ) {
+			Thread.sleep(20);
+		}
+		List<String> events = new ArrayList<>(server.m_events);
+		for ( int i = 1; i < 5; ++i ) {
+			assertTrue(events.toString(), events.indexOf("probe" + i) >= 0
+										&& events.indexOf("probe" + i) < events.indexOf("probe" + (i + 1)));
+		}
 	}
 
 	@Test(timeout = 15_000)

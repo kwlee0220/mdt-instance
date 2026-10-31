@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,9 +23,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Kang-Woo Lee (ETRI)
  */
 final class RCKExecutors {
-	/** 시간 예약만 하는 스레드. 예약된 작업은 바로 {@link #WORKERS}로 넘기므로 여기서는 막히지 않는다. */
-	private static final ScheduledExecutorService TIMER
-								= Executors.newSingleThreadScheduledExecutor(daemonThreads("rck-timer"));
+	/**
+	 * 시간 예약만 하는 스레드. 예약된 작업은 바로 {@link #WORKERS}로 넘기므로 여기서는 막히지 않는다.
+	 * 응답 대기 타이머는 메시지마다 취소하고 다시 걸므로, 취소된 작업이 원래 실행 시각까지 큐에 남지 않게 한다.
+	 */
+	private static final ScheduledExecutorService TIMER = newTimer();
 	/** 신호 전달, 취소, MDT 출력 갱신 같은 작업을 실행하는 스레드 풀. */
 	static final Executor WORKERS = newWorkers();
 
@@ -41,6 +44,12 @@ final class RCKExecutors {
 	 */
 	static ScheduledFuture<?> schedule(Runnable task, Duration delay) {
 		return TIMER.schedule(() -> WORKERS.execute(task), delay.toMillis(), TimeUnit.MILLISECONDS);
+	}
+
+	private static ScheduledExecutorService newTimer() {
+		ScheduledThreadPoolExecutor timer = new ScheduledThreadPoolExecutor(1, daemonThreads("rck-timer"));
+		timer.setRemoveOnCancelPolicy(true);
+		return timer;
 	}
 
 	private static ExecutorService newWorkers() {
