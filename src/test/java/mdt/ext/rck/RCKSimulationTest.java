@@ -65,16 +65,18 @@ public class RCKSimulationTest {
 			m_events.add(statePath);
 		}
 		@Override
-		public void onStatus(RCKSimulationStatus status) {
-			m_events.add("status:" + status.progress() + "/" + status.production() + "/" + status.averageUtilizations());
+		public void onProgressUpdated(RCKSimulationProgress progress) {
+			m_events.add("status:" + progress.progress() + "/" + progress.production() + "/"
+						+ progress.averageUtilizations());
 		}
 		@Override
 		public void onVideoReady(String downloadUrl) {
 			m_events.add("video:" + downloadUrl);
 		}
 		@Override
-		public void onFinished(String resultCode, String displayName, Throwable cause) {
-			m_events.add("finished:" + resultCode + ":" + displayName + ":" + cause);
+		public void onFinished(RCKSimulationResult result) {
+			m_events.add("finished:" + result.termination().code() + ":" + result.termination().displayName()
+						+ ":" + result.failureCause());
 		}
 
 		String last() {
@@ -105,7 +107,7 @@ public class RCKSimulationTest {
 	}
 
 	@Test(timeout = 15_000)
-	public void requestStop_sends_stop_and_finishes_as_cancelled_state() throws Exception {
+	public void requestStop_sends_stop_and_finishes_as_stopped() throws Exception {
 		FakeRckServer server = new FakeRckServer(true, false);
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 		awaitState(sim, "/Running");
@@ -114,6 +116,9 @@ public class RCKSimulationTest {
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Stopped", sim.getCurrentState().getPath());
+		RCKSimulationResult result = sim.getSimulationResult();
+		assertEquals(RCKSimulationResult.Termination.STOPPED, result.termination());
+		assertTrue("simulation_stop was received", result.stopConfirmed());
 		server.assertStopBeforeClose();
 	}
 
@@ -181,8 +186,8 @@ public class RCKSimulationTest {
 	}
 
 	@Test(timeout = 15_000)
-	public void requestStop_without_response_finishes_as_cancelled_after_timeout() throws Exception {
-		// 시뮬레이터가 simulation_stop으로 응답하지 않아도 대기 시간 뒤 Cancelled로 끝난다.
+	public void requestStop_without_response_finishes_as_stopped_after_timeout() throws Exception {
+		// 시뮬레이터가 simulation_stop으로 응답하지 않아도 대기 시간 뒤 Stopped로 끝난다(중지 확인은 없음).
 		FakeRckServer server = new FakeRckServer(false, false);
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 		sim.setStopResponseTimeout(java.time.Duration.ofMillis(300));
@@ -192,6 +197,7 @@ public class RCKSimulationTest {
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Stopped", sim.getCurrentState().getPath());
+		assertFalse(sim.getSimulationResult().stopConfirmed());
 		server.assertStopBeforeClose();
 	}
 
@@ -218,7 +224,11 @@ public class RCKSimulationTest {
 		assertTrue(m_sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Completed", m_sim.getCurrentState().getPath());
 		assertEquals("http://video/v.mp4", ctx.getVideoInfo().downloadUrl());
-		assertEquals(100, ctx.getLatestStatus().progress());
+		assertEquals(100, ctx.getLatestProgress().progress());
+		RCKSimulationResult result = sim.getSimulationResult();
+		assertEquals(RCKSimulationResult.Termination.COMPLETED, result.termination());
+		assertEquals("http://video/v.mp4", result.videoUrl());
+		assertEquals(100, result.progress().progress());
 		assertTrue(events.toString(), events.contains("status:100/7/{TP-75=40.0}"));
 		assertTrue(events.toString(), events.contains("video:http://video/v.mp4"));
 		// 접속 단계부터 알리고(이전 실행의 상태가 남지 않게), 종료는 onFinished로 한 번 알린다.
@@ -239,7 +249,7 @@ public class RCKSimulationTest {
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
-		assertEquals(100, sim.getContext().getLatestStatus().progress());
+		assertEquals(100, sim.getContext().getLatestProgress().progress());
 	}
 
 	@Test(timeout = 15_000)

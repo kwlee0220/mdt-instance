@@ -106,7 +106,7 @@ public class RCKSimulationOperationTest {
 		assertEquals("100", value(outputs, "Progress"));
 		assertEquals("7", value(outputs, "Production"));
 		assertEquals("Completed", value(outputs, "FinalState"));
-		assertEquals(MDTSimulationOutputs.toUtilizationJson(Map.of("TP-75", 40f)), value(outputs, "AverageUtilization"));
+		assertEquals(MDTSimulationOutputReporter.toUtilizationJson(Map.of("TP-75", 40f)), value(outputs, "AverageUtilization"));
 		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
 	}
 
@@ -179,6 +179,56 @@ public class RCKSimulationOperationTest {
 		Throwable cancelled = RCKSimulationOperation.toCallbackFailure(
 															new java.util.concurrent.CancellationException());
 		assertTrue("" + cancelled, cancelled instanceof ExecutionException);
+	}
+
+	@Test(timeout = 15_000)
+	public void omitted_optional_output_is_skipped() throws Exception {
+		// 모델에 SimulationVideoUrl 출력 변수가 없어도 나머지 출력을 기록하고 성공한다(이전에는 NPE로 실패했다).
+		String url = startServer(new FakeRckServer(false, false)
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0)));
+		Map<String,SubmodelElement> outputs = outputs();
+		outputs.remove("SimulationVideoUrl");
+
+		operation(config(url, Map.of())).invokeSync(inputs("layout"), Map.of(), outputs);
+
+		assertEquals("Completed", value(outputs, "FinalState"));
+		assertEquals("100", value(outputs, "Progress"));
+	}
+
+	@Test(timeout = 15_000)
+	public void a_throwing_success_callback_does_not_trigger_the_failure_callback() throws Exception {
+		String url = startServer(new FakeRckServer(false, false)
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0)));
+		java.util.concurrent.atomic.AtomicInteger successes = new java.util.concurrent.atomic.AtomicInteger();
+		java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
+		CompletableFuture<Void> called = new CompletableFuture<>();
+
+		operation(config(url, Map.of())).invokeAsync(toVars(inputs("layout")), new OperationVariable[0],
+				toVars(outputs()),
+				(out, inout) -> { successes.incrementAndGet(); called.complete(null); throw new IllegalStateException("boom"); },
+				error -> failures.incrementAndGet());
+
+		called.get(5, TimeUnit.SECONDS);
+		Thread.sleep(300);
+		assertEquals(1, successes.get());
+		assertEquals(0, failures.get());
+	}
+
+	@Test(timeout = 15_000)
+	public void a_throwing_failure_callback_is_called_once() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_ignoreLayout = true;
+		String url = startServer(server);
+		java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
+		CompletableFuture<Void> called = new CompletableFuture<>();
+
+		operation(config(url, Map.of("maxDuration", "300ms"))).invokeAsync(toVars(inputs("layout")),
+				new OperationVariable[0], toVars(outputs()), (out, inout) -> { },
+				error -> { failures.incrementAndGet(); called.complete(null); throw new IllegalStateException("boom"); });
+
+		called.get(5, TimeUnit.SECONDS);
+		Thread.sleep(300);
+		assertEquals(1, failures.get());
 	}
 
 	@Test

@@ -26,7 +26,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	private final String m_layoutName;
 
 	private JsonNode m_facility;
-	private RCKSimulationStatus m_latestStatus;
+	private RCKSimulationProgress m_latestProgress;
 	private VideoInfo m_videoInfo;
 	
 	/**
@@ -48,7 +48,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 		m_clientId = clientId;
 		m_processName = processName;
 		m_layoutName = layoutName;
-		m_latestStatus = RCKSimulationStatus.empty();
+		m_latestProgress = RCKSimulationProgress.empty();
 	}
 	
 	/**
@@ -99,21 +99,21 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	/**
 	 * 시뮬레이터가 마지막으로 보고한 진행 상황을 반환한다.
 	 * <p>
-	 * 생성 직후에는 {@link RCKSimulationStatus#empty()}이며, {@code simulation_status} 메시지를 받을 때마다 갱신된다.
+	 * 생성 직후에는 {@link RCKSimulationProgress#empty()}이며, {@code simulation_status} 메시지를 받을 때마다 갱신된다.
 	 *
 	 * @return	최근 진행 상황 (non-null)
 	 */
-	public RCKSimulationStatus getLatestStatus() {
-		return m_latestStatus;
+	public RCKSimulationProgress getLatestProgress() {
+		return m_latestProgress;
 	}
 
 	/**
 	 * 최근 진행 상황을 설정한다.
 	 *
-	 * @param status	진행 상황
+	 * @param progress	진행 상황
 	 */
-	public void setLatestStatus(RCKSimulationStatus status) {
-		m_latestStatus = status;
+	public void setLatestProgress(RCKSimulationProgress progress) {
+		m_latestProgress = progress;
 	}
 	
 	/**

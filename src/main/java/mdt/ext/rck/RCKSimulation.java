@@ -45,6 +45,8 @@ import utils.websocket.States.StoppedState;
 import utils.websocket.WebSocketClosedException;
 import utils.websocket.WebSocketStateChart;
 
+import mdt.ext.rck.RCKSimulationResult.Termination;
+
 
 
 /**
@@ -103,14 +105,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		Map.entry(STATE_SIMULATION_STARTING, "시뮬레이션 시작중"),
 		Map.entry(STATE_RUNNING, "시뮬레이션 진행중"),
 		Map.entry(STATE_RECEIVING_VIDEO, "영상 수신중"),
-		Map.entry(STATE_STOPPING, "시뮬레이션 중지중"),
-		Map.entry(STATE_COMPLETED, "시뮬레이션 완료"),
-		Map.entry(STATE_STOPPED, "시뮬레이션 중지됨"),
-		Map.entry(STATE_FAILED, "시뮬레이션 실패")
+		Map.entry(STATE_STOPPING, "시뮬레이션 중지중")
 	);
-	/** 종료 상태를 거치지 않고 취소로 끝났을 때의 결과 코드와 표시 이름. */
-	private static final String RESULT_CANCELLED = "Cancelled";
-	private static final String DISPLAY_CANCELLED = "시뮬레이션 취소됨";
+	// 종료 상태의 결과 코드와 표시 이름은 RCKSimulationResult.Termination이 준다.
 
 	/** 응답을 기다리는 상태들의 기본 응답 대기 시간. */
 	public static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofMinutes(2);
@@ -132,14 +129,18 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private final AtomicLong m_responseTimerGeneration = new AtomicLong();
 	private volatile ScheduledFuture<?> m_responseTimer;
 
-	// 들어간 종료 상태의 경로. 종료 알림(notifyFinished)이 결과 코드를 정하는 데 쓴다.
+	// 들어간 종료 상태의 종료 사유. 종료 알림(notifyFinished)이 결과를 만드는 데 쓴다.
 	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
-	private volatile String m_finalStatePath;
+	private volatile Termination m_finalTermination;
+	// Stopping에서 시뮬레이터가 simulation_stop으로 중지를 확인했는지 여부.
+	private volatile boolean m_stopConfirmed = false;
+	// 끝난 뒤의 결과. 종료 알림이 만든다.
+	private volatile RCKSimulationResult m_result;
 
 	// 송신 체인. JDK WebSocket은 텍스트 송신을 한 번에 하나만 받으므로(이전 송신이 끝나기 전의 송신은 실패한다),
 	// 모든 송신을 직전 송신이 끝난 뒤에 이어서 보낸다.
 	private final Object m_sendLock = new Object();
-	@GuardedBy("m_sendLock") private CompletableFuture<?> m_lastSend = CompletableFuture.completedFuture(null);
+	@GuardedBy("m_sendLock") private CompletableFuture<?> m_sendTail = CompletableFuture.completedFuture(null);
 
 	// 반복되는 경고를 줄이기 위한 기록: 처음 한 번만 WARN, 이후는 DEBUG.
 	private final Set<String> m_warnedMessageTypes = ConcurrentHashMap.newKeySet();
@@ -191,14 +192,20 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 종료 상태 경로를 결과 코드로 바꾼다(앞의 {@code /}를 뗀다. 예: {@code "/Completed"} → {@code "Completed"}).
-	 * 오퍼레이션의 {@code FinalState} 출력과 {@link SimulationObserver#onFinished}의 결과 코드가 이 값을 쓴다.
+	 * 끝난 시뮬레이션의 결과를 반환한다. 종료 사유, 마지막 진행 상황, 결과 영상 정보, 실패 원인을 담는다.
+	 * <p>
+	 * 결과는 차트가 끝나는 순간(종료 리스너 중 가장 먼저) 만들어지므로, 나중에 등록한 종료 리스너나
+	 * {@link #waitForFinished()}가 반환된 뒤에는 항상 얻을 수 있다.
 	 *
-	 * @param statePath	종료 상태 경로
-	 * @return	결과 코드
+	 * @return	시뮬레이션 결과
+	 * @throws IllegalStateException	시뮬레이션이 아직 끝나지 않은 경우
 	 */
-	static String toResultCode(String statePath) {
-		return statePath.startsWith("/") ? statePath.substring(1) : statePath;
+	public RCKSimulationResult getSimulationResult() {
+		RCKSimulationResult result = m_result;
+		if ( result == null ) {
+			throw new IllegalStateException("simulation is not finished: " + this);
+		}
+		return result;
 	}
 
 	/**
@@ -534,9 +541,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			super(path, context);
 
 			onMessage("simulation_status", msg -> {
-				RCKSimulationStatus status;
+				RCKSimulationProgress progress;
 				try {
-					status = RCKSimulationStatus.parse(msg.get("message"));
+					progress = RCKSimulationProgress.parse(msg.get("message"));
 				}
 				catch ( RuntimeException e ) {
 					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
@@ -549,10 +556,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 					}
 					return Transitions.stay();
 				}
-				getLogger().info("received simulation status: {}", status);
+				getLogger().info("received simulation progress: {}", progress);
 
-				getContext().setLatestStatus(status);
-				notifyObserver(() -> m_observer.onStatus(status));
+				getContext().setLatestProgress(progress);
+				notifyObserver(() -> m_observer.onProgressUpdated(progress));
 				return Transitions.stay();
 			});
 			// 영상 생성 진행 알림은 기록만 한다. 로그를 위해 역직렬화하지 않는다(형식이 달라도 실패하지 않도록).
@@ -589,7 +596,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		private static final long PROGRESS_LOG_STEP = 1024 * 1024;	// 1MB
 
 		// 남은 영상 크기. 0 이하가 되면 수신이 끝난 것으로 본다.
-		private long m_remains;
+		private long m_remainingVideoBytes;
 		private long m_lastLoggedStep;
 
 		ReceivingVideo(String path, RCKSimulationContext context) {
@@ -601,26 +608,26 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				return Transitions.stay();
 			});
 			on(ConnectionClosed.class, closed -> {
-				getLogger().warn("connection closed while receiving video: remains={}", m_remains);
+				getLogger().warn("connection closed while receiving video: remains={}", m_remainingVideoBytes);
 				return Transitions.to(STATE_COMPLETED);
 			});
 			on(WebSocketError.class, error -> {
 				getLogger().warn("connection error while receiving video: remains={}, cause={}",
-								m_remains, ""+error.getError());
+								m_remainingVideoBytes, ""+error.getError());
 				return Transitions.to(STATE_COMPLETED);
 			});
 		}
 
 		@Override
 		public void enter() {
-			m_remains = getContext().getVideoInfo().fileSize();
-			m_lastLoggedStep = m_remains / PROGRESS_LOG_STEP;
+			m_remainingVideoBytes = getContext().getVideoInfo().fileSize();
+			m_lastLoggedStep = m_remainingVideoBytes / PROGRESS_LOG_STEP;
 			super.enter();
 		}
 
 		@Override
 		protected Transition<RCKSimulationContext> onResponseTimeout(Duration timeout) {
-			getLogger().warn("no video data within {}; finishing without the rest: remains={}", timeout, m_remains);
+			getLogger().warn("no video data within {}; finishing without the rest: remains={}", timeout, m_remainingVideoBytes);
 			return Transitions.to(STATE_COMPLETED);
 		}
 
@@ -629,16 +636,16 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			if ( signal instanceof BinaryMessage msg ) {
 				restartResponseTimer();
 
-				m_remains -= msg.getBytes().length;
-				if ( m_remains <= 0 ) {
+				m_remainingVideoBytes -= msg.getBytes().length;
+				if ( m_remainingVideoBytes <= 0 ) {
 					getLogger().info("received the whole video");
 					return Optional.of(Transitions.to(STATE_COMPLETED));
 				}
 
-				long step = m_remains / PROGRESS_LOG_STEP;
+				long step = m_remainingVideoBytes / PROGRESS_LOG_STEP;
 				if ( step != m_lastLoggedStep ) {
 					m_lastLoggedStep = step;
-					getLogger().info("video receiving progress: remains={}", m_remains);
+					getLogger().info("video receiving progress: remains={}", m_remainingVideoBytes);
 				}
 				return Optional.of(Transitions.stay());
 			}
@@ -698,6 +705,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				try {
 					if ( MAPPER.readTree(msg.getText()).path("type").asText().equals("simulation_stop") ) {
 						getLogger().info("simulator confirmed the stop");
+						m_stopConfirmed = true;
 						return Optional.of(Transitions.to(STATE_STOPPED));
 					}
 				}
@@ -721,7 +729,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
-			m_finalStatePath = getPath();
+			m_finalTermination = Termination.COMPLETED;
 			trySendStopCommand();
 			super.enter();
 			getLogger().info("simulation completed");
@@ -739,7 +747,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
-			m_finalStatePath = getPath();
+			m_finalTermination = Termination.FAILED;
 			trySendStopCommand();
 			super.enter();
 			getLogger().info("simulation failed: cause={}", ""+getFailureCause());
@@ -758,9 +766,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 		@Override
 		public void enter() {
-			m_finalStatePath = getPath();
+			m_finalTermination = Termination.STOPPED;
 			super.enter();
-			getLogger().info("simulation stopped");
+			getLogger().info("simulation stopped: confirmed={}", m_stopConfirmed);
 		}
 	}
 
@@ -813,28 +821,28 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 대체 종료, 취소)에도 한 번 불린다.
 	 * <p>
 	 * 시작 전 취소의 종료 리스너는 실행 결과 lock만 쥔 채 불리므로, 차트 lock을 잡는 {@code getCurrentState()} 대신
-	 * {@code m_finalStatePath}를 읽는다.
+	 * {@code m_finalTermination}을 읽는다. 생성자에서 가장 먼저 등록한 종료 리스너라 다른 종료 리스너보다 먼저 불리고,
+	 * 그래서 그들은 {@link #getSimulationResult()}를 쓸 수 있다.
 	 */
 	private void notifyFinished(Result<RCKSimulationContext> result) {
-		String resultCode;
-		String displayName;
+		Termination termination;
 		Throwable cause = null;
 		if ( result.isSuccessful() ) {
-			String path = (m_finalStatePath != null) ? m_finalStatePath : STATE_COMPLETED;
-			resultCode = toResultCode(path);
-			displayName = STATE_NAMES.getOrDefault(path, path);
+			termination = (m_finalTermination != null) ? m_finalTermination : Termination.COMPLETED;
 		}
 		else if ( result.isFailed() ) {
-			resultCode = toResultCode(STATE_FAILED);
-			displayName = STATE_NAMES.get(STATE_FAILED);
+			termination = Termination.FAILED;
 			cause = result.getCause();
 		}
 		else {
-			resultCode = RESULT_CANCELLED;
-			displayName = DISPLAY_CANCELLED;
+			termination = Termination.CANCELLED;
 		}
-		Throwable failureCause = cause;
-		notifyObserver(() -> m_observer.onFinished(resultCode, displayName, failureCause));
+		RCKSimulationContext ctx = getContext();
+		RCKSimulationResult simResult = new RCKSimulationResult(termination,
+												termination == Termination.STOPPED && m_stopConfirmed,
+												ctx.getLatestProgress(), ctx.getVideoInfo(), cause);
+		m_result = simResult;
+		notifyObserver(() -> m_observer.onFinished(simResult));
 	}
 
 	/**
@@ -939,9 +947,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		}
 
 		synchronized ( m_sendLock ) {
-			CompletableFuture<WebSocket> send = m_lastSend.handle((result, error) -> null)
+			CompletableFuture<WebSocket> send = m_sendTail.handle((result, error) -> null)
 															.thenCompose(ignored -> sendText(text));
-			m_lastSend = send;
+			m_sendTail = send;
 			return send;
 		}
 	}

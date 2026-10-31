@@ -13,7 +13,7 @@ MDT 오퍼레이션(`RCKSimulationOperation`)으로 호출되면, 외부 RCK 시
 MDT Operation 호출
    └─ RCKSimulationOperation.invokeSync(...)
         ├─ 설정 인자(clientId, processName, rckServerUrl, 대기 시간들)와 입력 변수(LayoutName) 읽기
-        ├─ RCKSimulationContext 생성, MDTSimulationOutputs(관찰자) 준비
+        ├─ RCKSimulationContext 생성, MDTSimulationOutputReporter.startRun()으로 이번 실행의 관찰자 준비
         ├─ RCKSimulation(상태 차트) 생성·구동 (maxDuration을 넘으면 취소)
         │    · 비동기 호출(invokeAsync): 시작만 하고 바로 반환, 끝나면 성공/실패 콜백
         │    · 동기 호출(invokeSync): 끝날 때까지 대기, 인터럽트되면 취소
@@ -22,7 +22,7 @@ MDT Operation 호출
 ```
 
 `RCKSimulation`은 구동되는 동안 진행 상황을 `SimulationObserver`에 알리고, 어떤 경로로 끝나든(종료 상태, 연결 오류로
-인한 대체 종료, 취소) `onFinished`를 한 번 부른다. 오퍼레이션은 MDT 인스턴스에 접속할 수 있으면 `MDTSimulationOutputs`를
+인한 대체 종료, 취소) 결과(`RCKSimulationResult`)를 담아 `onFinished`를 한 번 부른다. 오퍼레이션은 `MDTSimulationOutputReporter`를
 넘겨, 중간 결과를 실시간으로 인스턴스의 출력 인자에 반영한다.
 
 ## 상태 차트 흐름 (`RCKSimulation`)
@@ -60,6 +60,12 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 - 시뮬레이터 메시지에 모르는 필드가 있어도 무시한다.
 - 실패 원인은 `Failed` 상태로 가는 전이(`Transitions.fail`)가 설정하며, 차트의 실행 결과
   (`waitForFinished().getFailureCause()`, `get()`의 `ExecutionException`)로 얻는다.
+- 끝난 뒤에는 `getSimulationResult()`가 종료 사유(`Termination`: `COMPLETED` / `STOPPED` / `FAILED` / `CANCELLED`),
+  중지 확인 여부(`stopConfirmed`: `Stopped`가 `simulation_stop` 응답으로 끝났는지), 마지막 진행 상황, 영상 정보,
+  실패 원인을 한 번에 준다. 상태 경로와 가변 문맥을 조합할 필요가 없다.
+- `simulation_status`의 `Progress`가 없거나 숫자가 아니거나, `Conveyor_6.Production`이 있는데 숫자가 아니면 그 보고는
+  형식 오류로 무시한다(0으로 읽지 않는다). `Production`이 아예 없으면 0이다. `Utilization`이 숫자가 아닌 설비는 평균에서
+  뺀다.
 - 종료 상태 `Completed` / `Failed` 진입 시, 연결이 열려 있으면 **먼저** 시뮬레이터에 stop을 보내고(전송 완료까지
   최대 2초) 그다음 WebSocket을 닫는다. `Stopped`는 `Stopping`에서 이미 stop을 보냈으므로 연결만 닫는다.
 - 명령(register, layout, start) 전송이 실패하면 상태가 `Failed`로 전이한다. 전송 결과를 확인하지 않으면 명령이
@@ -84,9 +90,10 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 | `RCKSimulationOperation` | MDT `OperationProvider` 진입점. 인자를 읽어 시뮬레이션을 구동하고 결과를 출력 변수에 기록한다. |
 | `RCKSimulation` | `WebSocketStateChart` 기반 시뮬레이션 상태 차트. 시뮬레이터와의 전체 프로토콜과 상태 전이를 정의한다. |
 | `RCKSimulationContext` | 상태 차트의 도메인 컨텍스트. 식별 정보(클라이언트 ID·공정명·레이아웃명, 불변)와 진행 중 채워지는 결과(설비 정보·최근 진행 상황·영상 정보, 가변)를 보유한다. |
-| `RCKSimulationStatus` | `simulation_status` 한 건의 진행 상황(진척도·생산량·설비 유형별 평균 이용률) record. `parse(JsonNode)`로 생성한다. |
+| `RCKSimulationProgress` | `simulation_status` 한 건의 진행 상황(진척도·생산량·설비 유형별 평균 이용률) record. `parse(JsonNode)`로 생성한다. |
+| `RCKSimulationResult` | 끝난 시뮬레이션의 결과 record(종료 사유 `Termination`, 중지 확인 여부, 마지막 진행 상황, 영상 정보, 실패 원인). |
 | `SimulationObserver` | 진행 상황(상태 변화·진행 상황·영상 URL)과 종료(`onFinished`)를 받는 관찰자 인터페이스. `NONE`은 아무 일도 하지 않는다. |
-| `MDTSimulationOutputs` | `SimulationObserver` 구현. 진행 상황을 MDT 인스턴스의 출력 인자에 별도 스레드로 반영한다. |
+| `MDTSimulationOutputReporter` | 진행 상황을 MDT 인스턴스의 출력 인자에 별도 스레드로 반영한다. 오퍼레이션 인스턴스당 하나이며, 실행마다 `startRun()`으로 관찰자를 준다. |
 | `VideoInfo` | 결과 영상 정보(`video_info` 메시지) record. 다운로드 URL과 파일 크기를 쓴다. |
 | `RCKExecutors` | RCK 전용 데몬 스레드(타이머 1개, 작업 풀). 타이머 신호·전송 실패 신호·취소·MDT 갱신을 공용 스레드가 아니라 여기서 실행한다. |
 
@@ -99,7 +106,7 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 | `pingInterval` / `pongTimeout` | 설정(선택) | 연결 유지 ping 간격 / pong 대기 시간. 기본 10초 / 2초 |
 | `maxDuration` | 설정(선택) | 시뮬레이션 전체 최대 수행 시간. 넘으면 취소하고 `TimeoutException`으로 실패. 기본 1시간 |
 | `LayoutName` | 입력 변수 | 시뮬레이션할 레이아웃 이름 |
-| `Progress` / `Production` / `AverageUtilization` / `FinalState` / `SimulationVideoUrl` | 출력 변수 | 마지막 진행 상황, 이용률 JSON 문자열, 결과 코드(아래), 영상 다운로드 URL(영상 정보가 없으면 빈 문자열) |
+| `Progress` / `Production` / `AverageUtilization` / `FinalState` / `SimulationVideoUrl` | 출력 변수(모두 선택) | 마지막 진행 상황, 이용률 JSON 문자열, 결과 코드(아래), 영상 다운로드 URL(영상 정보가 없으면 빈 문자열). 모델에 없는 출력 변수는 기록하지 않는다 |
 
 ### `FinalState`와 `State`
 
@@ -107,8 +114,8 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 
 | 출력 | 용도 | 값 | 기록 시점 |
 |------|------|----|-----------|
-| `FinalState` (오퍼레이션 출력 변수) | 프로그램이 읽는 결과 코드 | `Completed` / `Stopped` (최종 상태 경로에서 `/`를 뗀 값) | 오퍼레이션이 정상 반환할 때 한 번 |
-| `State` (`MDTSimulationOutputs`가 반영하는 출력 인자) | 사람이 보는 실시간 표시 | `시뮬레이션 진행중`, `시뮬레이션 완료`, `시뮬레이션 실패` 등 | 상태가 바뀔 때마다 |
+| `FinalState` (오퍼레이션 출력 변수) | 프로그램이 읽는 결과 코드 | `Completed` / `Stopped` (`Termination.code()`) | 오퍼레이션이 성공할 때 한 번 |
+| `State` (`MDTSimulationOutputReporter`가 반영하는 출력 인자) | 사람이 보는 실시간 표시 | `시뮬레이션 진행중`, `시뮬레이션 완료`, `시뮬레이션 실패` 등 | 상태가 바뀔 때마다 |
 
 - 실패·취소·시간 초과는 오퍼레이션이 예외로 알리므로 출력 변수가 기록되지 않는다. 그런 경우의 마지막 상태
   (`시뮬레이션 실패` / `시뮬레이션 취소됨`)는 `State`에만 남는다(MDT 인스턴스에 접속했을 때).
@@ -117,7 +124,7 @@ ConnectingWebSocket           # WebSocket 연결 수립 (utils States.WebSocketC
 
 ## MDT 연동
 
-`MDTSimulationOutputs`는 다음 표현식 형식으로 인스턴스의 `PressSimulation` 오퍼레이션 출력 인자 reference를
+`MDTSimulationOutputReporter`는 다음 표현식 형식으로 인스턴스의 `PressSimulation` 오퍼레이션 출력 인자 reference를
 활성화한다.
 
 ```
@@ -131,9 +138,16 @@ oparg:{instanceId}:PressSimulation:out:{argName}
   `MDT_INSTANCE_ID` 환경변수를 쓴다.
 - MDT 인스턴스 매니저 접속에 실패하면 예외를 던지지 않고, MDT 반영 없이 시뮬레이션만 수행한다.
 - 인자는 하나씩 따로 준비·갱신한다. 한 인자가 없거나 갱신에 실패해도 경고 로그만 남기고 나머지는 반영한다.
-- 출력 인자 준비(첫 갱신 때 한 번)와 갱신은 RCK 전용 스레드가 한다. 생성자와 관찰자 메소드는 MDT에 접속하지 않고
-  바로 반환하므로, MDT가 느리거나 응답하지 않아도 오퍼레이션 호출과 시뮬레이션 메시지 처리가 밀리지 않는다. 갱신이 밀려 있는 동안 같은 인자에 새 값이 오면 최신 값만 쓴다. 따라서 오퍼레이션이 반환된
-  직후에는 마지막 `State` 갱신이 아직 반영되지 않았을 수 있다.
+- MDT 매니저 준비(설정에 MQTT 엔드포인트가 있으면 MQTT 연결 포함), 출력 인자 준비, 갱신은 모두 RCK 전용 스레드가
+  한다. 갱신기 생성과 `startRun()`, 관찰자 메소드는 MDT에 접속하지 않고 바로 반환하므로, MDT가 느리거나 응답하지
+  않아도 오퍼레이션 호출과 시뮬레이션 메시지 처리가 밀리지 않는다. 준비하지 못한 출력 인자는 다음 실행에서 다시
+  준비한다.
+- 갱신기는 오퍼레이션 인스턴스당 하나다. 기록 대상이 같은 출력 인자이므로, 실행마다 따로 두면 늦게 도착한 이전
+  실행의 쓰기("시뮬레이션 완료")가 다음 실행의 상태를 덮어쓸 수 있다. 하나의 갱신 작업이 모든 실행의 갱신을
+  순서대로 쓰고, 새 실행이 시작되면 이전 실행이 아직 쓰지 않은 갱신은 버린다. 갱신이 밀려 있는 동안 같은 인자에 새
+  값이 오면 최신 값만 쓴다.
+- 오퍼레이션은 결과를 알리기 전에 진행 상황 반영이 끝나기를(`flushAsync()`) 최대 5초 기다린다.
+- 성공·실패 콜백은 정확히 한 번 불린다. 콜백이 던진 예외는 로그만 남긴다.
 
 ## 스레드
 

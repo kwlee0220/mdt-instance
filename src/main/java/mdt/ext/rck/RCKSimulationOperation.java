@@ -6,6 +6,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -45,22 +46,24 @@ import mdt.task.TaskException;
  * RCK 프레스 공정 시뮬레이션을 수행하는 MDT 오퍼레이션.
  * <p>
  * 호출될 때마다 {@link RCKSimulation}을 하나 만들어 끝까지 구동하고, 마지막 진행 상황과 최종 상태, 결과 영상 URL을
- * 출력 변수에 기록한다. 구동하는 동안에는 {@link MDTSimulationOutputs}로 이 인스턴스의 출력 인자에 진행 상황을
- * 반영한다.
+ * 출력 변수에 기록한다. 구동하는 동안에는 {@link MDTSimulationOutputReporter}로 이 인스턴스의 출력 인자에 진행
+ * 상황을 반영한다. 갱신기는 오퍼레이션 인스턴스당 하나이며, 결과를 알리기 전에 진행 상황 반영이 끝나기를 최대
+ * {@value #OUTPUT_FLUSH_TIMEOUT_SECONDS}초 기다린다.
  * <p>
  * 비동기 호출({@link #invokeAsync})은 시뮬레이션을 시작만 하고 바로 반환한다. 끝을 기다리며 스레드를 붙잡지 않고,
- * 시뮬레이션이 끝나면 그 결과로 성공/실패 콜백을 부른다. 동기 호출({@link #invokeSync})은 끝날 때까지 기다리며,
- * 기다리다 인터럽트되면 시뮬레이션을 취소한다.
+ * 시뮬레이션이 끝나면 그 결과로 성공 또는 실패 콜백을 한 번 부른다. 동기 호출({@link #invokeSync})은 끝날 때까지
+ * 기다리며, 기다리다 인터럽트되면 시뮬레이션을 취소한다.
  * <p>
  * 상태를 담는 출력은 두 가지이며 용도가 다르다.
  * <ul>
- *   <li>{@code FinalState} - 프로그램이 읽는 결과 코드. 최종 상태 경로에서 앞의 {@code /}를 뗀 값
- *       ({@code Completed}, {@code Stopped})이며, 오퍼레이션이 성공할 때만 기록된다. 실패·취소·시간 초과는
+ *   <li>{@code FinalState} - 프로그램이 읽는 결과 코드({@link RCKSimulationResult.Termination#code()}:
+ *       {@code Completed}, {@code Stopped})이며, 오퍼레이션이 성공할 때만 기록된다. 실패·취소·시간 초과는
  *       예외로 알린다.</li>
  *   <li>{@code State} - 사람이 보는 실시간 표시 이름(예: {@code 시뮬레이션 진행중}). 진행 중 상태가 바뀔 때마다
- *       {@link MDTSimulationOutputs}가 갱신하며, 실패·취소로 끝난 경우에도 마지막 상태가 남는다. 표시 문구는
+ *       {@link MDTSimulationOutputReporter}가 갱신하며, 실패·취소로 끝난 경우에도 마지막 상태가 남는다. 표시 문구는
  *       바뀔 수 있으므로 분기 조건으로 쓰지 않는다.</li>
  * </ul>
+ * 출력 변수는 모두 선택이다. 모델에 없는 출력 변수는 기록하지 않는다.
  * <p>
  * 설정 인자:
  * <ul>
@@ -69,7 +72,8 @@ import mdt.task.TaskException;
  *   <li>{@code responseTimeout} (선택, 기본 2분) - 시뮬레이터 응답 대기 시간({@link RCKSimulation#setResponseTimeout}).</li>
  *   <li>{@code pingInterval} / {@code pongTimeout} (선택, 기본 10초 / 2초) - 연결 유지 ping 간격과 pong 대기 시간.</li>
  *   <li>{@code maxDuration} (선택, 기본 1시간) - 시뮬레이션 전체의 최대 수행 시간. 넘으면 시뮬레이션을 취소하고
- *       {@link TimeoutException}으로 실패한다.</li>
+ *       {@link TimeoutException}으로 실패한다. 시뮬레이션 시작부터 재며, MDT 출력 준비 시간은 들어가지 않는다(출력
+ *       준비는 별도 스레드에서 한다).</li>
  * </ul>
  * 시간 값은 {@link UnitUtils#parseDuration(String)} 형식(예: {@code "90s"}, {@code "2m"})이다.
  *
@@ -81,6 +85,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private static final Duration DEFAULT_PING_INTERVAL = Duration.ofSeconds(10);
 	private static final Duration DEFAULT_PONG_TIMEOUT = Duration.ofSeconds(2);
 	private static final Duration DEFAULT_MAX_DURATION = Duration.ofHours(1);
+	/** 결과를 알리기 전에 MDT 출력 반영이 끝나기를 기다리는 최대 시간(초). */
+	private static final long OUTPUT_FLUSH_TIMEOUT_SECONDS = 5;
 
 	private final ServiceContext m_serviceContext;
 	private final String m_clientId;
@@ -90,8 +96,11 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private final Duration m_pingInterval;
 	private final Duration m_pongTimeout;
 	private final Duration m_maxDuration;
+	/** 이 오퍼레이션의 모든 실행이 함께 쓰는 MDT 출력 갱신기. */
+	private final MDTSimulationOutputReporter m_outputReporter;
 
-	// MDT 인스턴스 매니저 클라이언트. 처음 필요할 때 만들어 이후 호출에서 재사용한다(접속에 실패하면 다음에 다시 시도).
+	// MDT 인스턴스 매니저 클라이언트. 처음 필요할 때(갱신 스레드에서) 만들어 이후 호출에서 재사용한다.
+	// 접속에 실패하면 캐시하지 않으므로 다음에 다시 시도한다.
 	@GuardedBy("this") private MDTInstanceManager m_mdtManager;
 
 	public RCKSimulationOperation(ServiceContext serviceContext, Reference opRef,
@@ -107,6 +116,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		m_pingInterval = getDurationArgument("pingInterval", DEFAULT_PING_INTERVAL);
 		m_pongTimeout = getDurationArgument("pongTimeout", DEFAULT_PONG_TIMEOUT);
 		m_maxDuration = getDurationArgument("maxDuration", DEFAULT_MAX_DURATION);
+		m_outputReporter = new MDTSimulationOutputReporter(this::getMdtManager, this::findInstanceId);
 
 		if ( s_logger.isInfoEnabled() ) {
 			Object path = (opRef != null) ? IdShortPath.fromReference(opRef) : null;
@@ -117,30 +127,42 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 
 	/**
 	 * 시뮬레이션을 시작하고 바로 반환한다. 시뮬레이션이 끝나면 출력 변수를 기록하고 {@code callbackSuccess}를,
-	 * 실패·취소·시간 초과로 끝나면 {@code callbackFailure}를 부른다. 입력 변수나 출력 변수가 잘못되었으면 시작하지 않고
-	 * 예외를 던진다.
+	 * 실패·취소·시간 초과로 끝나거나 출력 기록에 실패하면 {@code callbackFailure}를 정확히 한 번 부른다. 콜백이 던진
+	 * 예외는 로그만 남긴다. 입력 변수나 출력 변수가 잘못되었으면 시작하지 않고 예외를 던진다.
 	 */
 	@Override
 	public void invokeAsync(OperationVariable[] inputVars, OperationVariable[] inoutputVars,
 							OperationVariable[] outputVars,
 							BiConsumer<OperationVariable[], OperationVariable[]> callbackSuccess,
 							Consumer<Throwable> callbackFailure) throws Exception {
-		Outputs outputs = resolveOutputs(toVarMap(outputVars));
+		OperationOutputBindings outputs = bindOutputs(toVarMap(outputVars));
 		startSimulation(toVarMap(inputVars), outcome -> {
+			// 결과 판정과 출력 기록만 예외 처리 대상이다. 콜백은 그 결과에 따라 한 번만 부른다.
+			Throwable failure;
 			try {
-				Exception failure = outcome.failure();
-				if ( failure != null ) {
-					Throwable reported = toCallbackFailure(failure);
-					s_logger.error("Failed to invoke AASOperation: {}", ""+reported);
-					callbackFailure.accept(reported);
-					return;
+				Exception simFailure = outcome.failure();
+				if ( simFailure == null ) {
+					outputs.write(outcome.simulation().getSimulationResult());
+					failure = null;
 				}
-				outputs.write(outcome.simulation());
-				callbackSuccess.accept(outputVars, inoutputVars);
+				else {
+					failure = toCallbackFailure(simFailure);
+				}
 			}
 			catch ( Throwable e ) {
-				callbackFailure.accept(e);
+				failure = e;
 			}
+
+			Throwable reported = failure;
+			awaitOutputFlush().whenComplete((ignored, error) -> {
+				if ( reported == null ) {
+					invokeCallback("success", () -> callbackSuccess.accept(outputVars, inoutputVars));
+				}
+				else {
+					s_logger.error("Failed to invoke AASOperation: {}", ""+reported);
+					invokeCallback("failure", () -> callbackFailure.accept(reported));
+				}
+			});
 		});
 	}
 
@@ -148,7 +170,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	protected void invokeSync(Map<String, SubmodelElement> inputVarList,
 								Map<String, SubmodelElement> inoutputVarList,
 								Map<String, SubmodelElement> outputVarList) throws Exception {
-		Outputs outputs = resolveOutputs(outputVarList);
+		OperationOutputBindings outputs = bindOutputs(outputVarList);
 
 		CompletableFuture<Outcome> done = new CompletableFuture<>();
 		RCKSimulation sim = startSimulation(inputVarList, done::complete);
@@ -163,11 +185,42 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			throw e;
 		}
 
-		Exception failure = outcome.failure();
-		if ( failure != null ) {
-			throw failure;
+		try {
+			Exception failure = outcome.failure();
+			if ( failure != null ) {
+				throw failure;
+			}
+			outputs.write(sim.getSimulationResult());
 		}
-		outputs.write(sim);
+		finally {
+			try {
+				awaitOutputFlush().get();
+			}
+			catch ( ExecutionException ignored ) { }
+		}
+	}
+
+	/**
+	 * MDT 출력 반영이 끝나기를 최대 {@value #OUTPUT_FLUSH_TIMEOUT_SECONDS}초 기다리는 future를 돌려준다. 시간이 지나면
+	 * 경고 로그를 남기고 완료된다(결과 통지를 막지 않는다).
+	 */
+	private CompletableFuture<Void> awaitOutputFlush() {
+		return m_outputReporter.flushAsync()
+								.orTimeout(OUTPUT_FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+								.exceptionally(e -> {
+									s_logger.warn("MDT outputs are not reflected within {}s; reporting the result anyway",
+													OUTPUT_FLUSH_TIMEOUT_SECONDS);
+									return null;
+								});
+	}
+
+	private static void invokeCallback(String kind, Runnable callback) {
+		try {
+			callback.run();
+		}
+		catch ( Throwable e ) {
+			s_logger.error("operation {} callback failed: {}", kind, ""+e, e);
+		}
 	}
 
 	/**
@@ -260,26 +313,31 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	}
 
 	/**
-	 * 오퍼레이션의 출력 변수들. 출력 변수가 없으면 해당 항목은 {@code null}이며 기록하지 않는다.
+	 * 오퍼레이션의 출력 변수들. 출력 변수는 모두 선택이며, 모델에 없는 항목은 {@code null}이고 기록하지 않는다.
 	 */
-	private static record Outputs(Property progress, Property production, Property finalState,
-								Property averageUtilization, Property videoUrl) {
+	private static record OperationOutputBindings(Property progress, Property production, Property finalState,
+												Property averageUtilization, Property videoUrl) {
 		/**
 		 * 끝난 시뮬레이션의 결과를 출력 변수에 기록한다.
 		 */
-		void write(RCKSimulation sim) throws Exception {
-			RCKSimulationContext ctx = sim.getContext();
-			RCKSimulationStatus status = ctx.getLatestStatus();
-			ElementValues.update(progress, PropertyValue.INTEGER(status.progress()));
-			ElementValues.update(production, PropertyValue.INTEGER(status.production()));
-			ElementValues.update(finalState,
-								PropertyValue.STRING(RCKSimulation.toResultCode(sim.getCurrentState().getPath())));
-			ElementValues.update(averageUtilization,
-								MDTSimulationOutputs.toUtilizationJson(status.averageUtilizations()));
+		void write(RCKSimulationResult result) throws Exception {
+			RCKSimulationProgress progress = result.progress();
+			update(this.progress, PropertyValue.INTEGER(progress.progress()));
+			update(production, PropertyValue.INTEGER(progress.production()));
+			update(finalState, PropertyValue.STRING(result.termination().code()));
+			update(averageUtilization,
+					PropertyValue.STRING(MDTSimulationOutputReporter.toUtilizationJson(progress.averageUtilizations())));
 
 			// 영상 정보를 받기 전에 끝났으면(중지 등) URL은 빈 문자열로 둔다.
-			VideoInfo video = ctx.getVideoInfo();
-			ElementValues.update(videoUrl, (video != null) ? video.downloadUrl() : "");
+			String url = result.videoUrl();
+			update(videoUrl, PropertyValue.STRING((url != null) ? url : ""));
+		}
+
+		/** {@link ElementValues#update}는 대상이 {@code null}이면 NPE를 던지므로 없는 출력 변수는 건너뛴다. */
+		private static void update(Property target, PropertyValue<?> value) {
+			if ( target != null ) {
+				ElementValues.update(target, value);
+			}
 		}
 	}
 
@@ -288,44 +346,27 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	 *
 	 * @throws IllegalArgumentException	출력 변수의 형식이 맞지 않는 경우
 	 */
-	private Outputs resolveOutputs(Map<String, SubmodelElement> outputVarList) {
-		return new Outputs(getPropertyVariable(outputVarList, "Progress", DataTypeDefXsd.INT),
-							getPropertyVariable(outputVarList, "Production", DataTypeDefXsd.INT),
-							getPropertyVariable(outputVarList, "FinalState", DataTypeDefXsd.STRING),
-							getPropertyVariable(outputVarList, "AverageUtilization", DataTypeDefXsd.STRING),
-							getPropertyVariable(outputVarList, "SimulationVideoUrl", DataTypeDefXsd.STRING));
+	private OperationOutputBindings bindOutputs(Map<String, SubmodelElement> outputVarList) {
+		return new OperationOutputBindings(getPropertyVariable(outputVarList, "Progress", DataTypeDefXsd.INT),
+										getPropertyVariable(outputVarList, "Production", DataTypeDefXsd.INT),
+										getPropertyVariable(outputVarList, "FinalState", DataTypeDefXsd.STRING),
+										getPropertyVariable(outputVarList, "AverageUtilization", DataTypeDefXsd.STRING),
+										getPropertyVariable(outputVarList, "SimulationVideoUrl", DataTypeDefXsd.STRING));
 	}
 
 	/**
-	 * 시뮬레이션 진행을 이 인스턴스의 출력 인자에 반영할 관찰자를 만든다.
-	 * <p>
-	 * 인스턴스 식별자를 알 수 없거나 MDT 인스턴스 매니저에 접속하지 못하면 경고 로그를 남기고, 진행 상황을 반영하지
-	 * 않는 관찰자를 돌려준다(시뮬레이션은 그대로 수행한다).
+	 * 이번 실행의 진행 상황을 이 인스턴스의 출력 인자에 반영할 관찰자를 만든다. MDT에 접속하지 않고 바로 반환한다
+	 * ({@link MDTSimulationOutputReporter#startRun()}).
 	 *
 	 * @return	진행 상황 관찰자
 	 */
 	SimulationObserver createObserver() {
-		String instanceId = findInstanceId();
-		if ( instanceId == null ) {
-			s_logger.warn("unknown MDT instance id; simulation progress is not reported to MDT");
-			return SimulationObserver.NONE;
-		}
-		try {
-			MDTSimulationOutputs outputs = new MDTSimulationOutputs(getMdtManager(), instanceId);
-			outputs.reset();
-			s_logger.info("reporting simulation progress to MDT instance: {}", instanceId);
-
-			return outputs;
-		}
-		catch ( Exception e ) {
-			s_logger.warn("failed to connect MDT InstanceManager; simulation progress is not reported: {}", ""+e);
-			return SimulationObserver.NONE;
-		}
+		return m_outputReporter.startRun();
 	}
 
 	/**
-	 * MDT 인스턴스 매니저 클라이언트를 돌려준다. 처음 호출할 때 기본 설정으로 접속한다. 접속에 실패하면 캐시하지 않으므로
-	 * 다음 호출에서 다시 시도한다.
+	 * MDT 인스턴스 매니저 클라이언트를 돌려준다. 처음 호출할 때 기본 설정으로 접속한다. 설정에 MQTT 엔드포인트가 있으면
+	 * 이때 MQTT 연결도 하므로, 갱신 스레드에서만 부른다. 접속에 실패하면 캐시하지 않으므로 다음 호출에서 다시 시도한다.
 	 *
 	 * @throws RuntimeException	MDT 인스턴스 매니저에 접속하지 못한 경우
 	 */
