@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `mdt-instance` is the server process that runs a single MDT (Manufacturing Digital Twin) instance. It loads one AAS Environment (`model.json`), serves it over the AAS REST API v3.0 (HTTPS only), binds model elements to external data sources, and dispatches AAS Operation calls to Java / external-program / Python-script / remote-HTTP implementations. It is built on Fraunhofer IOSB **FA³ST Service 1.3.0** (`de.fraunhofer.iosb.ilt.faaast.service:starter`): MDT features are plugged into FA³ST's extension points (Persistence, AssetConnection, Endpoint) rather than wrapping it. Java 21, group `etri`, root package `mdt`, entry point `mdt.MDTInstanceMain`.
 
-Instances are normally launched and supervised by `mdt-manager` (`../mdt-manager`, `mdt.exector.jar.JarInstanceExecutor`), but can also run standalone and register themselves with the manager. User-facing documentation is [README.md](README.md) (Korean) plus the package guides under [docs/](docs/).
+Instances are normally launched and supervised by `mdt-manager` (`../mdt-manager`, `mdt.exector.jar.JarInstanceExecutor`), but can also run standalone and register themselves with the manager. User-facing documentation is [README.md](README.md) (Korean) plus the package guides: each package's `README.md` next to its code (there is no `docs/` directory; the former `docs/*-guide.md` files were moved into the package READMEs on 2026-10-31).
 
 ## Common commands
 
@@ -48,7 +48,7 @@ The HTTPS port is taken from the instance endpoint URL, not from `--port`; `--po
 - **`mdt.ksx9101`** — KS X 9101 manufacturing-data JPA mapping (`KSX9101Persistence`); not wired by `MDTInstanceMain`.
 - **`mdt.ext`** — project-specific operation providers (e.g. `ext/rck`, RCK press simulation over WebSocket; see its [README](src/main/java/mdt/ext/rck/README.md) and [CLAUDE.md](src/main/java/mdt/ext/rck/CLAUDE.md)).
 
-Detailed behaviour, config formats, and known limitations are in [docs/endpoint-guide.md](docs/endpoint-guide.md), [docs/assetconnection-guide.md](docs/assetconnection-guide.md), [docs/robot-twin-operation-guide.md](docs/robot-twin-operation-guide.md), [docs/asset-persistence-guide.md](docs/asset-persistence-guide.md), and [docs/timeseries-persistence-guide.md](docs/timeseries-persistence-guide.md). Read the relevant guide before changing a package, and update it when behaviour changes.
+Detailed behaviour, config formats, and known limitations are in the package READMEs: [mdt.endpoint](src/main/java/mdt/endpoint/README.md), [mdt.assetconnection](src/main/java/mdt/assetconnection/README.md), [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md), [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md), [mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md), and [mdt.ext.rck](src/main/java/mdt/ext/rck/README.md). Read the relevant guide before changing a package, and update it when behaviour changes.
 
 ## Extension points
 
@@ -60,7 +60,7 @@ Detailed behaviour, config formats, and known limitations are in [docs/endpoint-
 
 ## Conventions
 
-- Source comments and Javadoc are Korean; match surrounding density. User-facing docs (`README.md`, `docs/*.md`) are written in natural Korean technical prose.
+- Source comments and Javadoc are Korean; match surrounding density. User-facing docs (the root `README.md` and the package `README.md` files) are written in natural Korean technical prose.
 - Fields use the `m_` prefix with Lombok `@Accessors(prefix="m_")`; static loggers are `s_logger`. Author tag `@author Kang-Woo Lee (ETRI)`.
 - Prefer `utils.Preconditions` (`checkNotNullArgument`, `checkArgument`, `checkState`) over Guava `Preconditions` in new or touched code; older files (including `MDTInstanceMain`) still use Guava.
 - Durations in config are strings parsed by `utils.UnitUtils` (`"10s"`, `"1m"`).

@@ -39,7 +39,7 @@ flowchart TD
 | `JdbcRangeInternalSegment` | AAS Range로 조회한 레코드를 InternalSegment로 구성하는 보조 구현 |
 | `InternalSegmentRecordsReader` | 이미 존재하는 InternalSegment의 Records를 읽어 메모리에서 필터링·컬럼 선택 |
 
-공통 영속성 구조는 [asset 패키지 기술문서](asset-persistence-guide.md)와 [PersistenceStack.java](../src/main/java/mdt/persistence/PersistenceStack.java)를 함께 참고한다.
+공통 영속성 구조는 [asset 패키지 기술문서](../asset/README.md)와 [PersistenceStack.java](../PersistenceStack.java)를 함께 참고한다.
 
 ## AAS 모델과 레코드 스키마
 
@@ -86,7 +86,7 @@ TelemetryLog
 
 `JdbcRecordsReader`는 이름으로 매핑한 뒤 Metadata 순서로 SELECT를 구성한다. 반면 Tail과 `JdbcRangeInternalSegment`는 설정의 `parameterColumns` 순서로 조회한 값을 Metadata 필드 순서에 대응시킨다. 모든 조회 경로에서 같은 결과를 얻으려면 필드 개수와 순서를 일치시켜야 한다.
 
-모델 구현: [DefaultMetadata.java](../../mdt-client/src/main/java/mdt/model/timeseries/DefaultMetadata.java), [RecordMetadata.java](../../mdt-client/src/main/java/mdt/model/timeseries/RecordMetadata.java), [DefaultRecord.java](../../mdt-client/src/main/java/mdt/model/timeseries/DefaultRecord.java).
+모델 구현: [DefaultMetadata.java](../../../../../../../mdt-client/src/main/java/mdt/model/timeseries/DefaultMetadata.java), [RecordMetadata.java](../../../../../../../mdt-client/src/main/java/mdt/model/timeseries/RecordMetadata.java), [DefaultRecord.java](../../../../../../../mdt-client/src/main/java/mdt/model/timeseries/DefaultRecord.java).
 
 ## 인스턴스 설정
 
@@ -148,7 +148,7 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 
 `maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 다만 풀은 접속 정보(URL·사용자·비밀번호·드라이버)가 같으면 공유되므로, asset JDBC 변수 등이 같은 접속 정보로 풀을 먼저 만들었다면 그 풀의 크기가 그대로 쓰이고 이 값은 무시된다. 설정 방식도 asset JDBC 변수의 `jdbcConfig`(전역 `jdbcs` 이름 또는 인라인 설정)와 다르다.
 
-설정 구현: [TimeSeriesSubmodelConfig.java](../src/main/java/mdt/persistence/timeseries/TimeSeriesSubmodelConfig.java), [AASOperationConfig.java](../src/main/java/mdt/config/AASOperationConfig.java).
+설정 구현: [TimeSeriesSubmodelConfig.java](TimeSeriesSubmodelConfig.java), [AASOperationConfig.java](../../config/AASOperationConfig.java).
 
 ### 초기화와 스택 구성
 
@@ -167,7 +167,7 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 
 Operation 제공자는 `PersistenceStack.findInStack()`으로 시계열 계층을 찾으므로 `ConcurrentPersistence` 등이 바깥에 있어도 동작하도록 구성되어 있다. 연산용 설정은 `start()`에서 만드는 맵 대신 설정 목록의 `id`로 찾는다. `idShort`가 맞아 Submodel 조회가 가능하더라도 `id`가 틀리면 Operation 초기화는 실패할 수 있다.
 
-관련 코드: [TimeSeriesPersistenceStack.java](../src/main/java/mdt/persistence/timeseries/TimeSeriesPersistenceStack.java), [MDTInstanceMain.java](../src/main/java/mdt/MDTInstanceMain.java).
+관련 코드: [TimeSeriesPersistenceStack.java](TimeSeriesPersistenceStack.java), [MDTInstanceMain.java](../../MDTInstanceMain.java).
 
 ## Submodel과 요소 조회
 
@@ -220,7 +220,7 @@ FROM machine_measurements
 
 `Endpoint`에는 파싱된 JDBC URL만 넣어 설정의 `user`와 `password`를 전달하지 않는다. `Query`는 `select <매핑 컬럼들> from <테이블>`이며 정렬이나 범위 조건을 포함하지 않는다. 따라서 FullRange의 Query를 직접 실행한 결과 순서와 조회 Operation의 시간 오름차순 결과는 구분해야 한다.
 
-구현: [JdbcFullRangeLinkedSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcFullRangeLinkedSegment.java).
+구현: [JdbcFullRangeLinkedSegment.java](JdbcFullRangeLinkedSegment.java).
 
 ### Tail 내부 세그먼트
 
@@ -243,7 +243,7 @@ Tail에 공통 캐시나 `validPeriod` 설정은 없다. `Segments.Tail.RecordCo
 
 어느 경로든 필드 값이 SQL `NULL`이면 레코드 Property의 값은 `null`(값 없음)이 된다. 숫자 필드라도 0으로 바꾸지 않는다. 숫자 필드는 `NUMERIC` 컬럼의 `BigDecimal` 등 어떤 숫자 객체든 받는다. 정수 타입 필드에 소수 부분이 있는 값이 오면 변환에 실패한다.
 
-구현: [JdbcTailInternalSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcTailInternalSegment.java).
+구현: [JdbcTailInternalSegment.java](JdbcTailInternalSegment.java).
 
 ### 내부 세그먼트의 요약 계산
 
@@ -251,7 +251,7 @@ Tail에 공통 캐시나 `validPeriod` 설정은 없다. `Segments.Tail.RecordCo
 
 동일 시각의 여러 레코드 등으로 전체 기간이 밀리초 기준 0이면 나눗셈 오류가 발생할 수 있다. Tail에 필요한 시각 타입과 순서뿐 아니라 이 요약 계산 조건도 함께 확인해야 한다.
 
-관련 모델: [DefaultInternalSegment.java](../../mdt-client/src/main/java/mdt/model/timeseries/DefaultInternalSegment.java).
+관련 모델: [DefaultInternalSegment.java](../../../../../../../mdt-client/src/main/java/mdt/model/timeseries/DefaultInternalSegment.java).
 
 ## 레코드 조회 Operation
 
@@ -299,7 +299,7 @@ sequenceDiagram
 
 `ReadRecordsOperation`은 출력 인자가 적어도 하나인지 검사한다. 결과는 이름으로 검색하지 않고 `outputVars[0]`에 설정하므로 모델의 첫 출력 인자를 `Records`로 구성한다.
 
-구현: [ReadRecordsOperation.java](../src/main/java/mdt/persistence/timeseries/ReadRecordsOperation.java).
+구현: [ReadRecordsOperation.java](ReadRecordsOperation.java).
 
 ### ReadRecordsByRange
 
@@ -340,7 +340,7 @@ MDT 확장 연산은 선택적인 문자열 Property `Range`와 `Columns`를 받
 
 첫 번째 출력 인자에 Records를 설정하는 규칙은 동일하지만, 현재 `ReadRecordsByRangeOperation`에는 출력 배열 길이 검사가 없다. 기본 모델에 출력 인자가 없으면 배열 접근 오류가 발생한다.
 
-구현: [ReadRecordsByRangeOperation.java](../src/main/java/mdt/persistence/timeseries/ReadRecordsByRangeOperation.java), [TimeSeriesRange.java](../../mdt-client/src/main/api/mdt/model/sm/ref/timeseries/TimeSeriesRange.java).
+구현: [ReadRecordsByRangeOperation.java](ReadRecordsByRangeOperation.java), [TimeSeriesRange.java](../../../../../../../mdt-client/src/main/api/mdt/model/sm/ref/timeseries/TimeSeriesRange.java).
 
 ## JdbcRecordsReader의 SQL과 반환값
 
@@ -371,7 +371,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 `readValue()`는 같은 SQL 처리로 `ElementCollectionValue`를 생성하는 보조 메서드다. 현재 두 Operation은 AAS 요소를 반환하는 `read()`를 사용한다.
 
-구현: [JdbcRecordsReader.java](../src/main/java/mdt/persistence/timeseries/JdbcRecordsReader.java).
+구현: [JdbcRecordsReader.java](JdbcRecordsReader.java).
 
 ### 시각과 자원 관리
 
@@ -381,7 +381,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 `JdbcRecordsReader`는 `executeQuery(query, true)`의 ResultSet을 try-with-resources로 닫아 연결도 함께 닫도록 한다. FullRange와 Tail 역시 Connection을 try-with-resources로 관리한다. 이 패키지는 여러 조회를 하나의 공통 Connection이나 트랜잭션으로 묶지 않는다.
 
-연결은 utils의 [JdbcConnectionPools](../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 관리하는 연결 풀에서 얻으며, 닫으면 물리 연결은 유지된 채 풀로 반환된다. 세그먼트는 조회할 때마다 `JdbcProcessor`를 새로 만들지만, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스)가 같으면 같은 풀을 공유하므로 Submodel 조회마다 DB 연결을 새로 맺지 않는다. 같은 DB를 쓰는 asset JDBC 변수와도 풀을 공유한다. 풀은 유휴 연결을 미리 만들지 않고 60초 동안 쓰이지 않은 연결은 닫는다. 연결이 모두 사용 중이거나 DB에 접속할 수 없으면 최대 5초를 기다린 뒤 `SQLException`으로 실패한다. 풀 크기와 인스턴스 수에 따른 전체 연결 수는 [asset 영속성 문서의 JDBC 공통 설명](asset-persistence-guide.md#공통-연결-설정과-캐시)을 따른다.
+연결은 utils의 [JdbcConnectionPools](../../../../../../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 관리하는 연결 풀에서 얻으며, 닫으면 물리 연결은 유지된 채 풀로 반환된다. 세그먼트는 조회할 때마다 `JdbcProcessor`를 새로 만들지만, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스)가 같으면 같은 풀을 공유하므로 Submodel 조회마다 DB 연결을 새로 맺지 않는다. 같은 DB를 쓰는 asset JDBC 변수와도 풀을 공유한다. 풀은 유휴 연결을 미리 만들지 않고 60초 동안 쓰이지 않은 연결은 닫는다. 연결이 모두 사용 중이거나 DB에 접속할 수 없으면 최대 5초를 기다린 뒤 `SQLException`으로 실패한다. 풀 크기와 인스턴스 수에 따른 전체 연결 수는 [asset 영속성 문서의 JDBC 공통 설명](../asset/README.md#공통-연결-설정과-캐시)을 따른다.
 
 ## 보조 조회 구현과 현재 사용 범위
 
@@ -399,7 +399,7 @@ Count와 Since는 목록 순서에 따라 레코드를 줄이고, 기간 조회�
 
 JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레코드의 필드를 모두 제거한다. 전체 필드를 유지하려면 null을 전달해야 한다. 세그먼트 참조로 읽어 온 Records Collection을 제자리에서 수정하므로, 참조 구현이 공유 객체를 반환하는 확장에서는 소유권을 고려한다.
 
-보조 코드: [JdbcRangeInternalSegment.java](../src/main/java/mdt/persistence/timeseries/JdbcRangeInternalSegment.java), [InternalSegmentRecordsReader.java](../src/main/java/mdt/persistence/timeseries/InternalSegmentRecordsReader.java).
+보조 코드: [JdbcRangeInternalSegment.java](JdbcRangeInternalSegment.java), [InternalSegmentRecordsReader.java](InternalSegmentRecordsReader.java).
 
 ## 쓰기 지원 범위와 성능 특성
 

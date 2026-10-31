@@ -2,15 +2,16 @@
 
 `mdt.assetconnection.operation.robot` 패키지는 AAS Operation의 입력을 로봇 트윈 클라이언트 호출로 변환하고, 실행 결과를 AAS 출력 변수에 반영한다. 로봇 이동, 그리퍼 제어, 파지·놓기 작업, scene 초기화와 관측을 워크플로에서 사용할 때 이 패키지를 이용한다.
 
-이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. 설명 기준은 2026년 10월 30일의 구현이다. AAS 호출 등록과 다른 종류의 Provider는 [assetconnection 가이드](assetconnection-guide.md)를 참고한다.
+이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. 설명 기준은 2026년 10월 31일의 구현이다. AAS 호출 등록과 다른 종류의 Provider는 [mdt.assetconnection](../../README.md)을 참고한다. 로봇 연산의 설명은 이 문서에 모두 있다(예전에 assetconnection 가이드에 따로 있던 `Pick`·`AlignHeldObject` 설명도 합쳤다).
 
 표의 기본값은 **Provider에서 입력을 생략했을 때 적용하는 값**이다. AAS 모델이나 워크플로가 값을 명시하면 그 값이 우선한다. “서버 설정”은 Provider가 해당 값을 요청에 넣지 않는다는 뜻이며, 특정 배포의 기본값을 클라이언트가 보장한다는 뜻은 아니다.
 
 연산별 설명 바로가기:
 
 - 팔 이동: [MoveLinear](#4-movelinearprovider), [MoveToJoints](#5-movetojointsprovider), [MoveToNamedTarget](#6-movetonamedtargetprovider)
-- 그리퍼와 조합 작업: [MoveGripperToTarget](#7-movegrippertotargetprovider), [Grasp](#8-graspprovider), [Place](#9-placeprovider). `PickProvider`·`AlignHeldObjectProvider`는 [assetconnection-guide.md](assetconnection-guide.md)의 해당 절에서 설명한다.
-- Scene 관리와 관측: [ResetScene](#10-resetsceneprovider), [GetSceneObjects](#11-getsceneobjectsprovider), [WaitUntilObjectStill](#12-waituntilobjectstillprovider)
+- 그리퍼와 조합 작업: [MoveGripperToTarget](#7-movegrippertotargetprovider), [Grasp](#8-graspprovider), [Pick](#9-pickprovider), [Place](#10-placeprovider), [AlignHeldObject](#14-alignheldobjectprovider)
+- Scene 관리와 관측: [ResetScene](#11-resetsceneprovider), [GetSceneObjects](#12-getsceneobjectsprovider), [WaitUntilObjectStill](#13-waituntilobjectstillprovider)
+- 연산 선택과 실패 처리 비교: [15절](#15-연산-선택과-워크플로-구성)
 
 ## 1 패키지 구성과 실행 흐름
 
@@ -18,20 +19,20 @@
 
 | 클래스 | 역할 |
 |---|---|
-| [AbstractJavaOperationProvider](../src/main/java/mdt/assetconnection/operation/AbstractJavaOperationProvider.java) (상위 `operation` 패키지) | AAS 변수 배열을 이름별 Map으로 바꾸고 Property·SMC 접근 및 값 변환을 제공하는 공통 기반 |
-| [RobotTwinOperationProvider](../src/main/java/mdt/assetconnection/operation/robot/RobotTwinOperationProvider.java) | 트윈 연결 설정, 클라이언트 생성, 입력 검증, 공통 결과 처리를 제공하는 추상 클래스 |
-| [MoveLinearProvider](../src/main/java/mdt/assetconnection/operation/robot/MoveLinearProvider.java) | 팔 끝을 목표 자세로 직선 이동하고 위치 도달 여부를 판정 |
-| [MoveToJointsProvider](../src/main/java/mdt/assetconnection/operation/robot/MoveToJointsProvider.java) | 관절 이름별 목표 각도로 이동 |
-| [MoveToNamedTargetProvider](../src/main/java/mdt/assetconnection/operation/robot/MoveToNamedTargetProvider.java) | 서버에 정의된 이름 자세로 이동 |
-| [MoveGripperToTargetProvider](../src/main/java/mdt/assetconnection/operation/robot/MoveGripperToTargetProvider.java) | 이름으로 지정한 그리퍼 목표를 실행 |
-| [GraspProvider](../src/main/java/mdt/assetconnection/operation/robot/GraspProvider.java) | 개방 → 접근 → 하강 → 파지 목표 확인을 순서대로 실행 |
-| [PickProvider](../src/main/java/mdt/assetconnection/operation/robot/PickProvider.java) | Grasp에 들어 올리기를 더하고, 물체 이름을 주면 들기 전후 물린 위치로 유지를 확인 |
-| [PlaceProvider](../src/main/java/mdt/assetconnection/operation/robot/PlaceProvider.java) | 접근 → 하강 → 개방 목표 확인 → 후퇴를 순서대로 실행 |
-| [ResetSceneProvider](../src/main/java/mdt/assetconnection/operation/robot/ResetSceneProvider.java) | 레시피에 따라 scene을 다시 배치하고 상태 변수 갱신을 대기 |
-| [GetSceneObjectsProvider](../src/main/java/mdt/assetconnection/operation/robot/GetSceneObjectsProvider.java) | 품질이 OK인 scene 물체 정보를 조회 |
-| [WaitUntilObjectStillProvider](../src/main/java/mdt/assetconnection/operation/robot/WaitUntilObjectStillProvider.java) | 지정한 물체의 위치·회전 변화가 충분히 작아질 때까지 관측 |
-| [AlignHeldObjectProvider](../src/main/java/mdt/assetconnection/operation/robot/AlignHeldObjectProvider.java) | 쥔 원기둥의 바닥점을 입구 위로 맞추는 측정·보정 반복(펑션베이 peg 삽입용) |
-| [SceneObjects](../src/main/java/mdt/assetconnection/operation/robot/SceneObjects.java) | 물체 JSON을 AAS SMC 목록으로 바꾸는 package-private 보조 클래스 |
+| [AbstractJavaOperationProvider](../AbstractJavaOperationProvider.java) (상위 `operation` 패키지) | AAS 변수 배열을 이름별 Map으로 바꾸고 Property·SMC 접근 및 값 변환을 제공하는 공통 기반 |
+| [RobotTwinOperationProvider](RobotTwinOperationProvider.java) | 트윈 연결 설정, 클라이언트 생성, 입력 검증, 공통 결과 처리를 제공하는 추상 클래스 |
+| [MoveLinearProvider](MoveLinearProvider.java) | 팔 끝을 목표 자세로 직선 이동하고 위치 도달 여부를 판정 |
+| [MoveToJointsProvider](MoveToJointsProvider.java) | 관절 이름별 목표 각도로 이동 |
+| [MoveToNamedTargetProvider](MoveToNamedTargetProvider.java) | 서버에 정의된 이름 자세로 이동 |
+| [MoveGripperToTargetProvider](MoveGripperToTargetProvider.java) | 이름으로 지정한 그리퍼 목표를 실행 |
+| [GraspProvider](GraspProvider.java) | 개방 → 접근 → 하강 → 파지 목표 확인을 순서대로 실행 |
+| [PickProvider](PickProvider.java) | Grasp에 들어 올리기를 더하고, 물체 이름을 주면 들기 전후 물린 위치로 유지를 확인 |
+| [PlaceProvider](PlaceProvider.java) | 접근 → 하강 → 개방 목표 확인 → 후퇴를 순서대로 실행 |
+| [ResetSceneProvider](ResetSceneProvider.java) | 레시피에 따라 scene을 다시 배치하고 상태 변수 갱신을 대기 |
+| [GetSceneObjectsProvider](GetSceneObjectsProvider.java) | 품질이 OK인 scene 물체 정보를 조회 |
+| [WaitUntilObjectStillProvider](WaitUntilObjectStillProvider.java) | 지정한 물체의 위치·회전 변화가 충분히 작아질 때까지 관측 |
+| [AlignHeldObjectProvider](AlignHeldObjectProvider.java) | 쥔 원기둥의 바닥점을 입구 위로 맞추는 측정·보정 반복(펑션베이 peg 삽입용) |
+| [SceneObjects](SceneObjects.java) | 물체 JSON을 AAS SMC 목록으로 바꾸는 package-private 보조 클래스 |
 
 11개의 구체 연산 Provider는 모두 `RobotTwinOperationProvider`를 상속한다. `SceneObjects`는 연산 Provider가 아니며 독립적으로 호출하는 AAS Operation도 없다.
 
@@ -119,6 +120,8 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 | 단일 이동의 결과 대기 | `MaxDurationSec + 30초`; 생략 시 90초 | MoveLinear·MoveToJoints·MoveToNamedTarget의 비동기 결과 대기 |
 | 이동 후 정착 관측 | `SettleTimeout`, 기본 10초 | MoveLinear 및 Grasp·Place 내부 이동에서 필요할 때 추가 |
 
+동기 서버 연산은 연산이 끝난 뒤에 응답하므로, HTTP 읽기 제한(30초)이 로봇 트윈의 `sync_timeout_sec`보다 길어야 한다.
+
 단일 이동의 90초는 **서버 기본 실행 상한을 60초로 가정**한 값이다. 서버의 `default_timeout_sec`를 변경하면 부모 클래스의 가정도 맞춰야 한다. `MaxDurationSec`를 생략했다고 Provider가 서버에 60초를 명시하는 것은 아니다.
 
 `SettleTimeout`, 관측의 `Timeout`·`QuietPeriod`는 가장 가까운 밀리초로 반올림한다. 0.5ms는 1ms, 0.5ms 미만은 0이 된다. `SettleTimeout=0`은 정착 확인 생략이며, 양수가 필요한 관측 시간 입력은 반올림 결과가 0이어도 거부된다. 클라이언트가 처리할 수 없는 큰 기간도 거부된다.
@@ -157,7 +160,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 }
 ```
 
-위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([asset-persistence-guide](asset-persistence-guide.md#연결-설정-지정)).
+위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([mdt.persistence.asset](../../../persistence/asset/README.md#연결-설정-지정)).
 
 ### 3.2 Pose와 관절 목표
 
@@ -254,6 +257,8 @@ flowchart TD
     T -- 아니오 --> D[정상 반환]
 ```
 
+도달 판정은 `mdt-robot-client`의 `MoveLinear`가 수행하고 Provider는 그 결과를 AAS 출력으로 변환한다. 로봇 트윈의 `COMPLETED`는 연산이 종료되었다는 뜻일 뿐이다. 직선 경로 계획이 일부만 성공해도 성공으로 종료하고, 개루프 백엔드에서는 종료 시점에 로봇이 아직 움직이는 중일 수 있다.
+
 위치 오차는 `max(|dx|, |dy|, |dz|)`이며, `Tolerance` 이하이면 도달로 판정한다. 방향 오차는 비교하지 않는다. 정착 관측은 목표 도달 검사와 별개이며 내부 기본값은 위치 변화 허용 0.2mm, 정숙 구간 0.6초, 조회 간격 300ms다. Provider의 `Tolerance`를 바꿔도 이 정착 조건은 바뀌지 않는다.
 
 ### 4.2 입력 인자
@@ -269,6 +274,8 @@ flowchart TD
 
 `Frame`, `MaxStep`, `JumpThreshold`는 지원하지 않는다. 값이 비어 있어도 입력 또는 입출력 변수에 해당 이름이 있으면 요청 전에 거부한다. 관련 설정은 서버에서 관리한다.
 
+`TargetPose`는 서버 기본 EE 프레임(미설정 시 tip 프레임) 기준이어야 하며, `ee_pose`와 같은 좌표계·도구 기준점을 사용해야 한다. 필요하면 서버가 EE → tip 변환을 수행하므로 호출자는 같은 변환을 중복 적용하지 않는다.
+
 ### 4.3 출력 인자와 실패 처리
 
 | 이름 | AAS 형식 | 필수 바인딩 | 의미 |
@@ -277,6 +284,8 @@ flowchart TD
 | `FinalJoints` | 관절 위치 SMC | 예 | 서버의 `final_joints`. 정착 후 유효한 관절 조회에 성공하면 조회값 사용 |
 | `Reached` | xs:boolean | 아니오 | 위치 도달 확인 여부. false에는 확인 불가도 포함 |
 | `PositionError` | xs:double | 아니오 | 축별 거리 최댓값, m. 계산할 수 없으면 갱신하지 않음 |
+
+`FinalPose`는 `Ros2SerDes.POSE_STAMPED_SERDE`, `FinalJoints`는 `Ros2SerDes.JOINT_STATES_SERDE`로 갱신하므로 SMC 내부 구조가 이 serde와 일치해야 한다(3.3절).
 
 정착에 성공한 뒤에는 `joint_states`를 한 번 더 읽는다. 품질이 OK가 아니거나 값이 없거나 처리 대상 통신 오류가 나면 경고를 남기고 서버의 관절 출력을 사용한다. 인터럽트는 전파한다. `FinalPose`와 `FinalJoints`는 동기화된 표본이 아니므로 같은 시각의 상태라고 가정하지 않는다.
 
@@ -357,7 +366,7 @@ flowchart TD
 | 이름 | AAS 형식 | 필수 바인딩 | 의미와 갱신 규칙 |
 |---|---|---|---|
 | `Pose` | xs:string | 예 | 실행된 목표 이름. 위치·자세 구조가 아닌 문자열 |
-| `Position` | xs:float | 예 | 그리퍼 개구 폭, m. 값이 없으면 갱신하지 않음 |
+| `Position` | xs:float | 예 | 그리퍼 개구 폭, m(관절값이 아님. Panda는 손가락 관절값의 2배). 값이 없으면 갱신하지 않음 |
 | `Stalled` | xs:boolean | 예 | 서버가 보고한 정지·stall 상태. 실제 파지 성공으로 단정하지 않음 |
 | `ReachedGoal` | xs:boolean | 예 | 서버가 보고한 그리퍼 목표 도달 여부 |
 | `Effort` | xs:float | 아니오 | 서버의 effort 출력. 숫자가 있을 때만 갱신하며 단위·의미는 서버 규약을 따름 |
@@ -412,9 +421,66 @@ flowchart LR
 
 자동 개방·상승·복귀·재시도는 하지 않는다. `GoalsReached=true`는 위치 도달과 그리퍼 목표 보고의 조합이며 실제 물체 파지를 보장하지 않는다.
 
-## 9 PlaceProvider
+## 9 PickProvider
 
-### 9.1 실행 순서
+### 9.1 실행 순서와 유지 판정
+
+```mermaid
+flowchart LR
+    O[OPEN] --> A[APPROACH] --> D[DESCEND] --> G[GRASP]
+    G --> Q{ObjectName 지정?}
+    Q -->|예| M1[MEASURE_GRIP 상대 위치 측정]
+    M1 --> L1[LIFT 들어 올리기]
+    L1 --> M2[MEASURE_HELD 다시 측정하여 비교]
+    Q -->|아니요| L2[LIFT 들어 올리기]
+    M2 --> R[GoalsReached와 진단 결과 반환]
+    L2 --> R
+```
+
+클라이언트 `Pick`을 동기로 실행한다. `GraspProvider`의 네 단계 뒤에 들어 올리기(LIFT)를 더한다. `ObjectName`을 지정하면 파지 직후와 들어 올린 뒤의 물체·도구 상대 위치를 측정해 물체가 도구와 함께 움직였는지도 확인한다.
+
+두 측정 단계는 `ObjectName`이 있을 때만 실행한다. 없거나 빈 문자열이면 다섯 단계만 실행하며, 이때 `GoalsReached=true`는 다섯 단계의 목표를 확인했다는 뜻이다. 원하는 물체가 함께 들렸는지는 검사하지 않는다.
+
+여기서 상대 위치는 `MeasureObjectOffset`이 같은 일괄 조회 응답의 `ee_pose`와 `scene_objects`로 계산한 **물체 중심 - 도구 기준점**이다. 두 값을 각 측정의 도구 자세로 도구 좌표계에 옮겨 비교하므로, 물체가 그리퍼와 함께 올라오면 손목이 돌아도 거의 같고, 탁자에 남았거나 다른 물체를 물었으면 들어 올린 거리만큼 벌어진다. 그리퍼의 파지 판정에 장면 관측을 더해 원하는 물체가 함께 이동했는지 확인한다. 물체 형상은 쓰지 않으며, 놓기 직전까지 유지되는지나 미끄러진 원인은 판정하지 않는다.
+
+이 판정은 두 측정 사이에 도구 기준점이 실제로 `HoldTolerance`의 2배 이상 움직여야 성립한다. 덜 움직였으면(상승이 짧았거나 상승 뒤 관측이 갱신되지 않아 상승 전 값이 다시 왔으면) "유지 판정 불가"로 `GoalsReached=false`, `FailedStage=MEASURE_HELD`를 반환한다. `ObjectName`을 줬는데 `LiftPose`가 `GraspPose`에서 이 거리보다 가까우면 움직이기 전에 `IllegalArgumentException`으로 거부한다(기본값 기준 20mm).
+
+핀 삽입처럼 들어 올리기 전에 물체의 위치·방향을 확인해야 하는 작업은 `Pick` 대신 `Grasp`를 쓰고, 판정한 뒤에 따로 들어 올린다.
+
+### 9.2 입력 인자
+
+| 이름 | AAS 형식 | 필수 | 생략 시 | 의미와 범위 |
+|---|---|---|---|---|
+| `ApproachPose`, `GraspPose` | Pose SMC | 예 | 없음 | `GraspProvider`와 같음 |
+| `LiftPose` | Pose SMC | 아니오 | `ApproachPose` | 들어 올릴 자세. 모델에 선언하면 호출자가 모든 성분을 채워야 함 |
+| `ApproachVelocityScaling` / `DescentVelocityScaling` / `LiftVelocityScaling` | xs:float | 아니오 | 각 0.2 | 단계별 속도 배율, 유한한 `(0, 1]` |
+| `Tolerance`, `SettleTimeout`, `TimeoutSec` | `GraspProvider`와 같음 | 아니오 | `GraspProvider`와 같음 | 세 이동에 함께 적용 |
+| `OpenTarget` / `GraspTarget` | xs:string | 아니오 | `open` / `grasp` | 그리퍼 목표 이름 |
+| `ObjectName` | xs:string | 아니오 | 측정 안 함 | 상대 위치를 측정할 `scene_objects` 물체 이름 |
+| `TcpReference` | xs:string | 아니오 | `AS_REPORTED` | 측정의 도구 기준점. 펑션베이는 `AS_REPORTED`(grasp_center), Isaac Panda Hand는 `PANDA_HAND_TCP` |
+| `HoldTolerance` | xs:double | 아니오 | 0.01m | 들기 전후 상대 위치 차이(도구 좌표계)의 허용값. 유한한 양수. 이 값의 2배 이상 들어 올려야 함 |
+
+`AASOperationClient`는 모델에 선언된 입력 변수를 모두 보내므로, `LiftPose`를 기본값 없이 선언하면 빈 자세가 전달되어 거부된다. 접근 자세로 들어 올리면 충분한 경우에는 `LiftPose`를 모델에 넣지 않는다.
+
+### 9.3 출력 인자와 실패 처리
+
+| 이름 | AAS 형식 | 필수 바인딩 | 의미 |
+|---|---|---|---|
+| `GoalsReached` | xs:boolean | 예 | 모든 단계의 목표와 (측정했다면) 유지 판정을 확인했는지 |
+| `GraspAttempted` | xs:boolean | 예 | GRASP 단계 실행에 진입했는지 |
+| `FailedStage` | xs:string | 예 | `OPEN`, `APPROACH`, `DESCEND`, `GRASP`, `MEASURE_GRIP`, `LIFT`, `MEASURE_HELD`. 성공하면 빈 문자열 |
+| `FailureReason` | xs:string | 예 | 목표 미확인 사유. 성공하면 빈 문자열 |
+| `HoldDriftM` | xs:double | 아니오 | 들기 전후 상대 위치를 도구 좌표계에서 비교한 차이의 크기, m |
+| `HeldOffset` | SMC `x`/`y`/`z` xs:double | 아니오 | 들어 올린 뒤의 물체·도구 상대 위치(기준 좌표계). 놓기 자세 계산에 쓴다 |
+| `Objects` | 물체 목록 SMC | 아니오 | 들어 올린 뒤 측정에 사용한 장면의 물체 목록 |
+
+세 선택 출력은 두 측정을 모두 마쳤을 때만 갱신한다. 유지 판정에 실패한 경우(`FailedStage=MEASURE_HELD`)에도 갱신하므로 워크플로가 차이 크기를 볼 수 있다. 측정 전에 멈췄거나 `ObjectName`이 없으면 이전 값이 남는다. `Objects`는 장면에 AAS idShort로 쓸 수 없는 이름(`another-box` 등)이 있어 변환할 수 없으면 경고 로그만 남기고 이전 값을 둔다. 로봇이 이미 물체를 들어 올린 뒤 선택 출력 하나 때문에 연산 전체를 실패시키지 않기 위해서다. `WaitUntilObjectStillProvider`·`AlignHeldObjectProvider`의 `Objects`도 같은 규칙을 따른다.
+
+결과 처리 규칙은 `GraspProvider`와 같다. 단계 목표 미확인, 원격 `FAILED`·`CANCELLED`, 유지 판정 실패는 `GoalsReached=false`로 정상 반환하고, 접수 거부·통신 오류·인터럽트는 예외로 전달하며 이때 출력은 반환되지 않는다. 유지 판정에 실패해도 그리퍼를 닫은 채 들어 올린 자세에서 멈추며, 자동 개방·복귀·재시도는 하지 않는다. 측정 단계는 각각 최대 5초 동안 유효한 표본을 기다리며, 이 시간은 `TimeoutSec`와 별개다.
+
+## 10 PlaceProvider
+
+### 10.1 실행 순서
 
 ```mermaid
 flowchart LR
@@ -427,7 +493,7 @@ flowchart LR
 
 도달 허용 오차는 충돌을 막는 이동 제한이 아니다. 기본 5mm 허용 오차만으로 작은 접촉 여유를 보장할 수 없다. peg 삽입처럼 개방 전에 착석 확인이 필요한 작업은 이동·관측·개방을 별도 태스크로 구성한다.
 
-### 9.2 입력 인자
+### 10.2 입력 인자
 
 | 이름 | AAS 형식 | 필수 | 생략 시 | 의미와 범위 |
 |---|---|---|---|---|
@@ -444,7 +510,7 @@ flowchart LR
 
 `RetreatPose`를 전달하면서 내부 좌표를 비워 두면 입력 오류다. 후퇴 자세와 속도를 포함해 전체 입력을 첫 이동 전에 검사한다. 시간 제한과 정착 조건은 Grasp와 같은 방식으로 적용한다.
 
-### 9.3 출력 인자와 실패 처리
+### 10.3 출력 인자와 실패 처리
 
 | 이름 | AAS 형식 | 필수 바인딩 | 의미 |
 |---|---|---|---|
@@ -457,15 +523,15 @@ flowchart LR
 
 Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached=false` 정상 결과이며, 접수 거부·통신 오류·대기 시간 초과·인터럽트는 예외다. 자동 재파지·복귀·재시도는 하지 않는다. 개방 후 중단되면 후퇴하지 않은 상태일 수 있으며, 정상 결과라도 물체의 실제 분리·안착은 별도 관측이 필요하다.
 
-## 10 ResetSceneProvider
+## 11 ResetSceneProvider
 
-### 10.1 기본 동작
+### 11.1 기본 동작
 
 클라이언트 `ResetScene`으로 `reset_scene`을 실행해 scene을 레시피대로 배치한다. 서버의 `reset_scene.backend.scenes`에 레시피가 정의되어 있어야 한다.
 
-원격 완료 후에는 배치 형식과 `applied_count`를 확인한다. 적용된 물체 수와 결과 배열 크기가 맞지 않는 등 적용을 확인할 수 없으면 실패한다. 적용을 확인한 뒤 `WaitForFreshVariable`로 `scene_objects`의 기준 표본 이후 갱신 2회를 기다린다. 관측 상한은 5초, 조회 간격은 100ms로 고정되어 있으며 공개 입력으로 바꿀 수 없다.
+원격 완료 후에는 배치 형식과 `applied_count`를 확인한다. 적용된 물체 수와 결과 배열 크기가 맞지 않는 등 적용을 확인할 수 없으면 실패한다. 적용을 확인한 뒤 `WaitForFreshVariable`로 `scene_objects`의 기준 표본 이후 갱신 2회를 기다린다. 관측 상한은 5초, 조회 간격은 100ms로 고정되어 있으며 공개 입력으로 바꿀 수 없다. 갱신으로 세는 응답은 품질 `OK`, null이 아닌 `value`, 유효한 시각(`received_at` 우선, 없으면 `stamp`)을 갖춰야 하며, 시각이 없거나 `STALE`이거나 시각이 역행하는 응답은 세지 않는다. 관측 상한은 진행 중인 HTTP 요청을 즉시 끊지 않으므로 전체 호출 시간이 더 길어질 수 있다.
 
-### 10.2 입력 인자
+### 11.2 입력 인자
 
 | 이름 | AAS 형식 | 필수 | 생략 시 | 의미 |
 |---|---|---|---|---|
@@ -474,7 +540,7 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 현재 rdfp_ws 서버는 seed 생략 시 0을 사용한다. 무작위 레시피도 동일한 seed이면 같은 배치를 만들므로, 매번 다른 배치가 필요하면 호출자가 seed를 바꿔야 한다. 현재 서버 구성은 arm과 scene 자원을 함께 점유하므로 팔 이동 중에는 409 `RESOURCE_BUSY`로 거부될 수 있다.
 
-### 10.3 출력 인자와 관측 실패
+### 11.3 출력 인자와 관측 실패
 
 | 이름 | AAS 형식 | 필수 바인딩 | 의미 |
 |---|---|---|---|
@@ -488,9 +554,9 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 새 발행을 확인해도 물리적 정착까지 증명하지는 않는다. 실제 배치는 `GetSceneObjects`, 물체 정착은 `WaitUntilObjectStill`로 구분해서 확인한다.
 
-## 11 GetSceneObjectsProvider
+## 12 GetSceneObjectsProvider
 
-### 11.1 기본 동작과 재조회
+### 12.1 기본 동작과 재조회
 
 `RobotTwinClient.readRaw("scene_objects")`로 품질을 포함한 상태 응답을 조회한다. `quality=OK`이면 물체 맵을 AAS `Objects`로 변환한다. 이미 OK인 표본의 새 발행을 추가로 기다리지는 않는다.
 
@@ -504,7 +570,7 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 10초는 **추가 요청을 시작할 수 있는 기간**이다. 남은 예산이 재조회 간격보다 짧으면 기다리지 않고 바로 실패한다. 이미 시작한 요청의 OK 응답은 예산 이후 도착해도 사용하므로 전체 호출 시간이 10초를 넘을 수 있다. 재조회 후 회복하면 조회 횟수와 경과 시간을 INFO로 남긴다.
 
-### 11.2 입력과 출력
+### 12.2 입력과 출력
 
 입력 인자는 없다. 재조회 예산·간격은 구현 상수이며 AAS 입력이 아니다.
 
@@ -514,9 +580,9 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 품질 검사나 물체 변환에 실패하면 출력을 반환하지 않는다. 관측값은 물체 중심 기준이며 로봇 팔 명령 좌표로 자동 변환하지 않는다. 리셋 직후에 OK 응답을 얻었더라도 그것이 반드시 새 배치의 관측이라는 보장은 없다.
 
-## 12 WaitUntilObjectStillProvider
+## 13 WaitUntilObjectStillProvider
 
-### 12.1 정착 판정
+### 13.1 정착 판정
 
 로봇 명령을 보내지 않고 `scene_objects` 안의 한 물체를 관측한다. 고정 시간 대기와 scene 조회를 조합하는 대신, 물체 움직임이 충분히 작아졌는지 확인할 때 사용한다.
 
@@ -524,7 +590,7 @@ Grasp와 마찬가지로 목표 미확인·하위 원격 실패는 `GoalsReached
 
 STALE·잘못된 표본, 시각 역행, frame 변경, 허용 범위를 넘는 움직임 등은 정숙 구간을 다시 시작하게 한다. 관측 상한 뒤 도착한 표본으로 정착 성공을 판정하지 않는다. 이는 늦게 도착한 OK 응답도 사용하는 `GetSceneObjects`의 정책과 다르다.
 
-### 12.2 입력 인자
+### 13.2 입력 인자
 
 | 이름 | AAS 형식 | 필수 | 생략 시 | 의미와 범위 |
 |---|---|---|---|---|
@@ -538,7 +604,7 @@ STALE·잘못된 표본, 시각 역행, frame 변경, 허용 범위를 넘는 �
 
 위치 허용값은 물체 중심 기준이다. 긴 물체의 끝점 정밀도가 필요하면 회전 허용값도 줄여야 한다. 작은 회전에서 끝점 변위는 대략 `중심에서 끝점까지 거리 × 회전각(rad)`다. 정착 판정은 관측 구간의 움직임에 대한 판단이며 목표 위치 도달·파지·삽입 성공을 보장하지 않는다.
 
-### 12.3 출력 인자와 결과 해석
+### 13.3 출력 인자와 결과 해석
 
 | 이름 | AAS 형식 | 필수 바인딩 | 의미 |
 |---|---|---|---|
@@ -557,9 +623,64 @@ TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어�
 
 통신 오류·인터럽트는 예외이며 출력이 반환되지 않는다. 입력 오류는 통신 전에 예외로 처리한다. 반면 `Objects` 변환에 실패하면(예: AAS idShort로 쓸 수 없는 다른 물체 이름) 경고 로그만 남기고 `Objects`는 기존 값으로 둔 채 `Settled`·`Outcome`·`Diagnostics`는 정상 반영해 반환한다. 즉 대상 물체의 pose가 유효해도 다른 물체 때문에 `Objects`만 갱신되지 않을 수 있다. 좌표가 필요하지 않다면 선택 출력 `Objects`를 생략할 수 있다.
 
-## 13 연산 선택과 워크플로 구성
+## 14 AlignHeldObjectProvider
 
-### 13.1 목적별 선택
+### 14.1 동작과 정렬 판정
+
+클라이언트 `AlignHeldObject`로 쥔 원기둥(peg)의 **아래쪽 끝면 중심**을 입구 위로 맞춘다(펑션베이 peg 삽입용). 원기둥이 기울어지면 중심과 바닥점의 수평 위치가 달라지므로 바닥점을 기준으로 보정한다. 장면 관측과 보정 이동을 반복하는 정렬 작업이며, 하강·삽입·안착 확인은 포함하지 않는다.
+
+```mermaid
+flowchart LR
+    S[SETTLE 정착 대기<br/>첫 회차만] --> M[MEASURE 물체·ee_pose 측정]
+    M --> C[CORRECT 입구-바닥점만큼 보정 이동]
+    C --> V[VERIFY 정착 확인·오차 측정]
+    V --> Q{오차 판정}
+    Q -->|허용 반경 미만| OK[ALIGNED]
+    Q -->|직전보다 줄지 않음| NI[NOT_IMPROVING]
+    Q -->|최대 회차 도달| MAX[MAX_PASSES]
+    Q -->|추가 보정 가능| M
+```
+
+위 그림은 단계 목표를 확인했을 때의 흐름이다. 정착·측정·보정 이동 중 목표를 확인하지 못하면 다음 단계로 진행하지 않고 `STEP_FAILED`를 반환한다.
+
+반복 이동 중 물체의 파지 자세가 달라질 수 있으므로, 오차가 줄지 않으면 보정을 중단한다. 성공 여부는 마지막으로 관측한 오차로 판정하며, 이전 회차의 더 작은 오차를 사용하지 않는다. 정착을 확인하지 못한 관측값으로 다음 목표를 계산하지 않는다. 이동 명령의 기준점과 `ee_pose`가 같은 점이어야 한다. 현재 연산은 펑션베이의 `grasp_center`를 전제로 하며, 다른 도구 기준점에 대한 변환은 수행하지 않는다.
+
+### 14.2 입력 인자
+
+| 이름 | AAS 형식 | 필수 | 생략 시 | 의미와 범위 |
+|---|---|---|---|---|
+| `ObjectName` | xs:string | 예 | 없음 | 쥔 원기둥 이름(`type=cylinder`) |
+| `Entry` | SMC `x`/`y`/`z` | 예 | 없음 | 바닥점을 맞출 입구 위치(로봇 기준 좌표계). 모든 성분에 유한한 숫자가 필요하며 정렬 계산에는 x, y만 사용 |
+| `Clearance` | xs:double | 예 | 없음 | 입구 반경 여유, m |
+| `AcceptRatio` | xs:double | 아니오 | 0.4 | 허용 반경 = `Clearance × AcceptRatio` |
+| `TravelZ` | xs:double | 예 | 없음 | 보정 이동의 도구 기준점 높이, m |
+| `TargetYawDeg` | xs:double | 아니오 | -90 | 보정 자세: 아래를 보는 자세를 z축으로 돌린 각(도). 절대 자세로 고정 |
+| `MaxPasses` | xs:int | 아니오 | 3 | 최대 보정 회차 |
+| `VelocityScaling` | xs:float | 아니오 | 0.15 | 보정 이동의 속도 배율 |
+| `Tolerance` | xs:double | 아니오 | 0.005m | 보정 이동의 위치 허용 오차 |
+| `SettleTimeout` | xs:double | 아니오 | 15초 | 보정 이동의 정착 대기 상한 |
+| `StillTimeout` | xs:double | 아니오 | 10초 | 물체 정착 관측 상한. 상태 발행이 중단되는 시간도 고려하여 설정 |
+| `TimeoutSec` | xs:int | 아니오 | 120초 | 보정 이동의 결과 대기 상한 |
+
+`Entry`의 각 성분은 Property이며, 구현은 값 문자열을 `double`로 해석한다. 모델에는 `xs:double`로 정의하는 것을 권장하지만 현재 코드는 각 성분의 XSD 타입까지 검사하지는 않는다.
+
+### 14.3 출력 인자와 결과 해석
+
+| 이름 | AAS 형식 | 필수 바인딩 | 의미 |
+|---|---|---|---|
+| `Aligned` | xs:boolean | 예 | **마지막으로 잰 실제 오차**가 허용 반경 미만인지 |
+| `StopReason` | xs:string | 예 | `ALIGNED`, `NOT_IMPROVING`(직전보다 줄지 않음), `MAX_PASSES`, `STEP_FAILED`(정착·측정 미확인 또는 보정 이동 미도달) |
+| `Passes` | xs:int | 예 | 오차를 잰 회차 수 |
+| `ErrorM` | xs:double | 아니오 | 마지막으로 잰 바닥점-입구 수평 거리, m |
+| `Target` | Pose SMC | 아니오 | 마지막 보정 목표. 하강 자세의 x, y로 쓴다 |
+| `Objects` | 물체 목록 SMC | 아니오 | 마지막 정착 관측에 포함된 장면의 물체(구조는 3.4절) |
+| `FailedStage` / `FailureReason` | xs:string | 아니오 | 정렬하지 못한 단계와 이유 |
+
+정렬 실패는 예외가 아니라 `Aligned=false`로 정상 반환하므로 워크플로는 반드시 `Aligned`로 하강 여부를 정한다. 접수 거부·통신 오류와 인터럽트는 예외로 전달하며 이때 출력은 반환되지 않는다.
+
+## 15 연산 선택과 워크플로 구성
+
+### 15.1 목적별 선택
 
 | 목적 | 연산 | 다음 단계로 넘어가기 전에 확인할 사항 |
 |---|---|---|
@@ -574,7 +695,7 @@ TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어�
 | 현재 scene 조회 | GetSceneObjects | 반환한 값은 조회 시점의 상태이며 정착 판정이 아님 |
 | 특정 물체의 정착 확인 | WaitUntilObjectStill | `Settled`, `Outcome`, 필요하면 `Diagnostics` |
 
-### 13.2 실패 처리 비교
+### 15.2 실패 처리 비교
 
 | 연산 | 목표·관측 미확인 | 원격 FAILED/CANCELLED | 통신 오류·대기 시간 초과·인터럽트 |
 |---|---|---|---|
@@ -589,7 +710,7 @@ TIMEOUT과 NO_VALID_SAMPLE은 예외가 아닌 정상 결과다. TIMEOUT이어�
 
 자동 복구에 필요한 진단을 읽어야 하는 워크플로에서는 정상 결과의 false와 예외를 다른 경로로 처리해야 한다. 현재 예외 경로에는 호출별 진단 출력 조회 기능이 없으며, 로그에 남은 시도 여부를 AAS 출력처럼 직접 읽을 수는 없다.
 
-### 13.3 파지와 놓기의 연결 예
+### 15.3 파지와 놓기의 연결 예
 
 ```mermaid
 flowchart TD
@@ -608,9 +729,9 @@ flowchart TD
     WC -- false --> D[Outcome과 Diagnostics 확인]
 ```
 
-위 그림은 정상 반환 결과의 분기를 보여 준다. 각 호출에서 예외가 발생하면 별도의 오류 경로로 빠져야 한다. `Grasp`에는 상승이 없고, `Place`에는 물체 안착을 기다리는 단계가 없으므로 필요한 이동·관측을 워크플로에서 연결한다. 상승과 유지 확인까지 한 번에 하려면 `Grasp` 대신 `Pick`을 쓸 수 있다([assetconnection-guide](assetconnection-guide.md)). peg 삽입처럼 들기 전에 판정해야 하는 작업이라면 `Grasp` 뒤에 별도로 들어 올린다.
+위 그림은 정상 반환 결과의 분기를 보여 준다. 각 호출에서 예외가 발생하면 별도의 오류 경로로 빠져야 한다. `Grasp`에는 상승이 없고, `Place`에는 물체 안착을 기다리는 단계가 없으므로 필요한 이동·관측을 워크플로에서 연결한다. 상승과 유지 확인까지 한 번에 하려면 `Grasp` 대신 `Pick`을 쓸 수 있다([9절](#9-pickprovider)). peg 삽입처럼 들기 전에 판정해야 하는 작업이라면 `Grasp` 뒤에 별도로 들어 올린다.
 
-## 14 새 Provider를 추가할 때
+## 16 새 Provider를 추가할 때
 
 `RobotTwinOperationProvider`를 상속하고, `ServiceContext`, Operation `Reference`, `JavaOperationProviderConfig`를 받는 공개 생성자를 제공한다. 생성자에서 `createRobotTwinClient()`로 클라이언트를 만들고 호출마다 재사용한다.
 

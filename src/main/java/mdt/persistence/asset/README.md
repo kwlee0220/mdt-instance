@@ -50,7 +50,7 @@ flowchart TD
 | `opcua` | `AbstractOpcUaAssetVariable`과 세 가지 구현 | OPC UA 노드 조회 및 재연결 |
 | `robot` | `RobotStateVariable` | RobotTwin 상태 변수 조회 |
 
-관련 코드: [AssertVariableBasedPersistence.java](../src/main/java/mdt/persistence/asset/AssertVariableBasedPersistence.java), [PersistenceStack.java](../src/main/java/mdt/persistence/PersistenceStack.java), [MDTInstanceMain.java](../src/main/java/mdt/MDTInstanceMain.java).
+관련 코드: [AssertVariableBasedPersistence.java](AssertVariableBasedPersistence.java), [PersistenceStack.java](../PersistenceStack.java), [MDTInstanceMain.java](../../MDTInstanceMain.java).
 
 ## AssetVariable의 역할과 사용 규칙
 
@@ -74,7 +74,7 @@ flowchart TD
 
 읽기·쓰기 가능 여부는 **외부 연동의 기능**을 뜻한다. 읽기 전용 HTTP 변수를 등록했다고 해서 AAS 요소의 갱신까지 금지되는 것은 아니다. 이 경우 외부 쓰기는 건너뛰고 기본 모델만 갱신한다. 이후 조회에서는 HTTP로 읽은 값이 다시 응답에 반영될 수 있다.
 
-관련 코드: [AssetVariable.java](../src/main/java/mdt/persistence/asset/AssetVariable.java).
+관련 코드: [AssetVariable.java](AssetVariable.java).
 
 ### 생성과 초기화
 
@@ -97,11 +97,11 @@ flowchart TD
 
 정상 종료에서는 등록된 모든 변수의 `close()`를 호출한 다음 하위 영속성 구현을 중지한다. `close()`에서 예외가 발생하면 경고를 남기고 다른 변수의 정리를 계속한다. 현재 MQTT 변수는 이 경로에서 공유 연결 사용권을 반납한다. OPC UA 변수는 기본 `close()`를 그대로 쓰므로 스택 종료와 OPC UA 연결 종료가 연결되어 있지 않다.
 
-관련 코드: [AbstractAssetVariable.java](../src/main/java/mdt/persistence/asset/AbstractAssetVariable.java), [MDTModelLookup.java](../src/main/java/mdt/persistence/MDTModelLookup.java).
+관련 코드: [AbstractAssetVariable.java](AbstractAssetVariable.java), [MDTModelLookup.java](../MDTModelLookup.java).
 
 ### element로 연결 위치 지정하기
 
-`element`는 인스턴스 내부에서 연결할 요소를 가리킨다. [ElementLocations.java](../src/main/java/mdt/ElementLocations.java)가 다음 형식을 해석한다.
+`element`는 인스턴스 내부에서 연결할 요소를 가리킨다. [ElementLocations.java](../../ElementLocations.java)가 다음 형식을 해석한다.
 
 | 형식 | 예 | 의미 |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ flowchart TD
 
 하위 요소는 `.`으로, List의 원소는 `[0]`처럼 인덱스로 지정한다. 외부 MDTExpression과 달리 인스턴스 ID는 넣지 않는다. 예를 들어 이 설정에서는 `param:machine01:Temperature` 대신 `param:Temperature`를 쓴다.
 
-`oparg`의 `kind`는 대문자 `INPUT` 또는 `OUTPUT`이다. 다만 현재 [MDTOperationArgumentLocation.java](../src/main/java/mdt/MDTOperationArgumentLocation.java)는 `argumentName`으로 요소를 고르지 않고 입출력 종류에 따라 경로를 정한다. 특정 이름의 인자를 연결하려면 실제 모델 경로를 확인해 일반 위치 표현식으로 지정한다.
+`oparg`의 `kind`는 대문자 `INPUT` 또는 `OUTPUT`이다. 다만 현재 [MDTOperationArgumentLocation.java](../../MDTOperationArgumentLocation.java)는 `argumentName`으로 요소를 고르지 않고 입출력 종류에 따라 경로를 정한다. 특정 이름의 인자를 연결하려면 실제 모델 경로를 확인해 일반 위치 표현식으로 지정한다.
 
 ## 조회와 갱신 요청 처리
 
@@ -206,7 +206,7 @@ sequenceDiagram
 
 여러 데이터소스와 기본 모델을 묶는 트랜잭션이나 실패 후 원상 복구 처리는 없다. 따라서 외부 쓰기가 끝났다는 사실과 요청 전체가 성공했다는 사실은 구분해야 한다. `insert`, 삭제 메서드, `deleteAll`은 외부 데이터소스의 생성·삭제와 연결하지 않고 하위 계층에 넘긴다.
 
-관련 코드: [AssertVariableBasedPersistence.java](../src/main/java/mdt/persistence/asset/AssertVariableBasedPersistence.java).
+관련 코드: [AssertVariableBasedPersistence.java](AssertVariableBasedPersistence.java).
 
 ## 설정 형식과 구현 선택
 
@@ -261,7 +261,7 @@ JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문�
 
 인라인 연결 객체에 지원하지 않는 필드가 있으면 JDBC(`jdbcConfig`)와 RobotTwin(`robotTwinConfig`)은 설정 로딩이 실패한다. 예를 들어 이전 버전의 `RobotTwinConfig`에 있던 `operations` 필드가 전역 `robotTwins` 항목이나 인라인 객체에 남아 있으면 읽지 못한다. 반면 MQTT는 해당 필드를 무시하고 경고만 남긴다. 인라인 `jdbcConfig`에는 `maxPoolSize`도 지정할 수 있다.
 
-관련 코드: [ConnectionConfigRef.java](../src/main/java/mdt/ConnectionConfigRef.java), [MDTGlobalConfigurations.java](../src/main/java/mdt/MDTGlobalConfigurations.java).
+관련 코드: [ConnectionConfigRef.java](../../ConnectionConfigRef.java), [MDTGlobalConfigurations.java](../../MDTGlobalConfigurations.java).
 
 ### 캐시 유효 기간
 
@@ -281,7 +281,7 @@ JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문�
 
 JDBC·HTTP·RobotTwin의 읽기에서는 외부 호출 직전에 기록한 시각을 갱신 시각으로 사용한다. 통신이 오래 걸리면 응답을 받은 직후라도 유효 기간이 이미 지났을 수 있다. 또한 값이 없어서 기존 값을 유지한 경우에도 예외 없이 읽기가 끝나면 갱신 시각이 바뀐다. 즉, 캐시가 유효하다는 사실만으로 원본 데이터가 최신임을 보장하지는 않는다.
 
-관련 코드: [AssetVariableConfigs.java](../src/main/java/mdt/persistence/asset/AssetVariableConfigs.java), [AbstractAssetVariable.java](../src/main/java/mdt/persistence/asset/AbstractAssetVariable.java).
+관련 코드: [AssetVariableConfigs.java](AssetVariableConfigs.java), [AbstractAssetVariable.java](AbstractAssetVariable.java).
 
 ## JDBC 연동
 
@@ -300,7 +300,7 @@ JDBC·HTTP·RobotTwin의 읽기에서는 외부 호출 직전에 기록한 시�
 
 JDBC 접속 정보는 `jdbcConfig`로 지정한다. 전역 설정 `jdbcs`의 항목 이름이나 접속 정보 객체를 쓸 수 있고, 생략하면 `default`를 사용한다([연결 설정 지정](#연결-설정-지정)).
 
-JDBC 변수는 DB 작업마다 연결을 새로 만들지 않고 연결 풀에서 얻는다. 풀은 utils의 [JdbcConnectionPools](../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 인스턴스(JVM) 단위로 관리하며, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스, 드라이버를 별도로 적재한 경우 그 ClassLoader·jar 파일)가 같으면 변수가 달라도 하나의 풀을 공유한다. 같은 DB를 쓰는 [시계열 조회](timeseries-persistence-guide.md)도 같은 풀을 사용한다. 풀의 동작은 다음과 같다.
+JDBC 변수는 DB 작업마다 연결을 새로 만들지 않고 연결 풀에서 얻는다. 풀은 utils의 [JdbcConnectionPools](../../../../../../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 인스턴스(JVM) 단위로 관리하며, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스, 드라이버를 별도로 적재한 경우 그 ClassLoader·jar 파일)가 같으면 변수가 달라도 하나의 풀을 공유한다. 같은 DB를 쓰는 [시계열 조회](../timeseries/README.md)도 같은 풀을 사용한다. 풀의 동작은 다음과 같다.
 
 | 항목 | 값 |
 |---|---|
@@ -369,7 +369,7 @@ sequenceDiagram
 
 다른 변수나 프로세스의 DB 쓰기까지 이 잠금으로 보호하지는 않는다. 다시 읽기와 저장은 별도의 트랜잭션이므로, 그 짧은 사이에 다른 프로세스가 같은 컬럼·행을 바꾸면 그 변경을 덮어쓸 수 있다.
 
-핵심 구현: [AbstractJdbcAssetVariable.java](../src/main/java/mdt/persistence/asset/jdbc/AbstractJdbcAssetVariable.java), [AbstractJdbcAssetVariableConfig.java](../src/main/java/mdt/persistence/asset/jdbc/AbstractJdbcAssetVariableConfig.java).
+핵심 구현: [AbstractJdbcAssetVariable.java](jdbc/AbstractJdbcAssetVariable.java), [AbstractJdbcAssetVariableConfig.java](jdbc/AbstractJdbcAssetVariableConfig.java).
 
 ### 단일 값 매핑
 
@@ -495,7 +495,7 @@ sequenceDiagram
 
 ### 값 변환
 
-컬럼과 요소 사이의 변환은 [JdbcColumnBinding.java](../src/main/java/mdt/persistence/asset/jdbc/JdbcColumnBinding.java)이 맡는다. 바인딩은 변수를 초기화할 때 매핑마다 하나씩 만들어지며, 대상 요소의 종류에 따라 변환 방식이 정해진다.
+컬럼과 요소 사이의 변환은 [JdbcColumnBinding.java](jdbc/JdbcColumnBinding.java)이 맡는다. 바인딩은 변수를 초기화할 때 매핑마다 하나씩 만들어지며, 대상 요소의 종류에 따라 변환 방식이 정해진다.
 
 | 대상 요소 | 바인딩 | 읽기 | 쓰기 | SQL `NULL` / 비우기(`onNoRecord: CLEAR`) |
 |---|---|---|---|---|
@@ -508,7 +508,7 @@ JSON은 타입 정보(`@type`)가 없는 값 형식이다. 예를 들어 `W`, `H
 
 컬럼은 이름이 아니라 위치로 읽는다. 대상 요소는 바인딩이 루트 요소(변수 버퍼, 저장할 값, List의 행 원소)에서 `subPath`로 찾는다. 변환에 실패하면(예: 숫자 Property에 숫자가 아닌 값) 바인딩이 `subPath`, 컬럼 번호·이름, 값을 담은 `AssetVariableException`을 던진다. 숫자 Property는 드라이버가 돌려준 어떤 숫자 객체든 받는다. 예를 들어 `NUMERIC` 컬럼이나 `avg()` 결과의 `BigDecimal`도 `xs:int`·`xs:double` 등으로 변환된다. 정수 타입(`xs:int`, `xs:long`, `xs:short`)으로 바꿀 때 소수 부분이 있으면(`12.75`) 변환에 실패한다. `12.00`처럼 소수 부분이 0이면 통과한다. 따라서 `avg()` 같은 결과를 정수 Property에 넣으려면 SQL에서 `round()`나 형 변환으로 정수로 만든다. 범위를 넘는 값은 검사하지 않는다. 정밀도를 그대로 유지하려면 Property를 `xs:decimal`로 정의한다.
 
-`opcua:simple` 변수가 읽은 값은 [ElementValueSetter.java](../src/main/java/mdt/persistence/asset/ElementValueSetter.java)가 JDBC와 같은 규칙(Property는 `DataType`, 그 밖은 MDT 값 JSON)으로 반영한다. `opcua:list`·`opcua:collection`은 값을 `Double`로 반영하고, HTTP와 RobotTwin은 각 클래스가 JSON 값을 직접 변환한다.
+`opcua:simple` 변수가 읽은 값은 [ElementValueSetter.java](ElementValueSetter.java)가 JDBC와 같은 규칙(Property는 `DataType`, 그 밖은 MDT 값 JSON)으로 반영한다. `opcua:list`·`opcua:collection`은 값을 `Double`로 반영하고, HTTP와 RobotTwin은 각 클래스가 JSON 값을 직접 변환한다.
 
 ## HTTP 연동
 
@@ -567,7 +567,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 다만 RobotTwin 변수
 
 현재 설정 파서는 `url`을 사용한다. `AASHubConfig` 레코드와 관련 상수가 있지만 `aasHubName` 또는 `baseUrl`만으로 URL을 조립하는 경로는 연결되어 있지 않다.
 
-관련 코드: [HttpAssetVariable.java](../src/main/java/mdt/persistence/asset/http/HttpAssetVariable.java), [HttpAssetVariableConfig.java](../src/main/java/mdt/persistence/asset/http/HttpAssetVariableConfig.java).
+관련 코드: [HttpAssetVariable.java](http/HttpAssetVariable.java), [HttpAssetVariableConfig.java](http/HttpAssetVariableConfig.java).
 
 ## MQTT 연동
 
@@ -614,7 +614,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 다만 RobotTwin 변수
 
 Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 된다. 영속성 계층이 기본 모델에 저장된 전체 요소를 복사하고 요청 부분을 바꾼 뒤 전체 값을 발행한다. 이때 서로 다른 하위 요소의 갱신이 동시에 진행되면, 각 요청이 만든 전체 값에 다른 요청의 변경이 빠질 수 있다. 예를 들어 온도와 압력을 따로 갱신하면 각 메시지에 이전 압력이나 이전 온도가 포함될 수 있다.
 
-관련 코드: [MqttAssetVariable.java](../src/main/java/mdt/persistence/asset/mqtt/MqttAssetVariable.java), [MqttServicePool.java](../src/main/java/mdt/MqttServicePool.java).
+관련 코드: [MqttAssetVariable.java](mqtt/MqttAssetVariable.java), [MqttServicePool.java](../../MqttServicePool.java).
 
 ### 동시 요청과 잠금 범위
 
@@ -631,7 +631,7 @@ Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 �
 
 JDBC의 변수별 `Guard`와 `ConcurrentPersistence`의 요청 잠금은 각각 보호하는 대상이 다르다. MQTT 변수의 발행에는 잠금이 없다(`MqttService`의 잠금은 구독 목록과 broker 구독·해제만 보호한다). 한 곳에 잠금이 있다는 이유로 전체 저장 과정까지 하나의 작업으로 실행된다고 해석해서는 안 된다.
 
-관련 코드: [ConcurrentPersistence.java](../src/main/java/mdt/persistence/ConcurrentPersistence.java), [MDTModelLookup.java](../src/main/java/mdt/persistence/MDTModelLookup.java).
+관련 코드: [ConcurrentPersistence.java](../ConcurrentPersistence.java), [MDTModelLookup.java](../MDTModelLookup.java).
 
 ## OPC UA 연동
 
@@ -666,7 +666,7 @@ MQTT 변수와 달리 OPC UA 연결은 공유하지 않는다. 변수마다 생�
 
 `OpcUaServerReconnect`는 실제 연결 재시도를 수행한다. `PandaRobotOpcUaReader`는 별도의 로봇 조회 보조 코드이며 `AssetVariableConfigs`에 등록되는 변수 구현은 아니다.
 
-관련 코드: [AbstractOpcUaAssetVariable.java](../src/main/java/mdt/persistence/asset/opcua/AbstractOpcUaAssetVariable.java), [AutoReconnectingOpcUaClient.java](../src/main/java/mdt/persistence/asset/opcua/AutoReconnectingOpcUaClient.java).
+관련 코드: [AbstractOpcUaAssetVariable.java](opcua/AbstractOpcUaAssetVariable.java), [AutoReconnectingOpcUaClient.java](opcua/AutoReconnectingOpcUaClient.java).
 
 ## RobotTwin 상태 연동
 
@@ -758,7 +758,7 @@ Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range
 
 모든 매핑을 캐시의 복사본에 적용하고, 처리가 끝나면 캐시를 교체한다. 따라서 중간에 변환 예외가 나면 일부 필드만 바뀐 캐시가 남지 않는다. 다만 누락되거나 `null`인 필드는 의도적으로 이전 값을 유지하므로, 정상 처리된 결과에도 이전 값과 새 값이 함께 있을 수 있다. JDBC·HTTP와 마찬가지로 캐시 갱신과 반환용 복사는 `Guard` 잠금 안에서 수행한다.
 
-관련 코드: [RobotStateVariable.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariable.java), [RobotStateVariableConfig.java](../src/main/java/mdt/persistence/asset/robot/RobotStateVariableConfig.java), [RobotTwinVariable.java](../src/main/java/mdt/persistence/asset/robot/RobotTwinVariable.java), [RobotTwinConfig.java](../src/main/java/mdt/RobotTwinConfig.java).
+관련 코드: [RobotStateVariable.java](robot/RobotStateVariable.java), [RobotStateVariableConfig.java](robot/RobotStateVariableConfig.java), [RobotTwinVariable.java](robot/RobotTwinVariable.java), [RobotTwinConfig.java](../../RobotTwinConfig.java).
 
 ## 새 데이터소스 구현 방법
 

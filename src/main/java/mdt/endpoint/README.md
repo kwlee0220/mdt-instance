@@ -13,7 +13,7 @@ MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 �
 - Companion(5절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
 - Audit: 기본 로더에 등록 경로가 없어 쓰이지 않던 `mdt.endpoint.audit`(주기적 JDBC 기록) 패키지를 삭제하고 관련 절을 뺐다
 - ROS2: `serviceEndpoints.ros2`(rosbridge `joint_states` 수신) 엔드포인트를 삭제하고 관련 절을 뺐다. 이를 쓰던 예전 모델(`panda_org`)도
-  함께 정리했으며, 로봇 관절 상태는 RobotTwin 자산 변수로 받는다([asset-persistence-guide](asset-persistence-guide.md))
+  함께 정리했으며, 로봇 관절 상태는 RobotTwin 자산 변수로 받는다([mdt.persistence.asset](../persistence/asset/README.md))
 - RobotTwin: 조회 루프가 꺼져 있어 아무 일도 하지 않던 `serviceEndpoints.robotTwin` 엔드포인트를 삭제하고 관련 절을 뺐다.
   로봇 상태는 RobotTwin 자산 변수(`mdt:asset:robot-twin:state`)로 읽는다
 
@@ -32,8 +32,8 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | `mqtt` / `MqttEndpoint` | MQTT 메시지 → AAS 요소 값 갱신 | `serviceEndpoints.mqtt` |
 | `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
 
-연산 호출은 [mdt.assetconnection](assetconnection-guide.md), 저장 계층의 값 접근은
-[mdt.persistence.asset](asset-persistence-guide.md)에서 다룬다.
+연산 호출은 [mdt.assetconnection](../assetconnection/README.md), 저장 계층의 값 접근은
+[mdt.persistence.asset](../persistence/asset/README.md)에서 다룬다.
 이 패키지의 MQTT 엔드포인트는 수신 이벤트에 따라 FA³ST에 값 변경 요청을 전달하는 역할이다.
 
 ## 2. 등록과 공통 생명주기
@@ -69,9 +69,9 @@ HTTP 엔드포인트의 포트는 `instanceEndpoint`에서 추출하며, 인증�
 완료되었다고 판단할 수 없다. 또한 메시지 갱신은 `FaaastRuntime`을 통해 FA³ST 요청으로 실행되므로,
 실제 저장·외부 자산 쓰기 동작은 해당 인스턴스의 Persistence 구성에도 영향을 받는다.
 
-근거: [MDTInstanceMain](../src/main/java/mdt/MDTInstanceMain.java),
-[ServiceEndpointConfigs](../src/main/java/mdt/config/ServiceEndpointConfigs.java),
-[FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java).
+근거: [MDTInstanceMain](../MDTInstanceMain.java),
+[ServiceEndpointConfigs](../config/ServiceEndpointConfigs.java),
+[FaaastRuntime](../FaaastRuntime.java).
 
 ### 2.1 전역 연결 설정
 
@@ -98,7 +98,7 @@ MQTT 엔드포인트는 인스턴스 설정에서 연결 이름을 지정하고,
 MQTT 엔드포인트의 `mqttBrokerConfig`는 MQTT 자산 변수와 같은 규칙을 따른다. 문자열이면 전역 설정 이름으로,
 객체이면 broker 설정을 직접 적은 것으로 해석하고, 생략하면 `default`를 쓴다(4.2절).
 
-근거: [MDTGlobalConfigurations](../src/main/java/mdt/MDTGlobalConfigurations.java).
+근거: [MDTGlobalConfigurations](../MDTGlobalConfigurations.java).
 
 ### 2.2 AAS 요소 위치
 
@@ -122,9 +122,9 @@ MQTT 구독은 `ElementLocations.parseStringExpr()`로 대상 요소를 지정�
 OUTPUT도 같은 방식으로 처리하지만, 입력받은 `argumentName`은 경로 선택에 사용하지 않는다.
 개별 인자를 지정할 때는 실제 모델 경로와 이 제한을 확인해야 한다.
 
-근거: [ElementLocations](../src/main/java/mdt/ElementLocations.java),
-[DefaultElementLocation](../src/main/java/mdt/DefaultElementLocation.java),
-[MDTOperationArgumentLocation](../src/main/java/mdt/MDTOperationArgumentLocation.java).
+근거: [ElementLocations](../ElementLocations.java),
+[DefaultElementLocation](../DefaultElementLocation.java),
+[MDTOperationArgumentLocation](../MDTOperationArgumentLocation.java).
 
 ## 3. Manager 연결 관리
 
@@ -151,8 +151,8 @@ OUTPUT도 같은 방식으로 처리하지만, 입력받은 `argumentName`은 �
 설정 클래스에는 `enabled`가 있지만 기본 로더는 `true`로 생성한다.
 `serviceEndpoints`에 HealthMonitor 비활성화 필드는 없다.
 
-근거: [MDTManagerHealthMonitor](../src/main/java/mdt/endpoint/MDTManagerHealthMonitor.java),
-[MDTManagerHealthMonitorConfig](../src/main/java/mdt/endpoint/MDTManagerHealthMonitorConfig.java).
+근거: [MDTManagerHealthMonitor](MDTManagerHealthMonitor.java),
+[MDTManagerHealthMonitorConfig](MDTManagerHealthMonitorConfig.java).
 
 ### 3.2 EXTERNAL 인스턴스: Reconnector
 
@@ -189,8 +189,8 @@ https://localhost:19001
 기본 로더는 `enabled=true`로 생성한다. 설정 클래스를 직접 JSON으로 만들 경우에는 생성자의
 primitive `boolean enabled`에 의존하므로 활성 여부를 명시해야 한다.
 
-근거: [MDTManagerReconnector](../src/main/java/mdt/endpoint/reconnector/MDTManagerReconnector.java),
-[MDTManagerReconnectorConfig](../src/main/java/mdt/endpoint/reconnector/MDTManagerReconnectorConfig.java).
+근거: [MDTManagerReconnector](reconnector/MDTManagerReconnector.java),
+[MDTManagerReconnectorConfig](reconnector/MDTManagerReconnectorConfig.java).
 
 ## 4. MQTT 수신 엔드포인트
 
@@ -222,13 +222,13 @@ flowchart LR
 
 | 구성 요소 | 역할 |
 | --- | --- |
-| [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java) | FA³ST 엔드포인트. 시작할 때 구독을 검증·등록하고, 멈출 때 정리한다 |
-| [MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java) | broker 설정(이름 또는 인라인)과 구독 목록 |
-| [MqttElementSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttElementSubscriber.java) | 구독 설정 하나(토픽, 요소, 반영 옵션) |
-| [MqttSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttSubscriber.java) | 실제 구독자. payload 변환, 구독별 대기열, 반영과 실패 로그 |
+| [MqttEndpoint](mqtt/MqttEndpoint.java) | FA³ST 엔드포인트. 시작할 때 구독을 검증·등록하고, 멈출 때 정리한다 |
+| [MqttEndpointConfig](mqtt/MqttEndpointConfig.java) | broker 설정(이름 또는 인라인)과 구독 목록 |
+| [MqttElementSubscriber](mqtt/MqttElementSubscriber.java) | 구독 설정 하나(토픽, 요소, 반영 옵션) |
+| [MqttSubscriber](mqtt/MqttSubscriber.java) | 실제 구독자. payload 변환, 구독별 대기열, 반영과 실패 로그 |
 | `DeliveryMode`, `PayloadFormat`, `OverflowPolicy` | 반영 방식(`all`/`latest`), payload 형식(`json`/`text`), 포화 정책(`wait`/`drop`) |
-| [FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java), [ElementValueUpdater](../src/main/java/mdt/ElementValueUpdater.java) | 요소별 값 갱신기. 타입을 미리 조회하고 FA³ST 응답 상태로 실패를 알린다 |
-| [MqttServicePool](../src/main/java/mdt/MqttServicePool.java), [MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java) | broker 연결 공유, 토픽 구독 관리와 메시지 분배 |
+| [FaaastRuntime](../FaaastRuntime.java), [ElementValueUpdater](../ElementValueUpdater.java) | 요소별 값 갱신기. 타입을 미리 조회하고 FA³ST 응답 상태로 실패를 알린다 |
+| [MqttServicePool](../MqttServicePool.java), [MqttService](../../../../../../mdt-client/src/main/java/mdt/client/support/MqttService.java) | broker 연결 공유, 토픽 구독 관리와 메시지 분배 |
 
 ### 4.2 설정 방법
 
@@ -460,14 +460,14 @@ JVM이 끝나면 프로세스와 함께 연결이 정리된다.
 - 서비스의 RUNNING 상태나 시작 로그는 broker 연결 완료를 뜻하지 않는다. 연결 여부는 연결 로그로 확인한다.
 - 구독별 처리 상태(받은 수, 반영 수, 실패 수 등)를 조회하는 API는 없다. 로그로 확인한다.
 
-근거: [MqttEndpoint](../src/main/java/mdt/endpoint/mqtt/MqttEndpoint.java),
-[MqttSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttSubscriber.java),
-[MqttEndpointConfig](../src/main/java/mdt/endpoint/mqtt/MqttEndpointConfig.java),
-[MqttElementSubscriber](../src/main/java/mdt/endpoint/mqtt/MqttElementSubscriber.java),
-[FaaastRuntime](../src/main/java/mdt/FaaastRuntime.java),
-[MqttServicePool](../src/main/java/mdt/MqttServicePool.java),
-[MqttService](../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
-[MqttBrokerConfig](../../mdt-client/src/main/java/mdt/client/support/MqttBrokerConfig.java).
+근거: [MqttEndpoint](mqtt/MqttEndpoint.java),
+[MqttSubscriber](mqtt/MqttSubscriber.java),
+[MqttEndpointConfig](mqtt/MqttEndpointConfig.java),
+[MqttElementSubscriber](mqtt/MqttElementSubscriber.java),
+[FaaastRuntime](../FaaastRuntime.java),
+[MqttServicePool](../MqttServicePool.java),
+[MqttService](../../../../../../mdt-client/src/main/java/mdt/client/support/MqttService.java),
+[MqttBrokerConfig](../../../../../../mdt-client/src/main/java/mdt/client/support/MqttBrokerConfig.java).
 
 ## 5. Companion 외부 프로그램
 
@@ -801,16 +801,16 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 - 실행 시간 전체에 대한 제한은 없다(실행 timeout 없음).
 - `application.log`는 크기 제한과 순환이 없으므로 장기 운영 시 외부에서 정리해야 한다.
 
-근거: [ProgramCompanion](../src/main/java/mdt/endpoint/companion/ProgramCompanion.java),
-[ProgramCompanionConfig](../src/main/java/mdt/endpoint/companion/ProgramCompanionConfig.java),
-[CompanionConfig](../src/main/java/mdt/endpoint/companion/CompanionConfig.java),
-[ServiceEndpointConfigs](../src/main/java/mdt/config/ServiceEndpointConfigs.java),
-[MDTInstanceMain](../src/main/java/mdt/MDTInstanceMain.java),
-[ProgramServiceConfig](../../../common/utils/src/main/java/utils/async/command/ProgramServiceConfig.java),
-[ProgramService](../../../common/utils/src/main/java/utils/async/command/ProgramService.java),
-[CommandExecution](../../../common/utils/src/main/java/utils/async/command/CommandExecution.java),
-[ServiceShutdownHook](../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
-utils의 [async-command-guide.md](../../../common/utils/docs/async-command-guide.md).
+근거: [ProgramCompanion](companion/ProgramCompanion.java),
+[ProgramCompanionConfig](companion/ProgramCompanionConfig.java),
+[CompanionConfig](companion/CompanionConfig.java),
+[ServiceEndpointConfigs](../config/ServiceEndpointConfigs.java),
+[MDTInstanceMain](../MDTInstanceMain.java),
+[ProgramServiceConfig](../../../../../../../common/utils/src/main/java/utils/async/command/ProgramServiceConfig.java),
+[ProgramService](../../../../../../../common/utils/src/main/java/utils/async/command/ProgramService.java),
+[CommandExecution](../../../../../../../common/utils/src/main/java/utils/async/command/CommandExecution.java),
+[ServiceShutdownHook](../../../../../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
+utils의 [외부 명령 실행 가이드](../../../../../../../common/utils/src/main/java/utils/async/command/README.md).
 
 ## 6. 확장과 검증 지점
 

@@ -84,14 +84,14 @@ flowchart LR
 
 | 기능 | 설정 항목 | 패키지 | 자세한 문서 |
 | --- | --- | --- | --- |
-| 외부 데이터소스와 요소 값 연동 (JDBC, HTTP, MQTT, OPC UA, 로봇 트윈 상태) | `assetVariables` | `mdt.persistence.asset` | [asset-persistence-guide](docs/asset-persistence-guide.md) |
-| DB 테이블을 TimeSeries Submodel로 제공 | `timeSeriesSubmodels` | `mdt.persistence.timeseries` | [timeseries-persistence-guide](docs/timeseries-persistence-guide.md) |
-| AAS Operation 구현 연결 (Java, Program, Script, HTTP) | `operations` | `mdt.assetconnection` | [assetconnection-guide](docs/assetconnection-guide.md) |
-| 로봇 이동·그리퍼·장면 관측 연산 | `operations.javas` | `mdt.assetconnection.operation.robot` | [robot-twin-operation-guide](docs/robot-twin-operation-guide.md) |
-| MQTT 메시지로 요소 값 갱신 | `serviceEndpoints.mqtt` | `mdt.endpoint.mqtt` | [endpoint-guide §4](docs/endpoint-guide.md) |
-| 인스턴스와 함께 외부 프로그램 실행·재시작 | `serviceEndpoints.companion` | `mdt.endpoint.companion` | [endpoint-guide §5](docs/endpoint-guide.md) |
+| 외부 데이터소스와 요소 값 연동 (JDBC, HTTP, MQTT, OPC UA, 로봇 트윈 상태) | `assetVariables` | `mdt.persistence.asset` | [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md) |
+| DB 테이블을 TimeSeries Submodel로 제공 | `timeSeriesSubmodels` | `mdt.persistence.timeseries` | [mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md) |
+| AAS Operation 구현 연결 (Java, Program, Script, HTTP) | `operations` | `mdt.assetconnection` | [mdt.assetconnection](src/main/java/mdt/assetconnection/README.md) |
+| 로봇 이동·그리퍼·장면 관측 연산 | `operations.javas` | `mdt.assetconnection.operation.robot` | [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md) |
+| MQTT 메시지로 요소 값 갱신 | `serviceEndpoints.mqtt` | `mdt.endpoint.mqtt` | [mdt.endpoint §4](src/main/java/mdt/endpoint/README.md) |
+| 인스턴스와 함께 외부 프로그램 실행·재시작 | `serviceEndpoints.companion` | `mdt.endpoint.companion` | [mdt.endpoint §5](src/main/java/mdt/endpoint/README.md) |
 | 동시 요청 직렬화 | `persistenceStacks` | `mdt.persistence` | [7장](#7-영속성-스택) |
-| Manager 상태 확인·재등록 | 실행 방식에 따라 자동 등록 | `mdt.endpoint`, `mdt.endpoint.reconnector` | [endpoint-guide §3](docs/endpoint-guide.md) |
+| Manager 상태 확인·재등록 | 실행 방식에 따라 자동 등록 | `mdt.endpoint`, `mdt.endpoint.reconnector` | [mdt.endpoint §3](src/main/java/mdt/endpoint/README.md) |
 
 ## 3. 소스 구성
 
@@ -165,7 +165,7 @@ JAR 버전은 환경 변수 `MDT_BUILD_VERSION`에서 가져온다. 값이 없�
 | 시작 완료 알림 | 표준 출력에 `[***MARKER***] MDTInstance started: <endpoint>`를 출력하고, Manager는 이 줄을 보고 시작 완료를 판단한다 | 없음 |
 
 `jar` 방식에서는 Manager가 잠시 응답하지 않아도 인스턴스가 바로 종료되므로, Manager와 인스턴스를 같은 장비에서
-운영하는 경우에 적합하다. 자세한 동작은 [endpoint-guide §3](docs/endpoint-guide.md)을 참고한다.
+운영하는 경우에 적합하다. 자세한 동작은 [mdt.endpoint §3](src/main/java/mdt/endpoint/README.md)을 참고한다.
 
 ### 5.2 인스턴스 디렉터리
 
@@ -362,7 +362,7 @@ endpoint가 정해지면 HTTPS 서버는 **endpoint URL에 적힌 포트**로 �
 | `param:<파라미터 ID>` | MDT 파라미터 값 | `param:Temperature` |
 
 로봇 트윈 상태 연동과 로봇 연산을 함께 등록하는 예는
-[asset-persistence-guide](docs/asset-persistence-guide.md)와 [robot-twin-operation-guide](docs/robot-twin-operation-guide.md)에 있다.
+[mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md)와 [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md)에 있다.
 
 ### 6.5 전역 설정 파일
 
@@ -404,8 +404,8 @@ flowchart TD
 ```
 
 `persistenceStacks`에 여러 항목을 넣으면 배열의 첫 항목이 가장 바깥에 놓인다.
-각 계층이 요청을 어떻게 처리하는지는 [asset-persistence-guide](docs/asset-persistence-guide.md)와
-[timeseries-persistence-guide](docs/timeseries-persistence-guide.md)에서 설명한다.
+각 계층이 요청을 어떻게 처리하는지는 [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md)와
+[mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md)에서 설명한다.
 
 ## 8. 로그와 문제 진단
 
@@ -434,9 +434,9 @@ flowchart TD
 
 | 문서 | 다루는 내용 |
 | --- | --- |
-| [mdt.endpoint 패키지](docs/endpoint-guide.md) | Manager 연결 관리, MQTT 수신, 동반 프로그램의 설정·생명주기·확장 방법 |
-| [mdt.assetconnection 패키지](docs/assetconnection-guide.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
-| [로봇 트윈 연산 Provider](docs/robot-twin-operation-guide.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |
-| [mdt.persistence.asset 패키지](docs/asset-persistence-guide.md) | 자산 변수 계약과 JDBC·HTTP·MQTT·OPC UA·RobotTwin 연동 설정 |
-| [mdt.persistence.timeseries 패키지](docs/timeseries-persistence-guide.md) | 시계열 Submodel 모델 구조, 설정, 세그먼트와 레코드 조회 |
+| [mdt.endpoint 패키지](src/main/java/mdt/endpoint/README.md) | Manager 연결 관리, MQTT 수신, 동반 프로그램의 설정·생명주기·확장 방법 |
+| [mdt.assetconnection 패키지](src/main/java/mdt/assetconnection/README.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
+| [로봇 트윈 연산 Provider](src/main/java/mdt/assetconnection/operation/robot/README.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |
+| [mdt.persistence.asset 패키지](src/main/java/mdt/persistence/asset/README.md) | 자산 변수 계약과 JDBC·HTTP·MQTT·OPC UA·RobotTwin 연동 설정 |
+| [mdt.persistence.timeseries 패키지](src/main/java/mdt/persistence/timeseries/README.md) | 시계열 Submodel 모델 구조, 설정, 세그먼트와 레코드 조회 |
 | [mdt.ext.rck 패키지](src/main/java/mdt/ext/rck/README.md) | RCK 프레스 공정 시뮬레이터 연동 연산 |
