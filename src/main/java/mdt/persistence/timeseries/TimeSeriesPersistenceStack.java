@@ -117,7 +117,7 @@ public class TimeSeriesPersistenceStack extends PersistenceStack<TimeSeriesPersi
 		Page<Submodel> paged = getBasePersistence().findSubmodels(criteria, modifier, paging);
 		List<Submodel> newContent
 						= FStream.from(paged.getContent())
-						        .flatMapNullable(submodel -> {
+						        .mapNotNull(submodel -> {
 									TimeSeriesSubmodelConfig tsConfig = getTimeseriesSubmodelConfig(submodel.getId());
 									if ( tsConfig != null ) {
 										try {

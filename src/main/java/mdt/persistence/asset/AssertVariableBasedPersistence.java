@@ -87,7 +87,8 @@ public class AssertVariableBasedPersistence extends PersistenceStack<AssertVaria
 		}
 		m_assetVariables = FStream.from(created)
 						 			.mapToKeyValue(var -> KeyValue.of(var.getElementLocation().getSubmodelId(), var))
-						 			.toListMap();
+						 			.groupByKey()
+						 			.asMap();
 	}
 
 	@Override

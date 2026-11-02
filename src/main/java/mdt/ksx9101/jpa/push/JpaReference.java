@@ -50,7 +50,7 @@ public class JpaReference {
 		
 		ArrayList<JpaKey> keys = SubmodelUtils.parseIdShortPath(idShortPath)
 										.map(seg -> JpaKey.SUBMODEL_ELEMENT(seg))
-										.toList();
+										.toCollection(new ArrayList<>());
 		keys.add(0, JpaKey.SUBMODEL(submodelId));
 		ref.setKeys(keys);
 		
