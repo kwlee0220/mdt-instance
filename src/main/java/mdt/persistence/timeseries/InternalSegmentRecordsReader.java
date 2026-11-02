@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.google.common.collect.Iterables;
 
+import utils.KeyValue;
 import utils.stream.FStream;
 
 import mdt.aas.DataTypes;
@@ -24,7 +25,6 @@ import mdt.model.sm.ref.DefaultElementReference;
 import mdt.model.sm.ref.timeseries.TimeSeriesRange;
 import mdt.model.timeseries.DefaultRecord;
 import mdt.model.timeseries.Metadata;
-import mdt.model.timeseries.RecordMetadata.Field;
 
 /**
  *
@@ -60,7 +60,7 @@ public class InternalSegmentRecordsReader {
 	private SubmodelElementCollection project(SubmodelElementCollection records) throws IOException {
 		Map<String,Integer> fieldMap = FStream.from(m_tsMetadata.getRecord().getFieldAll())
 											.zipWithIndex()
-											.toKeyValueStream(idxed -> idxed.value().getName(), idxed -> idxed.index())
+											.mapToKeyValue(idxed -> KeyValue.of(idxed.value().getName(), idxed.index()))
 											.toMap(new LinkedHashMap<>());
 		List<Integer> colIdxList = FStream.from(m_columns)
 											.lookup(fieldMap, true)
