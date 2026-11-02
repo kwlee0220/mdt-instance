@@ -72,13 +72,14 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 
 	/**
 	 * 대상 SubmodelElement 내부의 idShort 경로와 로봇 트윈 변수 값 내부의 JSON Pointer 사이의 대응.
+	 * <p>
+	 * {@code pointer}가 JSON Pointer 문법에 맞지 않으면 생성자가 {@link IllegalArgumentException}을 던진다.
+	 * {@code ~} 뒤에는 {@code 0} 또는 {@code 1}만 올 수 있다(RFC 6901).
 	 *
 	 * @param subPath 대상 SubmodelElement 기준의 상대 idShort 경로.
 	 *                빈 문자열이면 대상 SubmodelElement 자신을 가리킨다.
 	 * @param pointer 로봇 트윈 변수 값({@code value}) 기준의 JSON Pointer.
 	 *                빈 문자열이면 변수 값 전체를 가리킨다.
-	 * @throws IllegalArgumentException	{@code pointer}가 JSON Pointer 문법에 맞지 않는 경우.
-	 * 									{@code ~} 뒤에는 {@code 0} 또는 {@code 1}만 올 수 있다(RFC 6901).
 	 */
 	public static record SubPathToJsonPointer(String subPath, String pointer) {
 		// Jackson의 JsonPointer.compile()은 '~2'나 끝의 '~'를 문자 그대로 받아들이므로 따로 막는다.

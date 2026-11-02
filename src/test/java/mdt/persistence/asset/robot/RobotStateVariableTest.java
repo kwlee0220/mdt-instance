@@ -209,6 +209,29 @@ public class RobotStateVariableTest {
 		assertEquals(huge, component((SubmodelElementCollection)variable.read(), "x"));
 	}
 
+	// 장치 값은 JSON 타입이 그대로 맞아야 한다(JsonScalars STRICT): 정수 속성에 3.0·"42"는 받지 않는다.
+	@Test
+	public void integerPropertiesRequireJsonIntegers() throws Exception {
+		RobotStateVariable variable = variable(config(server.url("/").toString()), DataTypeDefXsd.INT);
+		response = rawJson("{\"quality\":\"OK\",\"value\":{\"pose\":{\"position\":{\"x\":3,\"y\":0,\"z\":1}}}}");
+		assertEquals("3", component((SubmodelElementCollection)variable.read(), "x"));
+		for ( String x: new String[] { "3.0", "\"42\"", "3000000000" } ) {
+			response = rawJson("{\"quality\":\"OK\",\"value\":{\"pose\":{\"position\":{\"x\":" + x + ",\"y\":0,\"z\":1}}}}");
+			AssetVariableException e = assertThrows(x, AssetVariableException.class, variable::read);
+			assertTrue(e.getMessage(), e.getMessage().contains("INT"));
+		}
+	}
+
+	// (b)안: STRICT도 불리언 문자열 "true"/"false"는 받는다(2026-11-01 이전에는 거부).
+	@Test
+	public void booleanPropertiesAcceptBooleanText() throws Exception {
+		RobotStateVariable variable = variable(config(server.url("/").toString()), DataTypeDefXsd.BOOLEAN);
+		response = rawJson("{\"quality\":\"OK\",\"value\":{\"pose\":{\"position\":{\"x\":\"true\",\"y\":false,\"z\":true}}}}");
+		assertEquals("true", component((SubmodelElementCollection)variable.read(), "x"));
+		response = rawJson("{\"quality\":\"OK\",\"value\":{\"pose\":{\"position\":{\"x\":\"yes\",\"y\":false,\"z\":true}}}}");
+		assertThrows(AssetVariableException.class, variable::read);
+	}
+
 	// 재검토 3: '~' 뒤에는 0 또는 1만 올 수 있다(RFC 6901).
 	@Test
 	public void invalidPointerEscapesAreRejectedWhenLoading() throws Exception {

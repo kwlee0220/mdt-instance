@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Throwables;
+import utils.json.JacksonDeserializationException;
+import utils.json.JsonScalars;
 import utils.thread.Guard;
 
 import mdt.RobotTwinConfig;
@@ -233,7 +235,7 @@ public class RobotStateVariable extends AbstractAssetVariable<RobotStateVariable
 			}
 			else {
 				// 그 외의 경우에는 MDT value 형식의 JSON으로 간주하고 갱신한다.
-				ElementValues.update(target, valueNode);
+				ElementValues.updateFromValueJson(target, valueNode);
 			}
 		}
 		catch ( IOException | RuntimeException e ) {
@@ -287,10 +289,12 @@ public class RobotStateVariable extends AbstractAssetVariable<RobotStateVariable
 	/**
 	 * JSON 값의 종류가 valueType에 맞는지 검사한다.
 	 * <p>
-	 * {@link DataTypes}의 숫자·boolean 변환은 Jackson의 {@code asDouble()}·{@code asLong()} 등을 그대로 써서
-	 * {@code "sensor-error"} 같은 값을 0으로 바꾸므로, 변환 전에 막는다. 실수는 유한해야 한다(JSON의
-	 * {@code 1e400}은 Jackson에서 Infinity가 된다). 다만 DECIMAL은 BigDecimal로 처리하므로 정수 값은
-	 * double 범위를 넘어도 받는다. 검사하지 않는 valueType은 그대로 변환한다.
+	 * 장치 값은 JSON 타입이 그대로 맞아야 한다({@link JsonScalars.Policy#STRICT}): 숫자 타입은 범위 안의 JSON 숫자,
+	 * 실수는 유한한 값, 불리언은 JSON 불리언이나 {@code "true"}/{@code "false"} 문자열이다. 숫자 문자열({@code "42"})과
+	 * 정수 타입의 {@code 3.0}은 받지 않는다. 이 단계에서 걸러야 이후의 {@code DataTypes} 변환(숫자 문자열 등을 받는
+	 * {@code TEXT_TOLERANT})까지 가지 않는다. 검사하지 않는 valueType은 그대로 변환한다.
+	 * <p>
+	 * 2026-11-01 이전에는 같은 규칙을 이 메소드가 직접 구현했고, 불리언 문자열({@code "true"})은 받지 않았다.
 	 *
 	 * @param where     오류 메시지에 쓸 idShort 경로.
 	 * @param type      valueType.
@@ -298,25 +302,24 @@ public class RobotStateVariable extends AbstractAssetVariable<RobotStateVariable
 	 * @throws AssetVariableException JSON 값의 종류나 범위가 맞지 않는 경우.
 	 */
 	private static void checkJsonType(String where, DataTypeDefXsd type, JsonNode valueNode) throws AssetVariableException {
-		boolean ok = switch ( type ) {
-			case FLOAT -> valueNode.isNumber() && Math.abs(valueNode.doubleValue()) <= Float.MAX_VALUE;
-			case DOUBLE -> valueNode.isNumber() && Double.isFinite(valueNode.doubleValue());
-			// BigDecimal로 정확히 바꿀 수 있는 정수·BigDecimal 노드는 범위 제한이 없다. double로 읽힌 실수만 유한해야 한다.
-			case DECIMAL -> valueNode.isIntegralNumber() || valueNode.isBigDecimal()
-							|| (valueNode.isNumber() && Double.isFinite(valueNode.doubleValue()));
-			case INTEGER -> valueNode.isIntegralNumber();
-			case LONG -> valueNode.isIntegralNumber() && valueNode.canConvertToLong();
-			case INT -> valueNode.isIntegralNumber() && valueNode.canConvertToInt();
-			case SHORT -> valueNode.isIntegralNumber() && valueNode.canConvertToInt()
-							&& valueNode.intValue() >= Short.MIN_VALUE && valueNode.intValue() <= Short.MAX_VALUE;
-			case BYTE -> valueNode.isIntegralNumber() && valueNode.canConvertToInt()
-							&& valueNode.intValue() >= Byte.MIN_VALUE && valueNode.intValue() <= Byte.MAX_VALUE;
-			case BOOLEAN -> valueNode.isBoolean();
-			default -> true;
-		};
-		if ( !ok ) {
+		JsonScalars.Policy strict = JsonScalars.Policy.STRICT;
+		try {
+			switch ( type ) {
+				case FLOAT -> JsonScalars.toFloat(valueNode, strict);
+				case DOUBLE -> JsonScalars.toDouble(valueNode, strict);
+				case DECIMAL -> JsonScalars.toDecimal(valueNode, strict);
+				case INTEGER -> JsonScalars.toBigInteger(valueNode, strict);
+				case LONG -> JsonScalars.toLong(valueNode, strict);
+				case INT -> JsonScalars.toInt(valueNode, strict);
+				case SHORT -> JsonScalars.toShort(valueNode, strict);
+				case BYTE -> JsonScalars.toByte(valueNode, strict);
+				case BOOLEAN -> JsonScalars.toBoolean(valueNode, strict);
+				default -> { }
+			}
+		}
+		catch ( JacksonDeserializationException e ) {
 			throw new AssetVariableException(String.format("JSON value does not match %s: element=%s, value=%s",
-																type, where, valueNode));
+															type, where, valueNode), e);
 		}
 	}
 

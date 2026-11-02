@@ -375,7 +375,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 ### 시각과 자원 관리
 
-범위 비교용 SQL 시각 리터럴은 `Instants.toUTCString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 `DataTypes.DATE_TIME`이 JVM 기본 시간대의 지역 시각(오프셋 없음, 밀리초까지)으로 변환하므로 `Z`나 오프셋이 붙지 않는다.
+범위 비교용 SQL 시각 리터럴은 `Instants.toUtcString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 `DataTypes.DATE_TIME`이 JVM 기본 시간대의 지역 시각(오프셋 없음, 밀리초까지)으로 변환하므로 `Z`나 오프셋이 붙지 않는다.
 
 다른 경로는 시각을 다르게 다룬다. Tail·FullRange·`JdbcRangeInternalSegment`는 `java.sql.Timestamp`를 바인딩하거나 읽으므로, 시간대 없는 컬럼(`timestamp without time zone`)에서는 JVM 기본 시간대의 영향을 받는다. 조회 Operation의 UTC 리터럴 비교와 결과가 어긋나지 않게 하려면 JVM과 DB 세션의 시간대를 UTC로 맞추는 것이 안전하다.
 

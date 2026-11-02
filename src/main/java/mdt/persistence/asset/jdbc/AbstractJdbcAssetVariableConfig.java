@@ -184,7 +184,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * @param jnode			설정 JSON 노드.
 	 * @param typeFields	이 타입이 공통 필드 외에 받는 필드들.
 	 */
-	protected static void warnUnknownFields(JsonNode jnode, Set<String> typeFields) {
+	protected static void warnUnknownFields(JsonNode jnode, Set<String> typeFields) throws IOException {
 		List<String> unknown = new ArrayList<>();
 		for ( Map.Entry<String,JsonNode> field: jnode.properties() ) {
 			String name = field.getKey();
@@ -208,7 +208,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * @return	필드 값.
 	 * @throws JacksonDeserializationException	필드가 없거나 문자열이 아니거나 비어 있는 경우.
 	 */
-	protected static String requireText(JsonNode jnode, String field, String where) {
+	protected static String requireText(JsonNode jnode, String field, String where) throws IOException {
 		JsonNode node = jnode.get(field);
 		if ( node == null || !node.isTextual() || node.asText().isBlank() ) {
 			throw new JacksonDeserializationException(String.format("'%s' must be a non-blank string in %s: %s",
@@ -229,7 +229,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * @throws JacksonDeserializationException	값이 열거형 상수가 아닌 경우.
 	 */
 	protected static <E extends Enum<E>> E parseEnum(Class<E> enumCls, JsonNode jnode, String field,
-														E defaultValue) {
+														E defaultValue) throws IOException {
 		String str = JacksonUtils.getStringFieldOrNull(jnode, field);
 		if ( str == null ) {
 			return defaultValue;

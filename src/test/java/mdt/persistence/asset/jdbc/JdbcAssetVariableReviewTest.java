@@ -86,7 +86,7 @@ public class JdbcAssetVariableReviewTest {
 	// ---------- UPDATE 범위 ----------
 
 	@Test
-	public void updateModeRejectsWhereClauseWithoutWhere() {
+	public void updateModeRejectsWhereClauseWithoutWhere() throws java.io.IOException {
 		for ( String clause: new String[] { "order by id desc limit 1", "/* no predicate */", "-- where id = 1" } ) {
 			assertThrows(clause, JacksonDeserializationException.class,
 						() -> multiColumnConfig(Map.of("updateMode", "UPDATE", "whereClause", clause)));
@@ -373,16 +373,13 @@ public class JdbcAssetVariableReviewTest {
 
 	// ---------- helpers ----------
 
-	private MultiColumnCollectionAssetVariableConfig multiColumnConfig(Map<String,Object> extra) {
+	private MultiColumnCollectionAssetVariableConfig multiColumnConfig(Map<String,Object> extra)
+		throws java.io.IOException {
 		Map<String,Object> fields = new HashMap<>(Map.of("element", "Data:Pose", "jdbcConfig", JDBC, "table", "t",
 														"columns", POSE_COLUMNS));
 		fields.putAll(extra);
-		try {
-			return MultiColumnCollectionAssetVariableConfig.deserializeFields(JSON.valueToTree(fields));
-		}
-		catch ( java.io.IOException e ) {
-			throw new AssertionError(e);
-		}
+		// 설정 오류(JacksonDeserializationException)도 IOException 계열이므로 감싸지 않고 그대로 던진다.
+		return MultiColumnCollectionAssetVariableConfig.deserializeFields(JSON.valueToTree(fields));
 	}
 
 	private MultiColumnCollectionAssetVariable multiColumn(Map<String,Object> extra) throws Exception {

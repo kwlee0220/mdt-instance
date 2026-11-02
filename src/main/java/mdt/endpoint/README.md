@@ -1,4 +1,4 @@
-# mdt.endpoint 패키지 기술문서
+# mdt.endpoint 패키지
 
 `mdt.endpoint`는 MDT 인스턴스의 FA³ST 서비스 생명주기에 외부 통신과 백그라운드 작업을 연결한다.
 MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,

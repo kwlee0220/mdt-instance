@@ -209,7 +209,7 @@ class ProgramOperationProvider implements OperationProvider {
 		}
 		else {
 			// AASFile이 아닌 경우, CommandVariable에서 생성한 valueJson을 SubmodelElement에 설정한다.
-			ElementValues.updateWithValueJsonString(old, var.getValue());
+			ElementValues.updateFromValueJson(old, var.getValue());
 		}
 	}
 }

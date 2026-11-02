@@ -108,7 +108,7 @@ public class AIModelOperation extends AbstractJavaOperationProvider {
 				continue;
 			}
 			
-			ElementValues.update(valueSme, outVar);
+			ElementValues.updateFromValueJson(valueSme, outVar);
 		}
 	}
 	

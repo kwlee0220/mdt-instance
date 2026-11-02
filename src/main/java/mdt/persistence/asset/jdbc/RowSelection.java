@@ -135,7 +135,7 @@ final class RowSelection {
 	 * @throws JacksonDeserializationException	{@code whereClause}를 다른 필드와 함께 쓴 경우, {@code where}나
 	 * 			{@code orderBy}가 비었거나 키워드로 시작하는 경우, {@code limit}이 양의 정수가 아닌 경우.
 	 */
-	static RowSelection parse(JsonNode jnode) {
+	static RowSelection parse(JsonNode jnode) throws IOException {
 		String whereClause = JacksonUtils.getStringFieldOrDefault(jnode, FIELD_WHERE_CLAUSE, "").trim();
 		String where = parseExpr(jnode, FIELD_WHERE, "where");
 		String orderBy = parseExpr(jnode, FIELD_ORDER_BY, "order by");
@@ -149,7 +149,7 @@ final class RowSelection {
 		return new RowSelection(whereClause, where, orderBy, limit);
 	}
 
-	private static @Nullable String parseExpr(JsonNode jnode, String field, String keyword) {
+	private static @Nullable String parseExpr(JsonNode jnode, String field, String keyword) throws IOException {
 		JsonNode node = jnode.get(field);
 		if ( node == null || node.isNull() ) {
 			return null;
@@ -168,7 +168,7 @@ final class RowSelection {
 		return expr;
 	}
 
-	private static @Nullable Integer parseLimit(JsonNode jnode) {
+	private static @Nullable Integer parseLimit(JsonNode jnode) throws IOException {
 		JsonNode node = jnode.get(FIELD_LIMIT);
 		if ( node == null || node.isNull() ) {
 			return null;

@@ -279,7 +279,7 @@ public class HttpAssetVariable extends AbstractAssetVariable<HttpAssetVariableCo
 			}
 			else {
 				// 그 외의 경우에는 MDT value 형식의 JSON으로 간주하고 갱신한다.
-				ElementValues.update(target, value);
+				ElementValues.updateFromValueJson(target, value);
 			}
 		}
 		catch ( AssetVariableException e ) {

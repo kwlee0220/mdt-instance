@@ -53,7 +53,7 @@ public class ElementValueSetter {
 				((Property)element).setValue((value != null) ? m_type.toValueString(value) : null);
 			}
 			else if ( value != null ) {
-				ElementValues.update(element, MDTModelSerDe.readJsonNode(value.toString()));
+				ElementValues.updateFromValueJson(element, MDTModelSerDe.readJsonNode(value.toString()));
 			}
 		}
 		catch ( IOException | RuntimeException e ) {

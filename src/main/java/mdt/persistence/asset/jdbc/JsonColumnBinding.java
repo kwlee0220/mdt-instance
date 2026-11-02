@@ -34,7 +34,7 @@ final class JsonColumnBinding extends AbstractJdbcColumnBinding {
 			return;
 		}
 		try {
-			ElementValues.update(target, MDTModelSerDe.readJsonNode(json));
+			ElementValues.updateFromValueJson(target, MDTModelSerDe.readJsonNode(json));
 		}
 		catch ( IOException | RuntimeException e ) {
 			throw readFailure(rs, column, json, e);

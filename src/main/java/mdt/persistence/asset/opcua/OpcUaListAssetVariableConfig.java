@@ -75,8 +75,8 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 		OpcUaListAssetVariableConfig config = new OpcUaListAssetVariableConfig();
 		config.loadFields(jnode);
 
-		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
-		config.m_identifiers = FStream.from(JacksonUtils.getArrayFieldOrNull(jnode, FIELD_IDENTIFIERS))
+		config.m_readable = JacksonUtils.getBooleanFieldOrNull(jnode, FIELD_READABLE);
+		config.m_identifiers = FStream.from(JacksonUtils.getArrayField(jnode, FIELD_IDENTIFIERS))
 										.map(JsonNode::asInt)
 										.toList();
 		

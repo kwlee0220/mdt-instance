@@ -97,7 +97,7 @@ public final class ProgramOperationDescriptor {
 	}
 
 	@JsonProperty("outputArguments")
-	public void getOutputArguments(Map<String,ReferenceArgument> arguments) {
+	public void setOutputArguments(Map<String,ReferenceArgument> arguments) {
 		m_outputArguments = arguments;
 	}
 

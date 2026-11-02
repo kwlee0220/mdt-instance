@@ -130,7 +130,7 @@ class ScriptOperationProvider implements OperationProvider {
 					.forEach((opv, jnode) -> {
 						try {
 							SubmodelElement old = opv.getValue();
-							ElementValues.update(old, jnode);
+							ElementValues.updateFromValueJson(old, jnode);
 						}
 						catch ( Exception e ) {
 							s_logger.error("Failed to update OperationVariable: {}, cause={}",

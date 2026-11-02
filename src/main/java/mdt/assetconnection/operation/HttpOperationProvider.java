@@ -106,7 +106,7 @@ class HttpOperationProvider implements OperationProvider {
 			SubmodelElement sme = outVar.getValue();
 			JsonNode jnode = outputs.get(sme.getIdShort());
 			if ( jnode != null ) {
-				ElementValue smev = ElementValues.parseGeneralJsonNode(jnode, ElementValues.getValue(sme));
+				ElementValue smev = ElementValues.parseJsonNode(jnode, ElementValues.getValue(sme));
 				ElementValues.update(sme, smev);
 			}
 		}

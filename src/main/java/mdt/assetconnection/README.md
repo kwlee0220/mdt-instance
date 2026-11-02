@@ -528,7 +528,7 @@ sequenceDiagram
 }
 ```
 
-출력 값은 `ElementValues.parseGeneralJsonNode()`로 읽으므로 `@type`이 있는 ElementValue JSON과
+출력 값은 `ElementValues.parseJsonNode(node, proto)`(2026-11-01 이전 이름 `parseGeneralJsonNode`)로 읽으므로 `@type`이 있는 ElementValue JSON과
 일반 값 JSON을 모두 지원한다. 일반 값이면 기존 출력 요소의 타입을 사용한다.
 등록된 출력 중 응답에 없는 것은 변경하지 않고, 등록되지 않은 추가 결과는 반환 배열에 추가하지 않는다.
 변경하지 않은 출력에는 원형의 초기값이 남을 수 있으므로 “누락 출력은 null”이라고 가정하지 않는다.

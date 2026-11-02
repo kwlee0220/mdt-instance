@@ -754,7 +754,7 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 
 단, 매핑 대상 요소 자체가 `xs:integer`·`xs:byte` Property이면 `DataTypes`가 이 타입을 지원하지 않아 값 변환 단계에서 읽기가 실패한다. 이 두 타입의 검사는 Collection·List의 하위 Property에만 의미가 있으며, HTTP 변수도 같다.
 
-Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range는 `min`·`max`를 따라 검사한다. 복합 값의 내부 구조나 누락 값에 대한 나머지 처리는 `ElementValues.update()`가 담당한다.
+Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range는 `min`·`max`를 따라 검사한다. 복합 값의 내부 구조나 누락 값에 대한 나머지 처리는 `ElementValues.updateFromValueJson()`(2026-11-01 이전 이름 `update(sme, JsonNode)`)이 담당한다.
 
 모든 매핑을 캐시의 복사본에 적용하고, 처리가 끝나면 캐시를 교체한다. 따라서 중간에 변환 예외가 나면 일부 필드만 바뀐 캐시가 남지 않는다. 다만 누락되거나 `null`인 필드는 의도적으로 이전 값을 유지하므로, 정상 처리된 결과에도 이전 값과 새 값이 함께 있을 수 있다. JDBC·HTTP와 마찬가지로 캐시 갱신과 반환용 복사는 `Guard` 잠금 안에서 수행한다.
 

@@ -269,7 +269,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 		String where = "multi-column AssetVariable config";
 		config.m_table = requireText(jnode, FIELD_TABLE, where);
 		config.m_rowSelection = RowSelection.parse(jnode);
-		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
+		config.m_readable = JacksonUtils.getBooleanFieldOrNull(jnode, FIELD_READABLE);
 		config.m_updateMode = parseEnum(UpdateMode.class, jnode, FIELD_UPDATE_MODE, UpdateMode.DISABLED);
 		config.m_noRecordPolicy = parseEnum(NoRecordPolicy.class, jnode, FIELD_ON_NO_RECORD, NoRecordPolicy.KEEP);
 		config.m_columnToSubPathMappings = ColumnToSubPath.parseList(jnode, FIELD_COLUMNS);
@@ -292,7 +292,7 @@ public class MultiColumnCollectionAssetVariableConfig extends AbstractJdbcAssetV
 	 * 함수식이나 별칭이 있는 표현식에서는 쓰기 컬럼 이름을 얻을 수 없으므로 {@code writeColumn}이나
 	 * {@code readOnly}를 지정해야 한다. 쓰기에 포함되는 매핑이 하나도 없어도 설정 오류다.
 	 */
-	private static void checkWritableMappings(List<ColumnToSubPath> mappings, JsonNode jnode) {
+	private static void checkWritableMappings(List<ColumnToSubPath> mappings, JsonNode jnode) throws IOException {
 		for ( ColumnToSubPath mapping: mappings ) {
 			if ( mapping.isWritable() && !mapping.hasWriteColumn() ) {
 				throw new JacksonDeserializationException(String.format(

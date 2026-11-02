@@ -196,7 +196,7 @@ class ColumnToSubPath {
 	 * @throws JacksonDeserializationException	필드가 없거나 배열이 아니거나 비어 있는 경우, 항목의
 	 * 			{@code column}·{@code subPath}가 비어 있지 않은 문자열이 아니거나 {@code subPath}가 중복된 경우.
 	 */
-	static List<ColumnToSubPath> parseList(JsonNode jnode, String field) {
+	static List<ColumnToSubPath> parseList(JsonNode jnode, String field) throws IOException {
 		JsonNode arrayNode = jnode.get(field);
 		if ( arrayNode == null || !arrayNode.isArray() || arrayNode.isEmpty() ) {
 			throw new JacksonDeserializationException(String.format("'%s' must be a non-empty array: %s", field, jnode));

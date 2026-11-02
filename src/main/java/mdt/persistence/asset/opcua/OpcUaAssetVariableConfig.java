@@ -79,7 +79,7 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		
 //		config.m_serverEndpoint = JacksonUtils.getStringField(jnode, FIELD_SERVER_ENDPOINT);
 		config.m_nodePath = JacksonUtils.getStringField(jnode, FIELD_NODE_PATH);
-		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
+		config.m_readable = JacksonUtils.getBooleanFieldOrNull(jnode, FIELD_READABLE);
 		
 		return config;
 	}

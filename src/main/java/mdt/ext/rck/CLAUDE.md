@@ -19,7 +19,7 @@ Runs one RCK press-process simulation per MDT operation call: a WebSocket sessio
 `invokeAsync` (FA³ST's path) → `bindOutputs` (validate output variables before starting) → `startSimulation`: build context, `new RCKSimulation(ctx, createObserver())` where `createObserver()` = `m_outputReporter.startRun()`, schedule the `maxDuration` cancel on `RCKExecutors`, register `whenFinishedAsync`, `sim.start()`, return. On finish: decide success/failure and write outputs (inside one `try`), then `awaitOutputFlush()` (reporter `flushAsync()`, ≤ 5 s), then call **exactly one** callback; callback exceptions are only logged. `invokeSync` shares `startSimulation` and blocks; an interrupt cancels the simulation.
 
 - Failure wrapping in the async path mirrors the default `OperationProvider.invokeAsync` (`toCallbackFailure`): unwrap, then wrap only `TimeoutException`/`TaskException`/`CancellationException`/`ExecutionException`/`InterruptedException` in `ExecutionException`.
-- Output variables are all optional. `ElementValues.update(null, …)` throws NPE (its final `else` calls `sme.getClass()`), so `OperationOutputBindings.update` skips `null` targets.
+- Output variables are all optional. `ElementValues.update(null, …)` rejects a `null` target (`IllegalArgumentException("SubmodelElement is null")` since 2026-11-01; it used to be an NPE), so `OperationOutputBindings.update` skips `null` targets.
 - `maxDuration` (default 1 h) is measured from `sim.start()`; MDT output preparation is not included (it happens on the writer thread).
 
 ## State chart (`RCKSimulation`)

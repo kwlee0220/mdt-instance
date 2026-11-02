@@ -269,20 +269,20 @@ class JdbcRecordsReader {
 			Instant start = (trailing.anchor() == TimeSeriesRange.Anchor.NOW)
 							? Instant.now().minus(trailing.duration())
 							: getLastTimestamp().minus(trailing.duration());
-			return String.format(" WHERE %s >= '%s'", m_tsColName, Instants.toUTCString(start));
+			return String.format(" WHERE %s >= '%s'", m_tsColName, Instants.toUtcString(start));
 		}
 		else if ( range instanceof TimeSeriesRange.Absolute absolute ) {
 			List<String> conds = new ArrayList<>();
 			if ( absolute.from() != null ) {
-				conds.add(String.format("%s >= '%s'", m_tsColName, Instants.toUTCString(absolute.from())));
+				conds.add(String.format("%s >= '%s'", m_tsColName, Instants.toUtcString(absolute.from())));
 			}
 			if ( absolute.to() != null ) {
-				conds.add(String.format("%s <= '%s'", m_tsColName, Instants.toUTCString(absolute.to())));
+				conds.add(String.format("%s <= '%s'", m_tsColName, Instants.toUtcString(absolute.to())));
 			}
 			return " WHERE " + String.join(" AND ", conds);
 		}
 		else if ( range instanceof TimeSeriesRange.Since since ) {
-			return String.format(" WHERE %s >= '%s'", m_tsColName, Instants.toUTCString(since.from()));
+			return String.format(" WHERE %s >= '%s'", m_tsColName, Instants.toUtcString(since.from()));
 		}
 		else {
 			throw new IllegalStateException("Invalid range: " + range);

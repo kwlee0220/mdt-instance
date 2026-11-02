@@ -160,7 +160,7 @@ public class MDTSimulationOutputReporter {
 	 * @return	JSON 문자열
 	 */
 	static String toUtilizationJson(Map<String,Float> utilizations) {
-		return JacksonUtils.toObjectNodeFloats(utilizations).toPrettyString();
+		return JacksonUtils.MAPPER.valueToTree(utilizations).toPrettyString();
 	}
 
 	/**

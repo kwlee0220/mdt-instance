@@ -82,7 +82,7 @@ public class OpcUaCollectionAssetVariableConfig extends AbstractAssetVariableCon
 		OpcUaCollectionAssetVariableConfig config = new OpcUaCollectionAssetVariableConfig();
 		config.loadFields(jnode);
 
-		config.m_readable = JacksonUtils.getBooleanField(jnode, FIELD_READABLE, null);
+		config.m_readable = JacksonUtils.getBooleanFieldOrNull(jnode, FIELD_READABLE);
 		config.m_mappings = FStream.from(jnode.get(FIELD_MAPPINGS).fields())
 									.map(ent -> {
 										String subPath = ent.getKey();

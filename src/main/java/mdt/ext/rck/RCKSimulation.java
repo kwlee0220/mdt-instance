@@ -81,7 +81,41 @@ import mdt.ext.rck.RCKSimulationResult.Termination;
  * <p>
  * 진행 상황(상태, 진척도, 영상 URL)은 생성자에 준 {@link SimulationObserver}에 알린다. 끝날 때는 어떤 경로로
  * 끝나든(종료 상태, 연결 오류로 인한 대체 종료, 취소) {@link SimulationObserver#onFinished}가 한 번 불린다. MDT
- * 인스턴스에 반영하려면 {@link MDTSimulationOutputs}를 넘긴다.
+ * 인스턴스에 반영하려면 {@link MDTSimulationOutputReporter#startRun()}이 돌려주는 관찰자를 넘긴다.
+ * <p>
+ * 다음은 시뮬레이션을 만들어 시작하고, 끝날 때까지 기다린 뒤 결과를 출력하는 예제다. 관찰자 메소드는 차트 lock을
+ * 쥔 채 불리므로 짧게 끝내야 한다({@link SimulationObserver} 참조). {@link #waitForFinished()}는 실패나 취소로
+ * 끝나도 예외를 던지지 않고 반환하며(인터럽트되면 {@link InterruptedException}), 종료 사유는
+ * {@link #getSimulationResult()}로 확인한다.
+ * <pre>{@code
+ * RCKSimulationContext ctx = new RCKSimulationContext("ws://localhost:8765/ws",	// 시뮬레이터 WebSocket URL
+ *                                                     "mdt-client-01",			// 클라이언트 식별자
+ *                                                     "PressLine",				// 공정명
+ *                                                     "Layout-A");				// 레이아웃명
+ * RCKSimulation sim = new RCKSimulation(ctx, new SimulationObserver() {
+ *     public void onStateChanged(String statePath, String displayName) {
+ *         System.out.println("state: " + displayName);
+ *     }
+ *     public void onProgressUpdated(RCKSimulationProgress progress) {
+ *         System.out.println("progress: " + progress);
+ *     }
+ * });
+ * sim.setResponseTimeout(Duration.ofMinutes(1));	// 선택: 응답 대기 시간(기본 2분)
+ * sim.start();
+ *
+ * // 정상 절차로 멈추려면 다른 스레드에서 sim.requestStop()을, 즉시 취소하려면 sim.cancel(true)를 부른다.
+ * sim.waitForFinished();
+ *
+ * RCKSimulationResult result = sim.getSimulationResult();
+ * System.out.println("termination: " + result.termination().displayName());
+ * System.out.println("production: " + result.progress().production());
+ * if ( result.videoUrl() != null ) {
+ *     System.out.println("video: " + result.videoUrl());
+ * }
+ * if ( result.failureCause() != null ) {
+ *     result.failureCause().printStackTrace();
+ * }
+ * }</pre>
  *
  * @author Kang-Woo Lee (ETRI)
  */

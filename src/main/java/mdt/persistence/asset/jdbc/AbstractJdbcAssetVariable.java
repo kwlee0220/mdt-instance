@@ -103,7 +103,7 @@ public abstract class AbstractJdbcAssetVariable<T extends AbstractJdbcAssetVaria
 	/**
 	 * 연결된 DBMS에서 prototype SubmodelElement를 읽어 반환한다.
 	 * <p>
-	 * 캐시가 만료된 경우에만 {@link #loadOnBuffer(Connection)}를 통해 DB에서 다시 읽으며,
+	 * 캐시가 만료된 경우에만 {@link #loadOnBuffer(Connection, SubmodelElement)}를 통해 DB에서 다시 읽으며,
 	 * 그렇지 않으면 캐시된 prototype을 사용한다.
 	 * <p>
 	 * 반환값은 {@link Guard}로 보호되는 임계 구역 안에서 만든 prototype의 복사본이므로,
