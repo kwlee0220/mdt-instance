@@ -151,7 +151,8 @@ class MqttSubscriber implements MqttService.Subscriber {
 		Pending pending = new Pending(topic, m_mapping.getFormat().toValueJson(payload));
 		switch ( m_mapping.getDelivery() ) {
 			case LATEST -> {
-				// 반영을 기다리는 값이 없었을 때만 반영 작업을 예약한다. 있었으면 그 값을 새 값으로 바꾼다(이전 값은 버림).
+				// 반영을 기다리는 값이 없었을 때만 반영 작업을 예약한다.
+				// 있었으면 그 값을 새 값으로 바꾼다(이전 값은 버림).
 				if ( m_latest.getAndSet(pending) == null ) {
 					try {
 						m_sequential.execute(this::applyLatest);

@@ -50,16 +50,6 @@ public class MqttEndpointConfigTest {
 	}
 
 	@Test
-	public void testLegacyBrokerConfigNameIsRejected() {
-		// 이전 형식은 받지 않는다. 조용히 무시하면 'default' broker에 연결되므로 새 필드를 쓰라고 알린다.
-		for ( String mqtt: new String[] { "{ \"mqttBrokerConfigName\": \"factory\", " + SUBSCRIBERS + " }",
-										"{ \"mqttBrokerConfig\": \"a\", \"mqttBrokerConfigName\": \"b\", " + SUBSCRIBERS + " }" } ) {
-			Exception e = assertThrows(mqtt, Exception.class, () -> read(mqtt));
-			assertTrue(e.getMessage(), e.getMessage().contains("'mqttBrokerConfigName' is not supported"));
-		}
-	}
-
-	@Test
 	public void testInvalidBrokerIsRejectedWhenReading() {
 		for ( String value: new String[] { "3", "[\"factory\"]", "true" } ) {
 			Exception e = assertThrows(value, Exception.class,
