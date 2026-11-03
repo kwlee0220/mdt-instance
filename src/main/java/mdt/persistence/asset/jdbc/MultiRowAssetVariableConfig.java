@@ -12,10 +12,10 @@ import org.jetbrains.annotations.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.func.Optionals;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 import utils.stream.KeyValueFStream;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 
@@ -84,7 +84,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		super.serializeFields(gen);
 
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		Optionals.acceptThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
+		Nullables.ifNotNullOrThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
 		
 		gen.writeArrayFieldStart(FIELD_ROWS);
 		KeyValueFStream.from(this.m_mapping).forEachOrThrow(kv -> {

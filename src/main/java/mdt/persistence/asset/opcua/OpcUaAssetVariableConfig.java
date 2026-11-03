@@ -8,8 +8,8 @@ import org.jetbrains.annotations.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.func.Optionals;
 import utils.json.JacksonUtils;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
@@ -63,7 +63,7 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		super.serializeFields(gen);
 //		gen.writeStringField("serverEndpoint", m_serverEndpoint);
 		gen.writeStringField(FIELD_NODE_PATH, m_nodePath);
-		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
+		Nullables.ifNotNullOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**

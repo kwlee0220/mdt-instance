@@ -20,7 +20,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 
 import utils.UnitUtils;
-import utils.func.FOption;
+import utils.func.Nullables;
 import utils.stream.FStream;
 
 import mdt.model.sm.ref.MDTSubmodelReference;
@@ -113,7 +113,7 @@ public final class ProgramOperationDescriptor {
 
 	@JsonProperty("timeout")
 	public String getTimeoutString() {
-		return FOption.map(m_timeout, Duration::toString);
+		return Nullables.map(m_timeout, Duration::toString);
 	}
 	public Duration getTimeout() {
 		return m_timeout;
@@ -132,7 +132,7 @@ public final class ProgramOperationDescriptor {
 		String smStr = ( m_operationSubmodelRef != null ) ? String.format(", submodel=%s", m_operationSubmodelRef) : "";
 		String inVarNames = FStream.from(m_inputArguments.keySet()).join(",", "{", "}");
 		String outVarNames = FStream.from(m_outputArguments.keySet()).join(",", "{", "}");
-		String workingDirStr = FOption.mapOrElse(getWorkingDirectory(),
+		String workingDirStr = Nullables.mapOrElse(getWorkingDirectory(),
 												f -> String.format(", working-dir=%s", f), "");
 		return String.format("command=%s%s%s, inputs=%s, outputs=%s",
 								m_commandLine, smStr, workingDirStr, inVarNames, outVarNames);

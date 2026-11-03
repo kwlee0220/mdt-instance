@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import utils.LoggerSettable;
 import utils.Preconditions;
-import utils.func.FOption;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 import mdt.model.sm.SubmodelUtils;
@@ -121,7 +121,7 @@ public abstract class AbstractAssetVariable<T extends AssetVariableConfig>
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = FOption.getOrElse(logger, s_logger);
+		m_logger = Nullables.orElse(logger, s_logger);
 	}
 	
 	@Override

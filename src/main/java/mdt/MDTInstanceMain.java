@@ -58,8 +58,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.util.LambdaExceptionHelper;
 import utils.HomeDirPicocliCommand;
 import utils.LogbackConfigLoader;
 import utils.Throwables;
-import utils.func.FOption;
-import utils.func.Optionals;
+import utils.func.Nullables;
 import utils.io.FileUtils;
 import utils.io.IOUtils;
 import utils.stream.FStream;
@@ -268,8 +267,8 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		if ( mdtInstanceConfig.getInstanceEndpoint() == null ) {
 			if ( m_port != null || mdtInstanceConfig.getPort() != null ) {
-				String host = Optionals.getOrElse(System.getenv("MDT_HOST"), "localhost");
-				int port = Optionals.getOrElse(m_port, mdtInstanceConfig.getPort());
+				String host = Nullables.orElse(System.getenv("MDT_HOST"), "localhost");
+				int port = Nullables.orElse(m_port, mdtInstanceConfig.getPort());
 				mdtInstanceConfig.setPort(port);
 				
 				String endpoint = String.format("https://%s:%d/api/v3.0", host, port);
@@ -496,7 +495,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		configs.add(httpEpConfig);
 		
 		if ( m_type == InstanceType.EXTERNAL ) { 
-			String heartbeatInterval = Optionals.getOrElse(instConf.getHeartbeatInterval(),
+			String heartbeatInterval = Nullables.orElse(instConf.getHeartbeatInterval(),
 															DEFAULT_HEARTBEAT_INTERVAL);
 			Preconditions.checkArgument(instConf.getId() != null,
 											"MDTInstance's id is not specified in the configuration");
@@ -507,7 +506,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			configs.add(reconnectConfig);
 		}
 		else if ( m_type == InstanceType.JAR ) {
-			String mgrHealthCheckInterval = Optionals.getOrElse(instConf.getManagerCheckInterval(),
+			String mgrHealthCheckInterval = Nullables.orElse(instConf.getManagerCheckInterval(),
 																DEFAULT_MANAGER_CHECK_INTERVAL);
 			MDTManagerHealthMonitorConfig mgrHealthMonitorConfig
 												= new MDTManagerHealthMonitorConfig(instConf.getMdtUrl(),
@@ -522,7 +521,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		// FA3ST의 endpoint 설정에 추가한다.
 		if ( instConf.getServiceEndpoints() != null ) {
 			// MQTT endpoint 설정 정보가 있으면 추가한다.
-			FOption.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
+			Nullables.ifNotNull(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
 				configs.add(new MqttEndpointConfig(mqttConf));
 				getLogger().info("Register MQTT endpoint: {}", mqttConf);
 			});
@@ -530,7 +529,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			// 동반 프로그램 설정이 있으면 프로그램마다 companion endpoint를 추가한다.
 			// 단일 'companion'(이름 없음)과 이름을 붙인 'companions'를 함께 쓸 수 있다.
 			// 인스턴스 변수(MDT_INSTANCE_ID 등)에 각 프로그램의 environments를 병합한다(사용자 값 우선).
-			FOption.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
+			Nullables.ifNotNull(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
 				ProgramCompanionConfig c = ProgramCompanionConfig.from(null, companionConfig, m_instanceEnvVars);
 				configs.add(c);
 				getLogger().info("Register Companion endpoint: {}", c);

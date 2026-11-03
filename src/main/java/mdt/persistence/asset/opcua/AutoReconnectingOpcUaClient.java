@@ -18,7 +18,7 @@ import com.google.common.util.concurrent.AbstractService;
 import utils.LoggerSettable;
 import utils.UnitUtils;
 import utils.thread.Guard;
-import utils.func.Optionals;
+import utils.func.Nullables;
 
 
 /**
@@ -126,7 +126,7 @@ public class AutoReconnectingOpcUaClient extends AbstractService
 
 	@Override
 	public Logger getLogger() {
-		return Optionals.getOrElse(m_logger, s_logger);
+		return Nullables.orElse(m_logger, s_logger);
 	}
 
 	@Override

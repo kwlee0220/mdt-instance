@@ -112,7 +112,7 @@ public class JpaOperation extends SubmodelElementCollectionEntity implements Ope
 //			pvalue = this.parameterValueList.get(ordinal);
 //		}
 //		catch ( NumberFormatException e ) {
-//			pvalue = Try.get(() -> getParameterValue(seg1)).getOrNull();
+//			pvalue = Try.of(() -> getParameterValue(seg1)).getOrNull();
 //		}
 //		Funcs.runIfNotNull(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
 //	}

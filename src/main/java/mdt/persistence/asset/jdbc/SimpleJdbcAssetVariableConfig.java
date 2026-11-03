@@ -9,9 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import org.jetbrains.annotations.Nullable;
 
-import utils.func.Optionals;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 
@@ -112,7 +112,7 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		Optionals.acceptThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
+		Nullables.ifNotNullOrThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
 		if ( m_noRecordPolicy != NoRecordPolicy.KEEP ) {
 			gen.writeStringField(FIELD_ON_NO_RECORD, m_noRecordPolicy.name());
 		}

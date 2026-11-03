@@ -18,10 +18,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Preconditions;
 import utils.UnitUtils;
-import utils.func.Optionals;
 import utils.jdbc.JdbcConfiguration;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
+import utils.func.Nullables;
 
 import mdt.ConnectionConfigRef;
 import mdt.ElementLocation;
@@ -82,7 +82,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		Preconditions.checkNotNullArgument(elementLoc, "elementLoc is null");
 
 		m_elementLoc = elementLoc;
-		m_jdbcConfigRef = ConnectionConfigRef.ofName(Optionals.getOrElse(jdbcConfigName,
+		m_jdbcConfigRef = ConnectionConfigRef.ofName(Nullables.orElse(jdbcConfigName,
 																		ConnectionConfigRef.DEFAULT_NAME));
 		m_validPeriod = validPeriod;
 	}
@@ -132,7 +132,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	 * @return 유효 기간 문자열. 설정되지 않은 경우 {@code null}.
 	 */
 	public String getValidPeriodString() {
-		return Optionals.map(m_validPeriod, Duration::toString);
+		return Nullables.map(m_validPeriod, Duration::toString);
 	}
 
 	/**
@@ -148,8 +148,8 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
 		m_jdbcConfigRef.serialize(gen, FIELD_JDBC_CONFIG);
-		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
-		Optionals.acceptThrow(m_queryTimeout, timeout -> gen.writeStringField(FIELD_QUERY_TIMEOUT, timeout.toString()));
+		Nullables.ifNotNullOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Nullables.ifNotNullOrThrow(m_queryTimeout, timeout -> gen.writeStringField(FIELD_QUERY_TIMEOUT, timeout.toString()));
 	}
 
 	/**
@@ -166,8 +166,8 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		
 		m_jdbcConfigRef = ConnectionConfigRef.load(jnode, FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME,
 													JdbcConfiguration.class);
-		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
-		m_queryTimeout = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, FIELD_QUERY_TIMEOUT),
+		m_validPeriod = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
+		m_queryTimeout = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, FIELD_QUERY_TIMEOUT),
 										UnitUtils::parseDuration);
 		if ( m_queryTimeout != null && (m_queryTimeout.isNegative() || m_queryTimeout.isZero()) ) {
 			throw new JacksonDeserializationException(String.format("'%s' must be positive: %s",
@@ -247,7 +247,7 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	public String toString() {
 		// 인라인 설정의 URL에는 비밀번호가 포함될 수 있으므로 출력하지 않는다.
 		String jdbcKey = m_jdbcConfigRef.toDisplayString("jdbcs", cfg -> "(inline)");
-		String validStr = Optionals.getOrElse(m_validPeriod, Duration.ZERO).toString();
+		String validStr = Nullables.orElse(m_validPeriod, Duration.ZERO).toString();
 		return String.format("%s, jdbc=%s, valid=%s", m_elementLoc, jdbcKey, validStr);
 	}
 }

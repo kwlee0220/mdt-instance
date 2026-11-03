@@ -34,7 +34,7 @@ import utils.LoggerSettable;
 import utils.ReflectionUtils;
 import utils.Throwables;
 import utils.func.FOption;
-import utils.func.Optionals;
+import utils.func.Nullables;
 
 
 /**
@@ -235,6 +235,6 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 
 	@Override
 	public void setLogger(Logger logger) {
-		m_logger = Optionals.getOrElse(logger, s_logger);
+		m_logger = Nullables.orElse(logger, s_logger);
 	}
 }

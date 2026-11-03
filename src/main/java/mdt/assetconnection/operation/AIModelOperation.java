@@ -17,6 +17,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 
 import utils.func.FOption;
+import utils.func.Nullables;
 import utils.http.HttpRESTfulClient;
 import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
@@ -44,7 +45,7 @@ public class AIModelOperation extends AbstractJavaOperationProvider {
 							JavaOperationProviderConfig config) throws ConfigurationInitializationException {
 		super(serviceContext, operationRef, config);
 		
-		String serverKey = FOption.getOrElse(getStringArgument(ARG_MODEL_SERVER), "default");
+		String serverKey = Nullables.orElse(getStringArgument(ARG_MODEL_SERVER), "default");
 		String serverUrl = FOption.ofNullable(getGlobalConfiguration(CONFIG_GROUP_AIMODEL, serverKey)
 									.get("serverUrl"))
 								.map(JsonNode::asText)

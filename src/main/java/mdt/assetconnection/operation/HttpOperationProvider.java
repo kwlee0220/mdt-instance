@@ -16,7 +16,7 @@ import com.google.common.base.Preconditions;
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
-import utils.func.FOption;
+import utils.func.Nullables;
 import utils.http.OkHttpClientUtils;
 import utils.rpc.restful.RESTfulAsyncRpcClient;
 import utils.rpc.restful.RpcRequestMessage;
@@ -70,7 +70,7 @@ class HttpOperationProvider implements OperationProvider {
 													.setHttpClient(OkHttpClientUtils.newClient())
 													.setBaseUrl(m_config.getBaseUrl())
 													.setOperationEndpoint(m_config.getEndpoint())
-													.setPollInterval(FOption.getOrElse(m_config.getPollInterval(),
+													.setPollInterval(Nullables.orElse(m_config.getPollInterval(),
 																					DEFAULT_POLL_INTERVAL))
 													.setTimeout(m_config.getTimeout())
 													.setRequestMessage(reqMsg)

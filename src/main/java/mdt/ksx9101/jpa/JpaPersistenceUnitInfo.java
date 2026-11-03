@@ -17,8 +17,8 @@ import jakarta.persistence.spi.ClassTransformer;
 import jakarta.persistence.spi.PersistenceUnitInfo;
 import jakarta.persistence.spi.PersistenceUnitTransactionType;
 
-import utils.func.Optionals;
 import utils.jdbc.JdbcConfiguration;
+import utils.func.Nullables;
 
 /**
  *
@@ -90,7 +90,7 @@ public class JpaPersistenceUnitInfo implements PersistenceUnitInfo {
 		else {
 			DriverManagerDataSource dataSrc = new DriverManagerDataSource();
 			
-			Optionals.accept(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
+			Nullables.ifNotNull(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
 			dataSrc.setUrl(m_jdbcConf.getJdbcUrl());
 			dataSrc.setUsername(m_jdbcConf.getUser());
 			dataSrc.setPassword(m_jdbcConf.getPassword());

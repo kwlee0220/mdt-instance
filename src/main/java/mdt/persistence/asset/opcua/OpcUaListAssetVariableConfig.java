@@ -9,9 +9,9 @@ import org.jetbrains.annotations.Nullable;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.func.Optionals;
 import utils.json.JacksonUtils;
 import utils.stream.FStream;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 import mdt.persistence.asset.AbstractAssetVariableConfig;
@@ -61,7 +61,7 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 		}
 		gen.writeEndArray();
 		// deserializeFields()가 읽는 'readable'도 저장해야 readable=false 설정이 유지된다.
-		Optionals.acceptThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
+		Nullables.ifNotNullOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**

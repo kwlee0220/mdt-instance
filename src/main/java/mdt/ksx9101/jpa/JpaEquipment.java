@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import utils.stream.FStream;
+import utils.func.Nullables;
 
 import mdt.ksx9101.JpaEntityLoader;
 import mdt.model.TopLevelEntity;
@@ -86,9 +87,9 @@ public class JpaEquipment extends SubmodelElementCollectionEntity implements Equ
 //			pvalue = this.parameterValues.get(ordinal);
 //		}
 //		catch ( NumberFormatException e ) {
-//			pvalue = Try.get(() -> getParameterValue(seg1)).getOrNull();
+//			pvalue = Try.of(() -> getParameterValue(seg1)).getOrNull();
 //		}
-//		Optionals.accept(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
+//		Nullables.ifNotNull(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
 //	}
 	
 	@Override

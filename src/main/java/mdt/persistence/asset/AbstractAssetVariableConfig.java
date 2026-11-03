@@ -10,8 +10,8 @@ import com.google.common.base.Preconditions;
 import org.jetbrains.annotations.Nullable;
 
 import utils.UnitUtils;
-import utils.func.Optionals;
 import utils.json.JacksonUtils;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 import mdt.ElementLocations;
@@ -39,17 +39,17 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 	}
 	
 	public Duration getValidPeriod() {
-		return Optionals.getOrElse(m_validPeriod, Duration.ZERO);
+		return Nullables.orElse(m_validPeriod, Duration.ZERO);
 	}
 	
 	public String getValidPeriodString() {
-		return Optionals.map(m_validPeriod, Duration::toString);
+		return Nullables.map(m_validPeriod, Duration::toString);
 	}
 
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
-		Optionals.acceptThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Nullables.ifNotNullOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
 	}
 	
 	/**
@@ -62,13 +62,13 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 		String elmLocExpr = JacksonUtils.getStringField(jnode, "element");
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
-		m_validPeriod = Optionals.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"),
+		m_validPeriod = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"),
 										UnitUtils::parseDuration);
 	}
 	
 	@Override
 	public String toString() {
-		String validStr = Optionals.getOrElse(m_validPeriod, Duration.ZERO).toString();
+		String validStr = Nullables.orElse(m_validPeriod, Duration.ZERO).toString();
 		return String.format("%s, valid=%s", m_elementLoc, validStr);
 	}
 }

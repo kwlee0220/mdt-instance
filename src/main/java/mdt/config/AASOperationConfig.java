@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 
 import utils.UnitUtils;
-import utils.func.FOption;
+import utils.func.Nullables;
 
 import mdt.ElementLocation;
 import mdt.ElementLocations;
@@ -57,7 +57,7 @@ public sealed class AASOperationConfig
 		}
 		
 		public Map<String, JsonNode> getArguments() {
-			return FOption.getOrElse(m_arguments, Collections.emptyMap());
+			return Nullables.orElse(m_arguments, Collections.emptyMap());
 		}
 		
 		public void setArguments(Map<String, JsonNode> arguments) {
