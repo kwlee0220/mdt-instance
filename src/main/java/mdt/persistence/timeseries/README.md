@@ -144,7 +144,7 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 }
 ```
 
-세그먼트는 `JdbcConfiguration.parseString()`으로, 조회 Operation은 `JdbcProcessor.builderFromFullJdbcUrl()`로 `endpoint`를 해석한다. 두 파서 모두 `?` 뒤에서 `user`, `password`, `maxPoolSize`만 사용하고 나머지 질의 파라미터는 JDBC URL에 보존하지 않는다. 따라서 DB 드라이버의 임의 URL 옵션이 그대로 전달된다고 가정해서는 안 된다. `user`와 `password`는 필수이며, 없으면 세그먼트 조회와 Operation 초기화가 `IllegalArgumentException`으로 실패한다.
+세그먼트와 조회 Operation 모두 `JdbcConfiguration.parse()`로 `endpoint`를 해석한다(조회 Operation은 `JdbcProcessor.builder(JdbcConfiguration.parse(endpoint))`; 2026-11-03 이전 이름은 `parseString`·`builderFromFullJdbcUrl`). `?` 뒤의 `user`, `password`, `maxPoolSize`만 떼어 내고, 나머지 질의 파라미터(`sslmode`, `useSSL` 같은 드라이버 옵션)는 JDBC URL에 그대로 남겨 드라이버에 전달한다. 세 값은 `%XX` escape만 디코딩하므로 비밀번호의 `+`는 그대로 쓰인다(`+` 자체를 넣으려면 그대로 쓰고, `&`·`=`·`%`는 `%26`·`%3D`·`%25`로 쓴다). 2026-11-02 이전에는 드라이버 옵션을 버리고 `+`를 공백으로 바꿨다. `user`와 `password`는 선택 항목이다. 없으면 드라이버에 넘기지 않으므로 인증이 없는 DB나 드라이버 고유의 방식(예: H2의 `;USER=..`)으로 자격 증명을 줄 수 있다(2026-11-02 이전에는 필수였고 없으면 `IllegalArgumentException`).
 
 `maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 다만 풀은 접속 정보(URL·사용자·비밀번호·드라이버)가 같으면 공유되므로, asset JDBC 변수 등이 같은 접속 정보로 풀을 먼저 만들었다면 그 풀의 크기가 그대로 쓰이고 이 값은 무시된다. 설정 방식도 asset JDBC 변수의 `jdbcConfig`(전역 `jdbcs` 이름 또는 인라인 설정)와 다르다.
 
@@ -379,7 +379,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 다른 경로는 시각을 다르게 다룬다. Tail·FullRange·`JdbcRangeInternalSegment`는 `java.sql.Timestamp`를 바인딩하거나 읽으므로, 시간대 없는 컬럼(`timestamp without time zone`)에서는 JVM 기본 시간대의 영향을 받는다. 조회 Operation의 UTC 리터럴 비교와 결과가 어긋나지 않게 하려면 JVM과 DB 세션의 시간대를 UTC로 맞추는 것이 안전하다.
 
-`JdbcRecordsReader`는 `executeQuery(query, true)`의 ResultSet을 try-with-resources로 닫아 연결도 함께 닫도록 한다. FullRange와 Tail 역시 Connection을 try-with-resources로 관리한다. 이 패키지는 여러 조회를 하나의 공통 Connection이나 트랜잭션으로 묶지 않는다.
+`JdbcRecordsReader`는 `executeQuery(query)`의 ResultSet을 try-with-resources로 닫아 연결도 함께 닫도록 한다. FullRange와 Tail 역시 Connection을 try-with-resources로 관리한다. 이 패키지는 여러 조회를 하나의 공통 Connection이나 트랜잭션으로 묶지 않는다.
 
 연결은 utils의 [JdbcConnectionPools](../../../../../../../../common/utils/src/main/java/utils/jdbc/JdbcConnectionPools.java)가 관리하는 연결 풀에서 얻으며, 닫으면 물리 연결은 유지된 채 풀로 반환된다. 세그먼트는 조회할 때마다 `JdbcProcessor`를 새로 만들지만, 접속 정보(JDBC URL·사용자·비밀번호·드라이버 클래스)가 같으면 같은 풀을 공유하므로 Submodel 조회마다 DB 연결을 새로 맺지 않는다. 같은 DB를 쓰는 asset JDBC 변수와도 풀을 공유한다. 풀은 유휴 연결을 미리 만들지 않고 60초 동안 쓰이지 않은 연결은 닫는다. 연결이 모두 사용 중이거나 DB에 접속할 수 없으면 최대 5초를 기다린 뒤 `SQLException`으로 실패한다. 풀 크기와 인스턴스 수에 따른 전체 연결 수는 [asset 영속성 문서의 JDBC 공통 설명](../asset/README.md#공통-연결-설정과-캐시)을 따른다.
 

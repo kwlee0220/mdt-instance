@@ -56,7 +56,7 @@ public class JdbcFullRangeLinkedSegment extends DefaultLinkedSegment implements 
 	}
 	
 	public void load() {
-		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
+		JdbcConfiguration jdbcConf = JdbcConfiguration.parse(m_tsConfig.getEndpoint());
 		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 
 		// Endpoint는 Submodel 조회 응답으로 클라이언트에 그대로 전달되므로,
@@ -66,7 +66,6 @@ public class JdbcFullRangeLinkedSegment extends DefaultLinkedSegment implements 
 
 		// 레코드 수와 시간 범위를 하나의 집계 질의로 읽는다.
 		// 이 메소드는 시계열 Submodel을 조회할 때마다 호출되므로, 연결은 try-with-resources로 반드시 닫는다.
-		// (JdbcProcessor.executeQuery(sql, false)는 ResultSet을 닫아도 연결이 닫히지 않는다.)
 		String SUMMARY_SQL = """
 			SELECT count(*) as record_count, min(${tsCol}) as start_time, max(${tsCol}) as end_time
             FROM ${tableName}

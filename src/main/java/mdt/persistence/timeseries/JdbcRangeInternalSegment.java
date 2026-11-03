@@ -74,7 +74,7 @@ public class JdbcRangeInternalSegment extends DefaultInternalSegment implements 
 		ORDER BY ${tsCol} ASC;
 	""";
 	private List<DefaultRecord> readRecordsInRange(Range range) {
-		JdbcConfiguration jdbcConf = JdbcConfiguration.parseString(m_tsConfig.getEndpoint());
+		JdbcConfiguration jdbcConf = JdbcConfiguration.parse(m_tsConfig.getEndpoint());
 		JdbcProcessor jdbc = JdbcProcessor.builder(jdbcConf).pooled().build();
 
 		try ( Connection conn = jdbc.connect();

@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import utils.Instants;
 import utils.Tuple;
+import utils.jdbc.JdbcConfiguration;
 import utils.jdbc.JdbcProcessor;
 import utils.stream.FStream;
 import utils.stream.KeyValueFStream;
@@ -56,7 +57,7 @@ class JdbcRecordsReader {
 		// ({@link mdt.model.timeseries.DefaultRecord#getTimestamp()}와 동일한 규약)
 		m_tsColName = m_matches.values().iterator().next().dbColName();
 
-		m_jdbc = JdbcProcessor.builderFromFullJdbcUrl(tsConfig.getEndpoint()).pooled().build();
+		m_jdbc = JdbcProcessor.builder(JdbcConfiguration.parse(tsConfig.getEndpoint())).pooled().build();
 	}
 
 	/**
@@ -112,7 +113,7 @@ class JdbcRecordsReader {
 
 		int idx = 0;
 		List<SubmodelElement> records = new ArrayList<>();
-		try ( ResultSet rs = m_jdbc.executeQuery(query, true) ) {
+		try ( ResultSet rs = m_jdbc.executeQuery(query) ) {
 			while ( rs.next() ) {
 				ElementCollectionValue colEmcv = toRecordValue(fields, rs);
 
@@ -145,7 +146,7 @@ class JdbcRecordsReader {
 
 		int idx = 0;
 		LinkedHashMap<String,ElementValue> records = new LinkedHashMap<>();
-		try ( ResultSet rs = m_jdbc.executeQuery(query, true) ) {
+		try ( ResultSet rs = m_jdbc.executeQuery(query) ) {
 			while ( rs.next() ) {
 				ElementCollectionValue colEmcv = toRecordValue(fields, rs);
 
@@ -302,7 +303,7 @@ class JdbcRecordsReader {
 	private String buildLimitClause(@Nullable TimeSeriesRange range) throws IOException {
 		if ( range instanceof TimeSeriesRange.Count count ) {
 			try {
-				long recCount = m_jdbc.rowCount(m_tableName);
+				long recCount = m_jdbc.countRows(m_tableName);
 				long offset = Math.max(0, recCount - count.length());
 				return String.format(" LIMIT %d OFFSET %d", count.length(), offset);
 			}
@@ -326,7 +327,7 @@ class JdbcRecordsReader {
 	 */
 	private Instant getLastTimestamp() throws IOException {
 		String query = String.format("SELECT MAX(%s) FROM %s", m_tsColName, m_tableName);
-		try ( ResultSet rs = m_jdbc.executeQuery(query, true) ) {
+		try ( ResultSet rs = m_jdbc.executeQuery(query) ) {
 			// timestamp는 record의 첫번째 필드이므로, 해당 필드의 DataType으로 변환한다.
 			Field tsField = m_tsMetadata.getRecord().getFieldAll().get(0);
 
