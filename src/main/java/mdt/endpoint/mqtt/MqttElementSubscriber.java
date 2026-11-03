@@ -30,7 +30,7 @@ public class MqttElementSubscriber {
 	/** broker 구독 QoS의 기본값. */
 	public static final int DEFAULT_QOS = 1;
 	/** {@link DeliveryMode#ALL}에서 처리 중·대기 중인 메시지 수 상한의 기본값. */
-	public static final int DEFAULT_MAX_IN_FLIGHT_MESSAGES = 1000;
+	public static final int DEFAULT_MAX_IN_FLIGHT_MESSAGES = 2000;
 	
 	private final String m_topic;
 	private final ElementLocation m_elementLoc;

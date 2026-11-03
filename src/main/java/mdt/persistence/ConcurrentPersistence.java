@@ -60,45 +60,40 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 	}
 
 	@Override
-	public Page<SubmodelElement> findSubmodelElements(SubmodelElementSearchCriteria criteria, QueryModifier modifier,
+	public Page<SubmodelElement> findSubmodelElements(SubmodelElementSearchCriteria criteria,
+														QueryModifier modifier,
 														PagingInfo paging)
-															throws ResourceNotFoundException, PersistenceException {
-		return getBasePersistence().findSubmodelElements(criteria, modifier, paging);
+													throws ResourceNotFoundException, PersistenceException {
+		m_guard.lock();
+		try {
+			return getBasePersistence().findSubmodelElements(criteria, modifier, paging);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public SubmodelElement getSubmodelElement(SubmodelElementIdentifier identifier, QueryModifier modifier)
 		throws ResourceNotFoundException, PersistenceException {
-		String paramId = MDTModelLookup.getInstance().getParameterId(identifier);
-		if ( paramId != null ) {
-			m_guard.lock();
-			try {
-				return getBasePersistence().getSubmodelElement(identifier, modifier);
-			}
-			finally {
-				m_guard.unlock();
-			}
-		}
-		else {
+		m_guard.lock();
+		try {
 			return getBasePersistence().getSubmodelElement(identifier, modifier);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
 	@Override
 	public void update(SubmodelElementIdentifier identifier, SubmodelElement submodelElement)
 		throws ResourceNotFoundException, PersistenceException {
-		String paramId = MDTModelLookup.getInstance().getParameterId(identifier);
-		if ( paramId != null ) {
-			m_guard.lock();
-			try {
-				getBasePersistence().update(identifier, submodelElement);
-			}
-			finally {
-				m_guard.unlock();
-			}
-		}
-		else {
+		m_guard.lock();
+		try {
 			getBasePersistence().update(identifier, submodelElement);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
@@ -117,18 +112,12 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 
 	@Override
 	public void deleteSubmodel(String id) throws ResourceNotFoundException, PersistenceException {
-		// Data submodel이 없는 트윈도 있으므로 getDataSubmodel()을 직접 쓰지 않는다.
-		if ( MDTModelLookup.getInstance().isDataSubmodel(id) ) {
-			m_guard.lock();
-			try {
-				getBasePersistence().deleteSubmodel(id);
-			}
-			finally {
-				m_guard.unlock();
-			}
-		}
-		else {
+		m_guard.lock();
+		try {
 			getBasePersistence().deleteSubmodel(id);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
@@ -137,26 +126,39 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 																ResourceNotFoundException, PersistenceException {
 		String paramId = MDTModelLookup.getInstance().getParameterId(identifier);
 		if ( paramId != null ) {
-			throw new UnsupportedOperationException("Deleting parameter is not supported");
+			String msg = String.format("Deleting parameter with id '%s' is not supported", paramId);
+			throw new UnsupportedOperationException(msg);
 		}
-		else {
+
+		m_guard.lock();
+		try {
 			getBasePersistence().deleteSubmodelElement(identifier);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
 	@Override
 	public Page<Submodel> findSubmodels(SubmodelSearchCriteria criteria, QueryModifier modifier, PagingInfo paging)
 		throws PersistenceException {
-		return getBasePersistence().findSubmodels(criteria, modifier, paging);
+		m_guard.lock();
+		try {
+			return getBasePersistence().findSubmodels(criteria, modifier, paging);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void save(Submodel submodel) throws PersistenceException {
-		if ( MDTModelLookup.getInstance().isDataSubmodel(submodel.getId()) ) {
-			m_guard.runChecked(() -> getBasePersistence().save(submodel));
-		}
-		else {
+		m_guard.lock();
+		try {
 			getBasePersistence().save(submodel);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
@@ -175,72 +177,127 @@ public class ConcurrentPersistence extends PersistenceStack<ConcurrentPersistenc
 	@Override
 	public Submodel getSubmodel(String id, QueryModifier modifier)
 															throws ResourceNotFoundException, PersistenceException {
-		if ( MDTModelLookup.getInstance().isDataSubmodel(id) ) {
-			m_guard.lock();
-			try {
-				return getBasePersistence().getSubmodel(id, modifier);
-			}
-			finally {
-				m_guard.unlock();
-			}
-		}
-		else {
+		m_guard.lock();
+		try {
 			return getBasePersistence().getSubmodel(id, modifier);
+		}
+		finally {
+			m_guard.unlock();
 		}
 	}
 
 	@Override
 	public ConceptDescription getConceptDescription(String id, QueryModifier modifier)
 		throws ResourceNotFoundException, PersistenceException {
-		return getBasePersistence().getConceptDescription(id, modifier);
+		m_guard.lock();
+		try {
+			return getBasePersistence().getConceptDescription(id, modifier);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public OperationResult getOperationResult(OperationHandle handle)
 															throws ResourceNotFoundException, PersistenceException {
-		return getBasePersistence().getOperationResult(handle);
+		m_guard.lock();
+		try {
+			return getBasePersistence().getOperationResult(handle);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public Page<AssetAdministrationShell> findAssetAdministrationShells(AssetAdministrationShellSearchCriteria criteria,
 																		QueryModifier modifier, PagingInfo paging)
 																					throws PersistenceException {
-		return getBasePersistence().findAssetAdministrationShells(criteria, modifier, paging);
+		m_guard.lock();
+		try {
+			return getBasePersistence().findAssetAdministrationShells(criteria, modifier, paging);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public Page<ConceptDescription> findConceptDescriptions(ConceptDescriptionSearchCriteria criteria,
 			QueryModifier modifier, PagingInfo paging) throws PersistenceException {
-		return getBasePersistence().findConceptDescriptions(criteria, modifier, paging);
+		m_guard.lock();
+		try {
+			return getBasePersistence().findConceptDescriptions(criteria, modifier, paging);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void save(AssetAdministrationShell assetAdministrationShell) throws PersistenceException {
-		getBasePersistence().save(assetAdministrationShell);
+		m_guard.lock();
+		try {
+			getBasePersistence().save(assetAdministrationShell);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void save(ConceptDescription conceptDescription) throws PersistenceException {
-		getBasePersistence().save(conceptDescription);
+		m_guard.lock();
+		try {
+			getBasePersistence().save(conceptDescription);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void save(OperationHandle handle, OperationResult result) throws PersistenceException {
-		getBasePersistence().save(handle, result);
+		m_guard.lock();
+		try {
+			getBasePersistence().save(handle, result);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void deleteAssetAdministrationShell(String id) throws ResourceNotFoundException, PersistenceException {
-		getBasePersistence().deleteAssetAdministrationShell(id);
+		m_guard.lock();
+		try {
+			getBasePersistence().deleteAssetAdministrationShell(id);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void deleteConceptDescription(String id) throws ResourceNotFoundException, PersistenceException {
-		getBasePersistence().deleteConceptDescription(id);
+		m_guard.lock();
+		try {
+			getBasePersistence().deleteConceptDescription(id);
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 
 	@Override
 	public void deleteAll() throws PersistenceException {
-		getBasePersistence().deleteAll();
+		m_guard.lock();
+		try {
+			getBasePersistence().deleteAll();
+		}
+		finally {
+			m_guard.unlock();
+		}
 	}
 }
