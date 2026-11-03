@@ -49,7 +49,7 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 	@Override
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
-		Nullables.ifNotNullOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Nullables.acceptOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
 	}
 	
 	/**

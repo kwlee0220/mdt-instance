@@ -63,7 +63,7 @@ public class OpcUaAssetVariableConfig extends AbstractAssetVariableConfig implem
 		super.serializeFields(gen);
 //		gen.writeStringField("serverEndpoint", m_serverEndpoint);
 		gen.writeStringField(FIELD_NODE_PATH, m_nodePath);
-		Nullables.ifNotNullOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
+		Nullables.acceptOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**

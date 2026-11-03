@@ -61,7 +61,7 @@ public class OpcUaListAssetVariableConfig extends AbstractAssetVariableConfig im
 		}
 		gen.writeEndArray();
 		// deserializeFields()가 읽는 'readable'도 저장해야 readable=false 설정이 유지된다.
-		Nullables.ifNotNullOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
+		Nullables.acceptOrThrow(m_readable, f -> gen.writeBooleanField(FIELD_READABLE, f));
 	}
 	
 	/**

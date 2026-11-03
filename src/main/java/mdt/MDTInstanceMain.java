@@ -521,7 +521,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		// FA3ST의 endpoint 설정에 추가한다.
 		if ( instConf.getServiceEndpoints() != null ) {
 			// MQTT endpoint 설정 정보가 있으면 추가한다.
-			Nullables.ifNotNull(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
+			Nullables.accept(instConf.getServiceEndpoints().getMqtt(), mqttConf -> {
 				configs.add(new MqttEndpointConfig(mqttConf));
 				getLogger().info("Register MQTT endpoint: {}", mqttConf);
 			});
@@ -529,7 +529,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			// 동반 프로그램 설정이 있으면 프로그램마다 companion endpoint를 추가한다.
 			// 단일 'companion'(이름 없음)과 이름을 붙인 'companions'를 함께 쓸 수 있다.
 			// 인스턴스 변수(MDT_INSTANCE_ID 등)에 각 프로그램의 environments를 병합한다(사용자 값 우선).
-			Nullables.ifNotNull(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
+			Nullables.accept(instConf.getServiceEndpoints().getCompanion(), companionConfig -> {
 				ProgramCompanionConfig c = ProgramCompanionConfig.from(null, companionConfig, m_instanceEnvVars);
 				configs.add(c);
 				getLogger().info("Register Companion endpoint: {}", c);

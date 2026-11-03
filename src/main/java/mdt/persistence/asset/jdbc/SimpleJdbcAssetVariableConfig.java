@@ -112,7 +112,7 @@ public class SimpleJdbcAssetVariableConfig extends AbstractJdbcAssetVariableConf
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		super.serializeFields(gen);
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		Nullables.ifNotNullOrThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
+		Nullables.acceptOrThrow(m_updateQuery, sql -> gen.writeStringField(FIELD_UPDATE_QUERY, sql));
 		if ( m_noRecordPolicy != NoRecordPolicy.KEEP ) {
 			gen.writeStringField(FIELD_ON_NO_RECORD, m_noRecordPolicy.name());
 		}

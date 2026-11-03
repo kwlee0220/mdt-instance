@@ -148,8 +148,8 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 	public void serializeFields(JsonGenerator gen) throws IOException {
 		gen.writeStringField("element", m_elementLoc.toStringExpr());
 		m_jdbcConfigRef.serialize(gen, FIELD_JDBC_CONFIG);
-		Nullables.ifNotNullOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
-		Nullables.ifNotNullOrThrow(m_queryTimeout, timeout -> gen.writeStringField(FIELD_QUERY_TIMEOUT, timeout.toString()));
+		Nullables.acceptOrThrow(m_validPeriod, period -> gen.writeStringField("validPeriod", period.toString()));
+		Nullables.acceptOrThrow(m_queryTimeout, timeout -> gen.writeStringField(FIELD_QUERY_TIMEOUT, timeout.toString()));
 	}
 
 	/**

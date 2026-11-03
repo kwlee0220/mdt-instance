@@ -90,7 +90,7 @@ public class JpaPersistenceUnitInfo implements PersistenceUnitInfo {
 		else {
 			DriverManagerDataSource dataSrc = new DriverManagerDataSource();
 			
-			Nullables.ifNotNull(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
+			Nullables.accept(m_jdbcConf.getDriverClassName(), dataSrc::setDriverClassName);
 			dataSrc.setUrl(m_jdbcConf.getJdbcUrl());
 			dataSrc.setUsername(m_jdbcConf.getUser());
 			dataSrc.setPassword(m_jdbcConf.getPassword());

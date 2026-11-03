@@ -84,7 +84,7 @@ public class MultiRowAssetVariableConfig extends AbstractJdbcAssetVariableConfig
 		super.serializeFields(gen);
 
 		gen.writeStringField(FIELD_READ_QUERY, m_readQuery);
-		Nullables.ifNotNullOrThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
+		Nullables.acceptOrThrow(m_updateQuery, q -> gen.writeStringField(FIELD_UPDATE_QUERY, q));
 		
 		gen.writeArrayFieldStart(FIELD_ROWS);
 		KeyValueFStream.from(this.m_mapping).forEachOrThrow(kv -> {

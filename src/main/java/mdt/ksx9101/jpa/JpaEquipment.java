@@ -89,7 +89,7 @@ public class JpaEquipment extends SubmodelElementCollectionEntity implements Equ
 //		catch ( NumberFormatException e ) {
 //			pvalue = Try.of(() -> getParameterValue(seg1)).getOrNull();
 //		}
-//		Nullables.ifNotNull(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
+//		Nullables.accept(pvalue, pv -> pv.setParameterValue(new PropertyValue((String)value)));
 //	}
 	
 	@Override
