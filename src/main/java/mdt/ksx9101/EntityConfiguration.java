@@ -4,9 +4,11 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import jakarta.persistence.EntityManager;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+
+import jakarta.persistence.EntityManager;
+
 import mdt.ksx9101.jpa.JpaMDTEntityFactory;
 import mdt.model.sm.entity.SubmodelElementEntity;
 
@@ -40,7 +42,7 @@ public class EntityConfiguration {
 	}
 	
 	public SubmodelElementEntity loadJpaEntity(EntityManager em) {
-		JpaEntityLoader loader = (JpaEntityLoader)FACTORY.newInstance(this.type);
+		JpaEntityLoader<?> loader = (JpaEntityLoader<?>)FACTORY.newInstance(this.type);
 		return (SubmodelElementEntity)loader.load(em, this.key);
 	}
 	

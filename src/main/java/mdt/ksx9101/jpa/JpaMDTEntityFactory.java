@@ -13,7 +13,7 @@ import mdt.model.sm.entity.SubmodelElementEntity;
  * @author Kang-Woo Lee (ETRI)
  */
 public class JpaMDTEntityFactory {
-	private Map<String,JpaEntityLoader> FQCN_TO_ADAPTORS = Maps.newHashMap();
+	private Map<String,JpaEntityLoader<? extends SubmodelElementEntity>> FQCN_TO_ADAPTORS = Maps.newHashMap();
 	
 	public JpaMDTEntityFactory() {
 		FQCN_TO_ADAPTORS.put(JpaEquipment.class.getName(), new JpaEquipment.Loader());
@@ -29,12 +29,12 @@ public class JpaMDTEntityFactory {
 		FQCN_TO_ADAPTORS.put(JpaRoutings.class.getName(), new JpaRoutings.Loader());
 	}
 	
-	public JpaEntityLoader newInstance(String id) {
+	public JpaEntityLoader<? extends SubmodelElementEntity> newInstance(String id) {
 		JpaEntityLoader<? extends SubmodelElementEntity> loader = FQCN_TO_ADAPTORS.get(id);
 		if ( loader == null ) {
 			throw new IllegalArgumentException("Unknown MDTEntity: id=" + id);
 		}
 		
-		return (JpaEntityLoader)loader;
+		return loader;
 	}
 }

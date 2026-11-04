@@ -4,12 +4,14 @@ import java.util.List;
 
 import com.google.common.base.Preconditions;
 
-import utils.stream.FStream;
+import lombok.Getter;
+import lombok.Setter;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
-import lombok.Getter;
-import lombok.Setter;
+
+import utils.stream.FStream;
+
 import mdt.ksx9101.JpaEntityLoader;
 import mdt.model.sm.data.Equipments;
 import mdt.model.sm.entity.SubmodelElementListEntity;
@@ -32,9 +34,9 @@ public class JpaEquipments extends SubmodelElementListEntity<JpaEquipment>
 		@Override
 		public JpaEquipments load(EntityManager em, Object key) {
 			Preconditions.checkArgument(key instanceof List
-										&& ((List) key).size() > 0
-										&& ((List)key).get(0) instanceof String);
-			String keysStr = FStream.from((List)key)
+										&& ((List<?>) key).size() > 0
+										&& ((List<?>)key).get(0) instanceof String);
+			String keysStr = FStream.from((List<?>)key)
 									.map(id -> String.format("'%s'", ((String)id).trim()))
 									.join(", ", "(", ")");
 			String jpql = String.format(JPQL_FORMAT, keysStr);
