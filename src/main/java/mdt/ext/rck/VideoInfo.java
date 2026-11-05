@@ -10,4 +10,4 @@ package mdt.ext.rck;
  * @author Kang-Woo Lee (ETRI)
  */
 public record VideoInfo(String type, String status, String fileName, long fileSize,
-						int totalChunks, int chunkSize, String timestamp, String downloadUrl) { }
+						String timestamp, String downloadUrl) { }

@@ -3,16 +3,14 @@ package mdt.ext.rck;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 import javax.annotation.concurrent.GuardedBy;
 
@@ -26,10 +24,9 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import utils.Preconditions;
-import utils.func.Result;
 import utils.Throwables;
-import utils.func.CheckedFunctionX;
-import utils.statechart.AbstractState;
+import utils.func.Result;
+import utils.statechart.AbstractTimedState;
 import utils.statechart.Signal;
 import utils.statechart.SignalResult;
 import utils.statechart.Transition;
@@ -157,11 +154,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private final SimulationObserver m_observer;
 	private volatile Duration m_responseTimeout = DEFAULT_RESPONSE_TIMEOUT;
 	private volatile Duration m_stopResponseTimeout = DEFAULT_STOP_RESPONSE_TIMEOUT;
-
-	// 응답 대기 타이머. 상태 진입·메시지 수신 때 다시 걸고, 상태를 벗어날 때 취소한다.
-	// 세대 번호로 이미 취소된 타이머가 늦게 보낸 신호를 구분한다.
-	private final AtomicLong m_responseTimerGeneration = new AtomicLong();
-	private volatile ScheduledFuture<?> m_responseTimer;
 
 	// 들어간 종료 상태의 종료 사유. 종료 알림(notifyFinished)이 결과를 만드는 데 쓴다.
 	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
@@ -330,79 +322,59 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private static record SendFailed(Throwable cause) implements Signal { }
 
 	/**
-	 * 응답 대기 시간이 지났음을 알리는 내부 신호.
-	 *
-	 * @param generation	신호를 보낸 타이머의 세대 번호. 현재 타이머가 아니면 무시한다.
-	 * @param timeout		지난 대기 시간
-	 */
-	private static record ResponseTimedOut(long generation, Duration timeout) implements Signal { }
-
-	/**
 	 * 시뮬레이터의 응답을 기다리는 상태들의 공통 기반 클래스.
 	 * <p>
-	 * 진입하면 상태 변화를 관찰자에게 알리고 응답 대기 타이머를 건다. 상태를 벗어나면 타이머를 취소한다. 대기 시간이
-	 * 지나면 {@link #onResponseTimeout(Duration)}이 고른 전이를 수행한다. 하위 클래스는 메시지를 받을 때
-	 * {@link #restartResponseTimer()}로 대기 시간을 다시 시작한다. 그 밖의 신호는 전이 표({@code on(...)})로 처리한다.
+	 * 응답 대기 타이머는 {@link AbstractTimedState}가 관리한다. 진입하면 타이머를 걸고 상태 변화를 관찰자에게
+	 * 알리며, 상태를 벗어나면 타이머를 취소한다. 대기 시간이 지나면 {@link #onTimeout(Duration)}이 고른 전이를
+	 * 수행한다. 하위 클래스는 메시지를 받을 때 {@link #restartTimeout()}으로 대기 시간을 다시 시작한다.
+	 * 타이머 신호는 {@link RCKExecutors#WORKERS}에서 보내 타이머 스레드가 전이를 실행하지 않게 한다.
 	 */
-	private abstract class ResponseWaitingState extends AbstractState<RCKSimulationContext> {
+	private abstract class ResponseWaitingState extends AbstractTimedState<RCKSimulationContext> {
 		protected ResponseWaitingState(String path, RCKSimulationContext context) {
-			super(path, context);
+			super(path, context, RCKExecutors.TIMER, RCKExecutors.WORKERS);
 		}
 
-		/**
-		 * 응답 대기 시간이 지났을 때 수행할 전이를 고른다.
-		 *
-		 * @param timeout	지난 대기 시간
-		 * @return	수행할 전이
-		 */
-		protected abstract Transition<RCKSimulationContext> onResponseTimeout(Duration timeout);
-
-		/** 이 상태의 응답 대기 시간. */
-		protected Duration getResponseTimeout() {
+		/** 이 상태의 응답 대기 시간. 기본은 {@link #setResponseTimeout(Duration)}으로 정한 값이다. */
+		@Override
+		protected Duration getTimeout() {
 			return m_responseTimeout;
 		}
 
-		protected void restartResponseTimer() {
-			startResponseTimer(getResponseTimeout());
-		}
-
+		/** 상태 변화를 관찰자에게 알린다. 재정의하면 {@code super.onEnter()}를 먼저 호출한다. */
 		@Override
-		public void enter() {
+		protected void onEnter() {
 			notifyStateChanged(getPath());
-			restartResponseTimer();
-		}
-
-		@Override
-		public void exit() {
-			cancelResponseTimer();
-		}
-
-		@Override
-		public Optional<Transition<RCKSimulationContext>> selectTransition(Signal signal) {
-			if ( signal instanceof ResponseTimedOut timedOut ) {
-				// 이미 취소된 타이머가 늦게 보낸 신호는 무시한다.
-				return Optional.of(isCurrentResponseTimer(timedOut) ? onResponseTimeout(timedOut.timeout())
-																	: Transitions.stay());
-			}
-			return super.selectTransition(signal);
 		}
 	}
 
 	/**
 	 * JSON 텍스트 메시지의 {@code type}에 따라 전이를 고르는 상태들의 공통 기반 클래스.
 	 * <p>
-	 * 하위 클래스는 생성자에서 {@link #onMessage(String, Transition)} 등으로 {@code type}별 처리기를 등록하고,
-	 * 진입 시 보낼 명령이 있으면 {@link #sendRequest()}를 재정의한다. 등록되지 않은 {@code type}은 경고 로그만 남기고
-	 * 머문다. 공통으로 {@link #STOP_REQUESTED}는 {@code Stopping}으로, 명령 전송 실패({@link SendFailed}), 메시지
-	 * 처리 중 예외, 응답 대기 시간 초과, 시뮬레이터의 연결 종료({@link ConnectionClosed}), 연결 오류
-	 * ({@link WebSocketError}: pong 시간 초과 등)는 {@code Failed}로 전이한다. 연결 오류를 처리하지 않으면 대체 종료가
-	 * 차트를 바로 실패시켜 {@code Failed} 상태의 정리(중지 명령 전송)를 거치지 않는다.
-	 * 연결 종료를 처리하지 않으면 정상 close 코드일 때 {@link WebSocketStateChart}의 대체 종료가 차트를 취소하는데,
-	 * 시뮬레이션 도중 끊긴 것은 사용자의 취소가 아니라 실패다.
+	 * 하위 클래스는 생성자에서 {@link #onMessageType(String, Transition)} 등으로 {@code type}별 처리기를
+	 * 등록하고, 진입 시 보낼 명령이 있으면 {@link #sendRequest()}를 재정의한다. 등록되지 않은 {@code type}은
+	 * 경고 로그만 남기고 머문다. 공통으로 {@link #STOP_REQUESTED}는 {@code Stopping}으로,
+	 * 명령 전송 실패({@link SendFailed}), 메시지 처리 중 예외, 응답 대기 시간 초과, 시뮬레이터의
+	 * 연결 종료({@link ConnectionClosed}), 연결 오류({@link WebSocketError}: pong 시간 초과 등)는
+	 * {@code Failed}로 전이한다. 연결 오류를 처리하지 않으면 대체 종료가 차트를 바로 실패시켜
+	 * {@code Failed} 상태의 정리(중지 명령 전송)를 거치지 않는다.
+	 * 연결 종료를 처리하지 않으면 정상 close 코드일 때 {@link WebSocketStateChart}의 대체 종료가
+	 * 차트를 취소하는데, 시뮬레이션 도중 끊긴 것은 사용자의 취소가 아니라 실패다.
 	 */
 	private abstract class JsonMessageState extends ResponseWaitingState {
-		private final Map<String, CheckedFunctionX<JsonNode,Transition<RCKSimulationContext>,Exception>> m_handlers
-																									= new HashMap<>();
+		/** {@code type}별 JSON 메시지를 받아 수행할 전이를 정하는 처리기. */
+		@FunctionalInterface
+		private interface MessageHandler {
+			/**
+			 * 메시지를 처리하고 수행할 전이를 돌려준다.
+			 *
+			 * @param msg	수신한 메시지 전체
+			 * @return	수행할 전이. {@code null}이면 안 된다.
+			 * @throws Exception	처리 실패. {@code Failed} 전이가 된다.
+			 */
+			Transition<RCKSimulationContext> handle(JsonNode msg) throws Exception;
+		}
+
+		private final Map<String, MessageHandler> m_handlers = new HashMap<>();
 
 		protected JsonMessageState(String path, RCKSimulationContext context) {
 			super(path, context);
@@ -428,8 +400,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		 * @param type			메시지의 {@code type} 값
 		 * @param transition	수행할 전이
 		 */
-		protected void onMessage(String type, Transition<RCKSimulationContext> transition) {
-			onMessage(type, msg -> transition);
+		protected void onMessageType(String type, Transition<RCKSimulationContext> transition) {
+			onMessageType(type, msg -> transition);
 		}
 
 		/**
@@ -438,19 +410,18 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		 * @param type		메시지의 {@code type} 값
 		 * @param handler	메시지 전체를 받아 수행할 전이를 돌려주는 처리기
 		 */
-		protected void onMessage(String type,
-								CheckedFunctionX<JsonNode,Transition<RCKSimulationContext>,Exception> handler) {
+		protected void onMessageType(String type, MessageHandler handler) {
 			m_handlers.put(type, handler);
 		}
 
 		@Override
-		public void enter() {
-			super.enter();
+		protected void onEnter() {
+			super.onEnter();
 			sendRequest();
 		}
 
 		@Override
-		protected Transition<RCKSimulationContext> onResponseTimeout(Duration timeout) {
+		protected Transition<RCKSimulationContext> onTimeout(Duration timeout) {
 			return failWith(new TimeoutException("no response from the simulator within " + timeout
 												+ ": state=" + getPath()));
 		}
@@ -458,7 +429,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		@Override
 		public Optional<Transition<RCKSimulationContext>> selectTransition(Signal signal) {
 			if ( signal instanceof TextMessage msg ) {
-				restartResponseTimer();
+				restartTimeout();
 				return Optional.of(handleMessage(msg.getText()));
 			}
 			return super.selectTransition(signal);
@@ -479,7 +450,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 					}
 					return Transitions.stay();
 				}
-				return handler.apply(msg);
+				return handler.handle(msg);
 			}
 			catch ( Exception e ) {
 				return failWith(e);
@@ -495,11 +466,12 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		Registering(String path, RCKSimulationContext context) {
 			super(path, context);
 
-			onMessage("connected", Transitions.to(STATE_LAYOUT_LOADING));
+			onMessageType("connected", Transitions.to(STATE_LAYOUT_LOADING));
 		}
 
 		@Override
 		protected void sendRequest() {
+			// 상태	진입 시 시뮬레이터에게 등록 명령을 보낸다.
 			getLogger().info("requesting client registration: {}", getContext().getClientId());
 			sendCommand(Map.of("register", getContext().getClientId()));
 		}
@@ -514,8 +486,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		LayoutLoading(String path, RCKSimulationContext context) {
 			super(path, context);
 
-			onMessage("loading", Transitions.stay());
-			onMessage("facility", msg -> {
+			onMessageType("loading", Transitions.stay());
+			onMessageType("facility", msg -> {
 				JsonNode facility = msg.get("message");
 				getContext().setFacility(facility);
 				if ( getLogger().isInfoEnabled() ) {
@@ -543,8 +515,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		SimulationStarting(String path, RCKSimulationContext context) {
 			super(path, context);
 
-			onMessage("simulation_waiting", Transitions.stay());
-			onMessage("simulation_start", Transitions.to(STATE_RUNNING));
+			onMessageType("simulation_waiting", Transitions.stay());
+			onMessageType("simulation_start", Transitions.to(STATE_RUNNING));
 		}
 
 		@Override
@@ -574,7 +546,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		Running(String path, RCKSimulationContext context) {
 			super(path, context);
 
-			onMessage("simulation_status", msg -> {
+			onMessageType("simulation_status", msg -> {
 				RCKSimulationProgress progress;
 				try {
 					progress = RCKSimulationProgress.parse(msg.get("message"));
@@ -597,21 +569,26 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				return Transitions.stay();
 			});
 			// 영상 생성 진행 알림은 기록만 한다. 로그를 위해 역직렬화하지 않는다(형식이 달라도 실패하지 않도록).
-			onMessage("video_progress", msg -> {
-				getLogger().debug("received video progress: {}", msg);
+			onMessageType("video_progress", msg -> {
+				getLogger().info("received video progress: {}", msg);
 				return Transitions.stay();
 			});
-			onMessage("video_ready", msg -> {
-				getLogger().debug("received video ready: {}", msg);
+			onMessageType("video_ready", msg -> {
+				getLogger().info("received video ready: {}", msg);
 				return Transitions.stay();
 			});
-			onMessage("video_info", msg -> {
-				VideoInfo video = MAPPER.treeToValue(msg, VideoInfo.class);
-				getLogger().info("received video info: {}", video);
+			onMessageType("video_info", msg -> {
+				VideoInfo vinfo = MAPPER.treeToValue(msg, VideoInfo.class);
+				getLogger().info("received video info: {}", vinfo);
 
-				getContext().setVideoInfo(video);
-				notifyObserver(() -> m_observer.onVideoReady(video.downloadUrl()));
-				return Transitions.to(video.fileSize() > 0 ? STATE_RECEIVING_VIDEO : STATE_COMPLETED);
+				getContext().setVideoInfo(vinfo);
+				switch ( vinfo.status() ) {
+					case "start":
+						return Transitions.to(STATE_RECEIVING_VIDEO);
+					case "end":
+				}
+
+				return Transitions.stay();
 			});
 		}
 	}
@@ -625,67 +602,46 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * {@code Completed}로 끝낸다. 수신 도중
 	 * {@link #STOP_REQUESTED}를 받으면 {@code Stopping}으로 전이한다.
 	 */
-	private final class ReceivingVideo extends ResponseWaitingState {
-		/** 수신 진행 로그를 남기는 간격(바이트). */
-		private static final long PROGRESS_LOG_STEP = 1024 * 1024;	// 1MB
-
-		// 남은 영상 크기. 0 이하가 되면 수신이 끝난 것으로 본다.
-		private long m_remainingVideoBytes;
-		private long m_lastLoggedStep;
-
+	private final class ReceivingVideo extends JsonMessageState {
 		ReceivingVideo(String path, RCKSimulationContext context) {
 			super(path, context);
 
-			on(STOP_REQUESTED, Transitions.to(STATE_STOPPING));
-			on(TextMessage.class, msg -> {
-				restartResponseTimer();
+			onMessageType("video_progress", msg -> {
+				VideoProgress progress;
+				try {
+					progress = MAPPER.treeToValue(msg, VideoProgress.class); 
+				}
+				catch ( RuntimeException e ) {
+					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
+					if ( m_warnedMalformedStatus.compareAndSet(false, true) ) {
+						getLogger().warn("ignored malformed video progress: cause={}, message={}; "
+										+ "further ones are logged at DEBUG", ""+e, msg);
+					}
+					else {
+						getLogger().debug("ignored malformed video progress: cause={}, message={}", ""+e, msg);
+					}
+					return Transitions.stay();
+				}
+				getLogger().info("received video progress: {}", progress);
 				return Transitions.stay();
 			});
-			on(ConnectionClosed.class, closed -> {
-				getLogger().warn("connection closed while receiving video: remains={}", m_remainingVideoBytes);
-				return Transitions.to(STATE_COMPLETED);
+			onMessageType("video_ready", msg -> {
+				getLogger().info("received video ready: {}", msg);
+				return Transitions.stay();
 			});
-			on(WebSocketError.class, error -> {
-				getLogger().warn("connection error while receiving video: remains={}, cause={}",
-								m_remainingVideoBytes, ""+error.getError());
-				return Transitions.to(STATE_COMPLETED);
+			onMessageType("video_info", msg -> {
+				VideoInfo video = MAPPER.treeToValue(msg, VideoInfo.class);
+				getLogger().info("received video info: {}", video);
+
+				getContext().setVideoInfo(video);
+				if ( video.downloadUrl() != null ) {
+					notifyObserver(() -> m_observer.onVideoReady(video.downloadUrl()));
+				}
+				return Transitions.stay();
 			});
-		}
-
-		@Override
-		public void enter() {
-			m_remainingVideoBytes = getContext().getVideoInfo().fileSize();
-			m_lastLoggedStep = m_remainingVideoBytes / PROGRESS_LOG_STEP;
-			super.enter();
-		}
-
-		@Override
-		protected Transition<RCKSimulationContext> onResponseTimeout(Duration timeout) {
-			getLogger().warn("no video data within {}; finishing without the rest: remains={}", timeout, m_remainingVideoBytes);
-			return Transitions.to(STATE_COMPLETED);
-		}
-
-		@Override
-		public Optional<Transition<RCKSimulationContext>> selectTransition(Signal signal) {
-			if ( signal instanceof BinaryMessage msg ) {
-				restartResponseTimer();
-
-				m_remainingVideoBytes -= msg.getBytes().length;
-				if ( m_remainingVideoBytes <= 0 ) {
-					getLogger().info("received the whole video");
-					return Optional.of(Transitions.to(STATE_COMPLETED));
-				}
-
-				long step = m_remainingVideoBytes / PROGRESS_LOG_STEP;
-				if ( step != m_lastLoggedStep ) {
-					m_lastLoggedStep = step;
-					getLogger().info("video receiving progress: remains={}", m_remainingVideoBytes);
-				}
-				return Optional.of(Transitions.stay());
-			}
-			return super.selectTransition(signal);
 		}
 	}
+	private record VideoProgress(String type, String fileName, String progress) { }
 
 	/**
 	 * 시뮬레이터의 중지 명령 응답을 기다리는 상태.
@@ -712,13 +668,13 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		}
 
 		@Override
-		protected Duration getResponseTimeout() {
+		protected Duration getTimeout() {
 			return m_stopResponseTimeout;
 		}
 
 		@Override
-		public void enter() {
-			super.enter();
+		protected void onEnter() {
+			super.onEnter();
 
 			sendStopCommand().whenComplete((ws, e) -> {
 				if ( e != null ) {
@@ -728,7 +684,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		}
 
 		@Override
-		protected Transition<RCKSimulationContext> onResponseTimeout(Duration timeout) {
+		protected Transition<RCKSimulationContext> onTimeout(Duration timeout) {
 			getLogger().warn("no simulation_stop response within {}; finishing as stopped", timeout);
 			return Transitions.to(STATE_STOPPED);
 		}
@@ -811,25 +767,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 */
 	private Transition<RCKSimulationContext> failWith(Throwable cause) {
 		return Transitions.fail(STATE_FAILED, signal -> cause);
-	}
-
-	private void startResponseTimer(Duration timeout) {
-		cancelResponseTimer();
-		long generation = m_responseTimerGeneration.get();
-		m_responseTimer = RCKExecutors.schedule(() -> postSignal(new ResponseTimedOut(generation, timeout)), timeout);
-	}
-
-	private void cancelResponseTimer() {
-		m_responseTimerGeneration.incrementAndGet();
-		ScheduledFuture<?> timer = m_responseTimer;
-		if ( timer != null ) {
-			timer.cancel(false);
-			m_responseTimer = null;
-		}
-	}
-
-	private boolean isCurrentResponseTimer(ResponseTimedOut timedOut) {
-		return timedOut.generation() == m_responseTimerGeneration.get();
 	}
 
 	/**
