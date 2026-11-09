@@ -15,12 +15,11 @@ public interface SimulationObserver {
 	public static final SimulationObserver NONE = new SimulationObserver() { };
 
 	/**
-	 * 시뮬레이션이 새 상태에 진입했다. 종료 상태는 {@link #onFinished(RCKSimulationResult)}로 알린다.
+	 * 시뮬레이션이 새 단계에 들어섰다. 종료는 {@link #onFinished(RCKSimulationResult)}로 알린다.
 	 *
-	 * @param statePath		진입한 상태의 경로 (예: {@code "/Running"})
-	 * @param displayName	사용자에게 보일 상태 이름 (예: {@code "시뮬레이션 진행중"})
+	 * @param phase	들어선 단계. 사용자에게 보일 이름은 {@link RCKSimulationPhase#displayName()}.
 	 */
-	public default void onStateChanged(String statePath, String displayName) { }
+	public default void onPhaseChanged(RCKSimulationPhase phase) { }
 
 	/**
 	 * 시뮬레이터가 진행 상황을 보고했다.

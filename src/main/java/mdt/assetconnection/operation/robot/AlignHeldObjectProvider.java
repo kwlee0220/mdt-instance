@@ -128,7 +128,7 @@ public class AlignHeldObjectProvider extends RobotTwinOperationProvider {
 		if ( sceneObjects != null ) {
 			objects.setValue(sceneObjects);
 		}
-		aligned.setValue(Boolean.toString(check.aligned()));
+		aligned.setValue(Boolean.toString(check.goalReached()));
 		stopReason.setValue(check.stopReason().name());
 		passes.setValue(Integer.toString(check.passes()));
 		if ( errorM != null && check.errorM() != null ) {
@@ -138,11 +138,11 @@ public class AlignHeldObjectProvider extends RobotTwinOperationProvider {
 			failedStage.setValue(check.failedStage() != null ? check.failedStage().name() : "");
 		}
 		if ( reason != null ) {
-			reason.setValue(check.why() != null ? check.why() : "");
+			reason.setValue(check.failureReason() != null ? check.failureReason() : "");
 		}
-		if ( !check.aligned() ) {
+		if ( !check.goalReached() ) {
 			s_logger.warn("held object not aligned: twin={}, object={}, reason={}, passes={}, errorM={}, details={}",
-							m_rtConfig.getTwinId(), objectName, check.stopReason(), check.passes(), check.errorM(), check.why());
+							m_rtConfig.getTwinId(), objectName, check.stopReason(), check.passes(), check.errorM(), check.failureReason());
 		}
 	}
 
@@ -151,8 +151,9 @@ public class AlignHeldObjectProvider extends RobotTwinOperationProvider {
 		List<StepResult<AlignHeldObject.Stage>> steps = check.steps();
 		for ( int i = steps.size() - 1; i >= 0; --i ) {
 			StepResult<AlignHeldObject.Stage> step = steps.get(i);
-			if ( step.objectStill() != null && step.goalReached() && step.objectStill().sample().isPresent() ) {
-				return sceneObjectsOrNull(step.objectStill().sample().get().path("value").get("objects"), s_logger);
+			var still = step.verdictAs(WaitUntilObjectStill.Result.class);
+			if ( still.isPresent() && step.goalReached() && still.get().sample().isPresent() ) {
+				return sceneObjectsOrNull(still.get().sample().get().path("value").get("objects"), s_logger);
 			}
 		}
 		return null;

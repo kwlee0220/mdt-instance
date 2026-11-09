@@ -25,7 +25,7 @@ import mdt.ext.rck.RCKSimulationResult.Termination;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public class RCKSimulationExample {
+public class RCKSimulationSamplePress {
 	private static final String SERVER_URL = "ws://59.25.241.80:4000";
 	private static final String CLIENT_ID = "mdt";
 	private static final String PROCESS_NAME = "press";
@@ -36,12 +36,18 @@ public class RCKSimulationExample {
 		String layoutName = (args.length > 0) ? args[0] : DEFAULT_LAYOUT;
 		long maxWaitMinutes = (args.length > 1) ? Long.parseLong(args[1]) : DEFAULT_MAX_WAIT_MINUTES;
 
-		// 실행마다 새 context와 simulation 객체를 만든다.
-		RCKSimulationContext context = new RCKSimulationContext(SERVER_URL, CLIENT_ID, PROCESS_NAME, layoutName);
-		RCKSimulation simulation = new RCKSimulation(context, new ConsoleObserver());
-		simulation.setResponseTimeout(Duration.ofMinutes(2));	// 메시지가 이 시간 동안 없으면 실패
-		simulation.setPingInterval(Duration.ofSeconds(30));		// 연결 유지용 ping 주기
-		simulation.setPongTimeout(Duration.ofSeconds(5));
+		// 실행마다 새 simulation 객체를 만든다.
+		RCKSimulation simulation = RCKSimulation.builder()
+											.serverUrl(SERVER_URL)
+											.clientId(CLIENT_ID)
+											.processName(PROCESS_NAME)
+											.layoutName(layoutName)
+											// 메시지가 이 시간 동안 없으면 실패
+											.responseTimeout(Duration.ofMinutes(2))
+											// 연결 유지: ping 주기, pong 대기 시간
+											.keepAlive(Duration.ofSeconds(30), Duration.ofSeconds(5))
+											.observer(new ConsoleObserver())
+											.build();
 
 		// Ctrl-C로 끝낼 때 시뮬레이터 쪽 실행도 멈추도록 중지를 요청한다.
 		Thread shutdownHook = new Thread(() -> stopQuietly(simulation), "rck-example-shutdown");
@@ -95,20 +101,21 @@ public class RCKSimulationExample {
 		}
 		System.out.println("진척도     : " + progress.progress());
 		System.out.println("생산량     : " + progress.production());
-		printUtilizations(progress.averageUtilizations());
+		printUtilizations(progress.utilizations());
 		System.out.println("결과 영상  : " + ((result.videoUrl() != null) ? result.videoUrl() : "(없음)"));
 		if ( result.failureCause() != null ) {
 			System.out.println("실패 원인  : " + result.failureCause());
 		}
 	}
 
-	private static void printUtilizations(Map<String,Float> utilizations) {
+	private static void printUtilizations(Map<RCKEquipment,Float> utilizations) {
 		if ( utilizations.isEmpty() ) {
 			System.out.println("설비 이용률: (없음)");
 			return;
 		}
 		System.out.println("설비 이용률:");
-		utilizations.forEach((type, util) -> System.out.printf("  - %s: %.3f%n", type, util));
+		utilizations.forEach((equipment, util) -> System.out.printf("  - %s[%d] %s: %.3f%n",
+												equipment.group(), equipment.index(), equipment.name(), util));
 	}
 
 	/**
@@ -120,8 +127,8 @@ public class RCKSimulationExample {
 		private int m_lastProgress = -1;
 
 		@Override
-		public void onStateChanged(String statePath, String displayName) {
-			System.out.printf("[상태] %s (%s)%n", displayName, statePath);
+		public void onPhaseChanged(RCKSimulationPhase phase) {
+			System.out.printf("[상태] %s (%s)%n", phase.displayName(), phase);
 		}
 
 		@Override
@@ -130,7 +137,7 @@ public class RCKSimulationExample {
 			if ( progress.progress() != m_lastProgress ) {
 				m_lastProgress = progress.progress();
 //				System.out.printf("[진행] 진척도=%d, 생산량=%d, 이용률=%s%n",
-//									progress.progress(), progress.production(), progress.averageUtilizations());
+//									progress.progress(), progress.production(), progress.utilizations());
 			}
 		}
 

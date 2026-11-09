@@ -330,12 +330,12 @@ public class PlaceProviderTest {
 	public void interruptionBetweenStepsDoesNotNameSuccessfulStepAsFailed() {
 		assertNull(PlaceProvider.describeStop(List.of(), null).failedStage());
 		assertTrue(PlaceProvider.describeStop(List.of(), null).context().contains("APPROACH 진입 전"));
-		var released = new StepResult<>(Place.Stage.RELEASE, null, new GripperCheck(true, false, null, null),
+		var released = new StepResult<>(Place.Stage.RELEASE, new GripperCheck(true, false, null, null),
 				Optional.empty(), null);
 		var stopped = PlaceProvider.describeStop(List.of(released), null);
 		assertNull(stopped.failedStage());
 		assertEquals("RELEASE 완료 후 RETREAT 진입 전 중단", stopped.context());
-		var failed = new StepResult<>(Place.Stage.DESCEND, null, null, Optional.empty(), new InterruptedException());
+		var failed = new StepResult<>(Place.Stage.DESCEND, null, Optional.empty(), new InterruptedException());
 		assertEquals(Place.Stage.DESCEND, PlaceProvider.describeStop(List.of(failed), null).failedStage());
 	}
 

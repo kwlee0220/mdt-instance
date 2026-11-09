@@ -207,7 +207,7 @@ public class MoveGripperToTargetProviderTest {
 				logs.list.clear();
 				server.status = status;
 				var failure = assertThrows(OperationFailedException.class, this::invoke);
-				assertEquals(status, failure.getResult().status());
+				assertEquals(status, failure.getResult().status().name());
 				assertTrue(logs.list.stream().anyMatch(e -> e.getLevel() == Level.WARN
 						&& e.getFormattedMessage().contains("status=" + status)
 						&& e.getFormattedMessage().contains("operation=move_gripper_to_target")

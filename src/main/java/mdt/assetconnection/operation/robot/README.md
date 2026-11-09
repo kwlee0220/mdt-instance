@@ -373,7 +373,7 @@ flowchart TD
 
 원격 출력 이름은 `target` → `goal`, `width` → `position`, `at_goal` → `reached_goal` 순으로 찾는다. 앞 이름이 없거나 null이면 뒤 이름을 사용한다. `stalled`는 대체 이름이 없다. 필수 원격 값인 목표 이름·stall·도달 보고를 얻지 못하면 `IOException`이다. Boolean이 아닌 stall·도달 값은 WARN 후 false로 반영한다.
 
-이 호환 변환 때문에 Provider의 `ReachedGoal`은 클라이언트의 `check.atGoal()`을 그대로 복사한 값이 아니다. 예전 이름의 출력을 받는 경우에도 AAS 호환을 유지한다. 펑션베이에서 개구 폭을 얻지 못하면 `Position`이 갱신되지 않을 수 있다.
+이 호환 변환 때문에 Provider의 `ReachedGoal`은 클라이언트의 `check.goalReached()`을 그대로 복사한 값이 아니다. 예전 이름의 출력을 받는 경우에도 AAS 호환을 유지한다. 펑션베이에서 개구 폭을 얻지 못하면 `Position`이 갱신되지 않을 수 있다.
 
 원격 `FAILED`·`CANCELLED`는 출력 갱신 전에 예외로 전달한다. 원격 `COMPLETED`에 `at_goal=false`가 담겨 오면 `ReachedGoal=false`로 정상 반환한다. `ReachedGoal=true`도 특정 물체를 실제로 잡았거나 놓았다는 보장은 아니다.
 
@@ -443,7 +443,7 @@ flowchart LR
 
 여기서 상대 위치는 `MeasureObjectOffset`이 같은 일괄 조회 응답의 `ee_pose`와 `scene_objects`로 계산한 **물체 중심 - 도구 기준점**이다. 두 값을 각 측정의 도구 자세로 도구 좌표계에 옮겨 비교하므로, 물체가 그리퍼와 함께 올라오면 손목이 돌아도 거의 같고, 탁자에 남았거나 다른 물체를 물었으면 들어 올린 거리만큼 벌어진다. 그리퍼의 파지 판정에 장면 관측을 더해 원하는 물체가 함께 이동했는지 확인한다. 물체 형상은 쓰지 않으며, 놓기 직전까지 유지되는지나 미끄러진 원인은 판정하지 않는다.
 
-이 판정은 두 측정 사이에 도구 기준점이 실제로 `HoldTolerance`의 2배 이상 움직여야 성립한다. 덜 움직였으면(상승이 짧았거나 상승 뒤 관측이 갱신되지 않아 상승 전 값이 다시 왔으면) "유지 판정 불가"로 `GoalsReached=false`, `FailedStage=MEASURE_HELD`를 반환한다. `ObjectName`을 줬는데 `LiftPose`가 `GraspPose`에서 이 거리보다 가까우면 움직이기 전에 `IllegalArgumentException`으로 거부한다(기본값 기준 20mm).
+이 판정은 두 측정 사이에 도구 기준점이 실제로 `HoldTolerance`의 2배 이상 움직여야 성립한다. 덜 움직였으면(상승이 짧았거나 상승 뒤 관측이 갱신되지 않아 상승 전 값이 다시 왔으면) "유지 판정 불가"로 `GoalsReached=false`, `FailedStage=MEASURE_HELD`를 반환한다. `ObjectName`을 줬을 때, 하강·상승이 각각 축별 `Tolerance` 안에서 덜 갔다고 가정한 최소 상승이 이 거리보다 짧으면 움직이기 전에 `IllegalArgumentException`으로 거부한다. 수직 상승이면 `LiftPose`가 `GraspPose`에서 이 거리 + 두 `Tolerance`(기본값 기준 30mm) 이상 떨어져야 하고, 대각선이면 더 멀어야 한다(도달 판정이 각 축 오차의 최댓값이기 때문이다). 놓친 경우와 판정 불가는 선택 출력 `HoldVerdict`(`NOT_HELD`/`UNDETERMINED`)로 구분한다.
 
 핀 삽입처럼 들어 올리기 전에 물체의 위치·방향을 확인해야 하는 작업은 `Pick` 대신 `Grasp`를 쓰고, 판정한 뒤에 따로 들어 올린다.
 
@@ -458,7 +458,7 @@ flowchart LR
 | `OpenTarget` / `GraspTarget` | xs:string | 아니오 | `open` / `grasp` | 그리퍼 목표 이름 |
 | `ObjectName` | xs:string | 아니오 | 측정 안 함 | 상대 위치를 측정할 `scene_objects` 물체 이름 |
 | `TcpReference` | xs:string | 아니오 | `AS_REPORTED` | 측정의 도구 기준점. 펑션베이는 `AS_REPORTED`(grasp_center), Isaac Panda Hand는 `PANDA_HAND_TCP` |
-| `HoldTolerance` | xs:double | 아니오 | 0.01m | 들기 전후 상대 위치 차이(도구 좌표계)의 허용값. 유한한 양수. 이 값의 2배 이상 들어 올려야 함 |
+| `HoldTolerance` | xs:double | 아니오 | 0.01m | 들기 전후 상대 위치 차이(도구 좌표계)의 허용값. 유한한 양수. 하강·상승이 축별 `Tolerance`만큼 덜 가도 이 값의 2배 이상 들어 올려져야 함(수직이면 기본 30mm 이상) |
 
 `AASOperationClient`는 모델에 선언된 입력 변수를 모두 보내므로, `LiftPose`를 기본값 없이 선언하면 빈 자세가 전달되어 거부된다. 접근 자세로 들어 올리면 충분한 경우에는 `LiftPose`를 모델에 넣지 않는다.
 
@@ -471,10 +471,11 @@ flowchart LR
 | `FailedStage` | xs:string | 예 | `OPEN`, `APPROACH`, `DESCEND`, `GRASP`, `MEASURE_GRIP`, `LIFT`, `MEASURE_HELD`. 성공하면 빈 문자열 |
 | `FailureReason` | xs:string | 예 | 목표 미확인 사유. 성공하면 빈 문자열 |
 | `HoldDriftM` | xs:double | 아니오 | 들기 전후 상대 위치를 도구 좌표계에서 비교한 차이의 크기, m |
+| `HoldVerdict` | xs:string | 아니오 | 유지 판정: `HELD`, `NOT_HELD`(놓침), `UNDETERMINED`(상승 부족·관측 미갱신으로 판정 불가), `NOT_CHECKED`(`ObjectName` 없음 또는 측정 전 단계 실패). 정상 반환할 때마다 갱신 |
 | `HeldOffset` | SMC `x`/`y`/`z` xs:double | 아니오 | 들어 올린 뒤의 물체·도구 상대 위치(기준 좌표계). 놓기 자세 계산에 쓴다 |
 | `Objects` | 물체 목록 SMC | 아니오 | 들어 올린 뒤 측정에 사용한 장면의 물체 목록 |
 
-세 선택 출력은 두 측정을 모두 마쳤을 때만 갱신한다. 유지 판정에 실패한 경우(`FailedStage=MEASURE_HELD`)에도 갱신하므로 워크플로가 차이 크기를 볼 수 있다. 측정 전에 멈췄거나 `ObjectName`이 없으면 이전 값이 남는다. `Objects`는 장면에 AAS idShort로 쓸 수 없는 이름(`another-box` 등)이 있어 변환할 수 없으면 경고 로그만 남기고 이전 값을 둔다. 로봇이 이미 물체를 들어 올린 뒤 선택 출력 하나 때문에 연산 전체를 실패시키지 않기 위해서다. `WaitUntilObjectStillProvider`·`AlignHeldObjectProvider`의 `Objects`도 같은 규칙을 따른다.
+`HoldDriftM`·`HeldOffset`·`Objects`는 두 측정을 모두 마쳤을 때만 갱신한다. 유지 판정에 실패한 경우(`FailedStage=MEASURE_HELD`)에도 갱신하므로 워크플로가 차이 크기를 볼 수 있다. 측정 전에 멈췄거나 `ObjectName`이 없으면 이전 값이 남는다. `Objects`는 장면에 AAS idShort로 쓸 수 없는 이름(`another-box` 등)이 있어 변환할 수 없으면 경고 로그만 남기고 이전 값을 둔다. 로봇이 이미 물체를 들어 올린 뒤 선택 출력 하나 때문에 연산 전체를 실패시키지 않기 위해서다. `WaitUntilObjectStillProvider`·`AlignHeldObjectProvider`의 `Objects`도 같은 규칙을 따른다.
 
 결과 처리 규칙은 `GraspProvider`와 같다. 단계 목표 미확인, 원격 `FAILED`·`CANCELLED`, 유지 판정 실패는 `GoalsReached=false`로 정상 반환하고, 접수 거부·통신 오류·인터럽트는 예외로 전달하며 이때 출력은 반환되지 않는다. 유지 판정에 실패해도 그리퍼를 닫은 채 들어 올린 자세에서 멈추며, 자동 개방·복귀·재시도는 하지 않는다. 측정 단계는 각각 최대 5초 동안 유효한 표본을 기다리며, 이 시간은 `TimeoutSec`와 별개다.
 

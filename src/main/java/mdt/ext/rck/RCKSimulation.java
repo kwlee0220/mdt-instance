@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,12 +57,10 @@ import mdt.ext.rck.RCKSimulationResult.Termination;
  *   <li>{@code LayoutLoading} - 레이아웃을 요청하고 {@code facility} 메시지로 설비 정보를 수신한다.</li>
  *   <li>{@code SimulationStarting} - 시뮬레이션 시작 명령을 보내고 {@code simulation_start}를 기다린다.</li>
  *   <li>{@code Running} - {@code simulation_status}로 진행 상황을 받는다. {@code video_info}를 받으면
- *       영상 다운로드 URL을 알리고 영상 수신으로 전이한다.</li>
- *   <li>{@code ReceivingVideo} - 시뮬레이터가 이진 메시지로 보내는 결과 영상을 끝까지 받는다. 영상 내용은
- *       저장하지 않는다(결과로는 다운로드 URL만 쓴다).</li>
+ *       영상 다운로드 URL을 알리고 {@code Completed}로 전이한다.</li>
  *   <li>{@code Completed} / {@code Failed} / {@code Stopped} - 종료 상태.</li>
  * </ol>
- * 응답을 기다리는 상태들은 메시지 없이 응답 대기 시간({@link #setResponseTimeout(Duration)}, 기본 2분)이 지나면
+ * 응답을 기다리는 상태들은 메시지 없이 응답 대기 시간({@link Builder#responseTimeout(Duration)}, 기본 2분)이 지나면
  * {@link TimeoutException}을 원인으로 {@code Failed}로 전이한다. 메시지를 받을 때마다 대기 시간이 다시 시작된다.
  * 영상 정보를 받기 전에 시뮬레이터가 연결을 닫으면 정상 close 코드라도 {@link WebSocketClosedException}을 원인으로
  * {@code Failed}로 전이한다(사용자가 취소한 것이 아니므로).
@@ -78,26 +77,30 @@ import mdt.ext.rck.RCKSimulationResult.Termination;
  * <p>
  * 진행 상황(상태, 진척도, 영상 URL)은 생성자에 준 {@link SimulationObserver}에 알린다. 끝날 때는 어떤 경로로
  * 끝나든(종료 상태, 연결 오류로 인한 대체 종료, 취소) {@link SimulationObserver#onFinished}가 한 번 불린다. MDT
- * 인스턴스에 반영하려면 {@link MDTSimulationOutputReporter#startRun()}이 돌려주는 관찰자를 넘긴다.
+ * 인스턴스에 반영하려면 {@link MDTSimulationOutputReporter#newRunObserver()}가 돌려주는 관찰자를 넘긴다.
+ * <p>
+ * 시뮬레이션을 실행하지 않고 설비 정보만 얻으려면 {@link Builder#loadEquipmentProperties()}를 쓴다.
  * <p>
  * 다음은 시뮬레이션을 만들어 시작하고, 끝날 때까지 기다린 뒤 결과를 출력하는 예제다. 관찰자 메소드는 차트 lock을
  * 쥔 채 불리므로 짧게 끝내야 한다({@link SimulationObserver} 참조). {@link #waitForFinished()}는 실패나 취소로
  * 끝나도 예외를 던지지 않고 반환하며(인터럽트되면 {@link InterruptedException}), 종료 사유는
  * {@link #getSimulationResult()}로 확인한다.
  * <pre>{@code
- * RCKSimulationContext ctx = new RCKSimulationContext("ws://localhost:8765/ws",	// 시뮬레이터 WebSocket URL
- *                                                     "mdt-client-01",			// 클라이언트 식별자
- *                                                     "PressLine",				// 공정명
- *                                                     "Layout-A");				// 레이아웃명
- * RCKSimulation sim = new RCKSimulation(ctx, new SimulationObserver() {
- *     public void onStateChanged(String statePath, String displayName) {
- *         System.out.println("state: " + displayName);
- *     }
- *     public void onProgressUpdated(RCKSimulationProgress progress) {
- *         System.out.println("progress: " + progress);
- *     }
- * });
- * sim.setResponseTimeout(Duration.ofMinutes(1));	// 선택: 응답 대기 시간(기본 2분)
+ * RCKSimulation sim = RCKSimulation.builder()
+ *                         .serverUrl("ws://localhost:8765/ws")		// 시뮬레이터 WebSocket URL
+ *                         .clientId("mdt-client-01")				// 클라이언트 식별자
+ *                         .processName("PressLine")					// 공정명
+ *                         .layoutName("Layout-A")					// 레이아웃명
+ *                         .responseTimeout(Duration.ofMinutes(1))	// 선택: 응답 대기 시간(기본 2분)
+ *                         .observer(new SimulationObserver() {
+ *                             public void onPhaseChanged(RCKSimulationPhase phase) {
+ *                                 System.out.println("phase: " + phase.displayName());
+ *                             }
+ *                             public void onProgressUpdated(RCKSimulationProgress progress) {
+ *                                 System.out.println("progress: " + progress);
+ *                             }
+ *                         })
+ *                         .build();
  * sim.start();
  *
  * // 정상 절차로 멈추려면 다른 스레드에서 sim.requestStop()을, 즉시 취소하려면 sim.cancel(true)를 부른다.
@@ -124,21 +127,19 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private static final String STATE_LAYOUT_LOADING = "/LayoutLoading";
 	private static final String STATE_SIMULATION_STARTING = "/SimulationStarting";
 	private static final String STATE_RUNNING = "/Running";
-	private static final String STATE_RECEIVING_VIDEO = "/ReceivingVideo";
 	private static final String STATE_STOPPING = "/Stopping";
 	private static final String STATE_COMPLETED = "/Completed";
 	private static final String STATE_STOPPED = "/Stopped";
 	private static final String STATE_FAILED = "/Failed";
-	private static final Map<String,String> STATE_NAMES = Map.ofEntries(
-		Map.entry(STATE_CONNECTING_WEBSOCKET, "소켓 연결중"),
-		Map.entry(STATE_REGISTERING, "시뮬레이터 등록중"),
-		Map.entry(STATE_LAYOUT_LOADING, "레이아웃 로딩중"),
-		Map.entry(STATE_SIMULATION_STARTING, "시뮬레이션 시작중"),
-		Map.entry(STATE_RUNNING, "시뮬레이션 진행중"),
-		Map.entry(STATE_RECEIVING_VIDEO, "영상 수신중"),
-		Map.entry(STATE_STOPPING, "시뮬레이션 중지중")
+	// 진행 중 상태가 관찰자에게 알리는 단계. 종료 상태는 RCKSimulationResult.Termination으로 알린다.
+	private static final Map<String,RCKSimulationPhase> STATE_PHASES = Map.ofEntries(
+		Map.entry(STATE_CONNECTING_WEBSOCKET, RCKSimulationPhase.CONNECTING),
+		Map.entry(STATE_REGISTERING, RCKSimulationPhase.REGISTERING),
+		Map.entry(STATE_LAYOUT_LOADING, RCKSimulationPhase.LOADING_LAYOUT),
+		Map.entry(STATE_SIMULATION_STARTING, RCKSimulationPhase.STARTING),
+		Map.entry(STATE_RUNNING, RCKSimulationPhase.RUNNING),
+		Map.entry(STATE_STOPPING, RCKSimulationPhase.STOPPING)
 	);
-	// 종료 상태의 결과 코드와 표시 이름은 RCKSimulationResult.Termination이 준다.
 
 	/** 응답을 기다리는 상태들의 기본 응답 대기 시간. */
 	public static final Duration DEFAULT_RESPONSE_TIMEOUT = Duration.ofMinutes(2);
@@ -154,6 +155,10 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private final SimulationObserver m_observer;
 	private volatile Duration m_responseTimeout = DEFAULT_RESPONSE_TIMEOUT;
 	private volatile Duration m_stopResponseTimeout = DEFAULT_STOP_RESPONSE_TIMEOUT;
+	// 진행 보고에서 생산량을 읽는 규칙. 빌더가 정하고, 시작한 뒤에는 바뀌지 않는다.
+	private volatile RCKSimulationProgress.Format m_progressFormat = RCKSimulationProgress.Format.DEFAULT;
+	// 설비 정보만 얻고 끝내는지 여부(Builder#loadEquipmentProperties). 시작한 뒤에는 바뀌지 않는다.
+	private volatile boolean m_equipmentOnly = false;
 
 	// 들어간 종료 상태의 종료 사유. 종료 알림(notifyFinished)이 결과를 만드는 데 쓴다.
 	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
@@ -173,21 +178,31 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private final AtomicBoolean m_warnedMalformedStatus = new AtomicBoolean();
 
 	/**
-	 * 진행 상황을 외부에 알리지 않는 RCK 시뮬레이션 상태 차트를 생성한다.
+	 * 시뮬레이션을 만드는 빌더를 반환한다. 서버 URL, 클라이언트 ID, 공정명, 레이아웃명은 반드시 지정한다.
+	 *
+	 * @return	새 빌더
+	 */
+	public static Builder builder() {
+		return new Builder();
+	}
+
+	/**
+	 * 진행 상황을 외부에 알리지 않는 RCK 시뮬레이션 상태 차트를 생성한다(테스트용). 일반 사용은 {@link #builder()}.
 	 *
 	 * @param context	시뮬레이션 서버 주소·공정명·레이아웃 등 시뮬레이션 수행에 필요한 정보를 담은 문맥
 	 */
-	public RCKSimulation(RCKSimulationContext context) {
+	RCKSimulation(RCKSimulationContext context) {
 		this(context, SimulationObserver.NONE);
 	}
 
 	/**
-	 * RCK 시뮬레이션 상태 차트를 생성한다. 차트를 실제로 구동하려면 생성 후 {@link #start()}를 호출해야 한다.
+	 * RCK 시뮬레이션 상태 차트를 생성한다(테스트용). 일반 사용은 {@link #builder()}. 차트를 구동하려면 생성 후
+	 * {@link #start()}를 호출한다.
 	 *
 	 * @param context	시뮬레이션 서버 주소·공정명·레이아웃 등 시뮬레이션 수행에 필요한 정보를 담은 문맥
 	 * @param observer	진행 상황을 받을 관찰자
 	 */
-	public RCKSimulation(RCKSimulationContext context, SimulationObserver observer) {
+	RCKSimulation(RCKSimulationContext context, SimulationObserver observer) {
 		super(context);
 		Preconditions.checkNotNullArgument(observer, "observer is null");
 
@@ -199,7 +214,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			@Override
 			public void enter() {
 				// 관찰자에게 알리지 않으면 접속하는 동안 이전 실행의 상태가 그대로 보인다.
-				notifyStateChanged(getPath());
+				notifyPhaseChanged(getPath());
 				super.enter();
 			}
 		});
@@ -207,7 +222,6 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		addState(new LayoutLoading(STATE_LAYOUT_LOADING, getContext()));
 		addState(new SimulationStarting(STATE_SIMULATION_STARTING, getContext()));
 		addState(new Running(STATE_RUNNING, getContext()));
-		addState(new ReceivingVideo(STATE_RECEIVING_VIDEO, getContext()));
 		addState(new Stopping(STATE_STOPPING, getContext()));
 		addState(new Completed(STATE_COMPLETED, getContext()));
 		addState(new Failed(STATE_FAILED, getContext()));
@@ -218,7 +232,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 끝난 시뮬레이션의 결과를 반환한다. 종료 사유, 마지막 진행 상황, 결과 영상 정보, 실패 원인을 담는다.
+	 * 끝난 시뮬레이션의 결과를 반환한다. 종료 사유, 마지막 진행 상황, 결과 영상 URL, 실패 원인을 담는다.
 	 * <p>
 	 * 결과는 차트가 끝나는 순간(종료 리스너 중 가장 먼저) 만들어지므로, 나중에 등록한 종료 리스너나
 	 * {@link #waitForFinished()}가 반환된 뒤에는 항상 얻을 수 있다.
@@ -235,21 +249,23 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 응답을 기다리는 상태들의 응답 대기 시간을 바꾼다. 다음에 진입하거나 메시지를 받을 때부터 적용된다.
+	 * 응답을 기다리는 상태들의 응답 대기 시간을 바꾼다(테스트용). 일반 사용은 {@link Builder#responseTimeout(Duration)}.
+	 * 다음에 진입하거나 메시지를 받을 때부터 적용된다.
 	 *
 	 * @param timeout	응답 대기 시간 (양수)
 	 */
-	public void setResponseTimeout(Duration timeout) {
+	void setResponseTimeout(Duration timeout) {
 		Preconditions.checkArgument(timeout != null && timeout.isPositive(), "invalid response timeout: %s", timeout);
 		m_responseTimeout = timeout;
 	}
 
 	/**
-	 * {@code Stopping}이 시뮬레이터의 {@code simulation_stop} 응답을 기다리는 시간을 바꾼다.
+	 * {@code Stopping}이 시뮬레이터의 {@code simulation_stop} 응답을 기다리는 시간을 바꾼다(테스트용). 일반 사용은
+	 * {@link Builder#stopResponseTimeout(Duration)}.
 	 *
 	 * @param timeout	응답 대기 시간 (양수)
 	 */
-	public void setStopResponseTimeout(Duration timeout) {
+	void setStopResponseTimeout(Duration timeout) {
 		Preconditions.checkArgument(timeout != null && timeout.isPositive(), "invalid stop timeout: %s", timeout);
 		m_stopResponseTimeout = timeout;
 	}
@@ -334,7 +350,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			super(path, context, RCKExecutors.TIMER, RCKExecutors.WORKERS);
 		}
 
-		/** 이 상태의 응답 대기 시간. 기본은 {@link #setResponseTimeout(Duration)}으로 정한 값이다. */
+		/** 이 상태의 응답 대기 시간. {@link Builder#responseTimeout(Duration)}으로 정한 값이다. */
 		@Override
 		protected Duration getTimeout() {
 			return m_responseTimeout;
@@ -343,7 +359,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		/** 상태 변화를 관찰자에게 알린다. 재정의하면 {@code super.onEnter()}를 먼저 호출한다. */
 		@Override
 		protected void onEnter() {
-			notifyStateChanged(getPath());
+			notifyPhaseChanged(getPath());
 		}
 	}
 
@@ -480,7 +496,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	/**
 	 * 시뮬레이터에 레이아웃 로딩을 요청하고 설비 정보를 기다리는 상태.
 	 * {@code loading} 메시지가 오는 동안은 대기하고, {@code facility} 메시지로 설비 정보가 도착하면
-	 * 이를 문맥에 저장한 뒤 {@code SimulationStarting} 상태로 전이한다.
+	 * 이를 문맥에 저장한 뒤 {@code SimulationStarting} 상태로 전이한다. 설비 정보만 얻는 실행이면 시뮬레이션을
+	 * 시작하지 않고 {@code Completed}로 전이한다.
 	 */
 	private class LayoutLoading extends JsonMessageState {
 		LayoutLoading(String path, RCKSimulationContext context) {
@@ -488,13 +505,12 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 			onMessageType("loading", Transitions.stay());
 			onMessageType("facility", msg -> {
-				JsonNode facility = msg.get("message");
-				getContext().setFacility(facility);
+				JsonNode equipments = msg.get("message");
+				getContext().setEquipmentProperties(RCKEquipmentProperties.parse(equipments));
 				if ( getLogger().isInfoEnabled() ) {
-					getLogger().info("received facility info: {}",
-									facility != null ? facility.toPrettyString() : null);
+					getLogger().info("received facility info: {}", equipments.toPrettyString());
 				}
-				return Transitions.to(STATE_SIMULATION_STARTING);
+				return Transitions.to(m_equipmentOnly ? STATE_COMPLETED : STATE_SIMULATION_STARTING);
 			});
 		}
 
@@ -524,11 +540,11 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			RCKSimulationContext context = getContext();
 			getLogger().info("requesting simulation start: {}", context.getProcessName());
 
-			JsonNode facility = context.getFacility();
 			ObjectNode msg = MAPPER.createObjectNode();
 			msg.put("type", "command");
 			msg.put("target", context.getProcessName());
-			msg.set("message", facility != null ? facility : MAPPER.nullNode());
+			// 이 상태는 facility 메시지를 받은 뒤에만 들어오므로 설비 정보는 항상 있다.
+			msg.set("message", context.getEquipmentProperties().toJsonNode());
 			sendCommand(msg);
 		}
 	}
@@ -538,9 +554,8 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * <p>
 	 * {@code simulation_status} 메시지마다 진행 상황을 파싱하여 문맥에 저장하고 관찰자에게 알린다. 형식이 잘못된 진행
 	 * 보고는 경고만 남기고 무시한다. 영상 생성 중에 오는 {@code video_progress} / {@code video_ready}는 원본 그대로
-	 * 로그에만 남긴다. {@code video_info}를 받으면 영상 정보를 문맥에
-	 * 저장하고 다운로드 URL을 관찰자에게 알린 뒤 {@code ReceivingVideo}로 전이한다. 영상 크기가 0이면 받을 것이 없으므로
-	 * 바로 {@code Completed}로 전이한다.
+	 * 로그에만 남긴다. {@code video_info}를 받으면 영상 정보를 문맥에 저장하고, 다운로드 URL이 있으면 관찰자에게
+	 * 알린 뒤 {@code Completed}로 전이한다. URL이 없어도 {@code Completed}로 끝나며 결과의 영상 URL은 {@code null}이다.
 	 */
 	private class Running extends JsonMessageState {
 		Running(String path, RCKSimulationContext context) {
@@ -549,7 +564,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			onMessageType("simulation_status", msg -> {
 				RCKSimulationProgress progress;
 				try {
-					progress = RCKSimulationProgress.parse(msg.get("message"));
+					progress = RCKSimulationProgress.parse(msg.get("message"), m_progressFormat);
 				}
 				catch ( RuntimeException e ) {
 					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
@@ -568,80 +583,24 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 				notifyObserver(() -> m_observer.onProgressUpdated(progress));
 				return Transitions.stay();
 			});
-			// 영상 생성 진행 알림은 기록만 한다. 로그를 위해 역직렬화하지 않는다(형식이 달라도 실패하지 않도록).
-			onMessageType("video_progress", msg -> {
-				getLogger().info("received video progress: {}", msg);
-				return Transitions.stay();
-			});
-			onMessageType("video_ready", msg -> {
-				getLogger().info("received video ready: {}", msg);
-				return Transitions.stay();
-			});
 			onMessageType("video_info", msg -> {
-				VideoInfo vinfo = MAPPER.treeToValue(msg, VideoInfo.class);
-				getLogger().info("received video info: {}", vinfo);
+				String url = MAPPER.treeToValue(msg, VideoInfo.class).downloadUrl();
+				getLogger().info("received video info: downloadUrl={}", url);
 
-				getContext().setVideoInfo(vinfo);
-				switch ( vinfo.status() ) {
-					case "start":
-						return Transitions.to(STATE_RECEIVING_VIDEO);
-					case "end":
+				getContext().setVideoUrl(url);
+				if ( url != null ) {
+					notifyObserver(() -> m_observer.onVideoReady(url));
 				}
-
-				return Transitions.stay();
+				return Transitions.to(STATE_COMPLETED);
 			});
 		}
 	}
 
 	/**
-	 * 시뮬레이터가 이진 메시지로 보내는 결과 영상을 끝까지 받는 상태.
-	 * <p>
-	 * 영상 내용은 저장하지 않고 받은 크기만 센다(결과로는 {@code video_info}의 다운로드 URL만 쓴다). 받은 크기가
-	 * {@code video_info}의 파일 크기에 이르면 {@code Completed}로 전이한다. 다운로드 URL은 이미 정해졌으므로, 수신
-	 * 도중 연결이 끊기거나({@link ConnectionClosed}) 연결 오류({@link WebSocketError})가 나거나 응답 대기 시간이 지나도
-	 * {@code Completed}로 끝낸다. 수신 도중
-	 * {@link #STOP_REQUESTED}를 받으면 {@code Stopping}으로 전이한다.
+	 * 시뮬레이터가 결과 영상에 대해 보내는 {@code video_info} 메시지. 쓰는 것은 다운로드 URL뿐이며, 다른 필드는
+	 * 매퍼가 무시한다.
 	 */
-	private final class ReceivingVideo extends JsonMessageState {
-		ReceivingVideo(String path, RCKSimulationContext context) {
-			super(path, context);
-
-			onMessageType("video_progress", msg -> {
-				VideoProgress progress;
-				try {
-					progress = MAPPER.treeToValue(msg, VideoProgress.class); 
-				}
-				catch ( RuntimeException e ) {
-					// 진행 보고 한 건의 형식 오류로 시뮬레이션 전체를 실패시키지 않는다.
-					if ( m_warnedMalformedStatus.compareAndSet(false, true) ) {
-						getLogger().warn("ignored malformed video progress: cause={}, message={}; "
-										+ "further ones are logged at DEBUG", ""+e, msg);
-					}
-					else {
-						getLogger().debug("ignored malformed video progress: cause={}, message={}", ""+e, msg);
-					}
-					return Transitions.stay();
-				}
-				getLogger().info("received video progress: {}", progress);
-				return Transitions.stay();
-			});
-			onMessageType("video_ready", msg -> {
-				getLogger().info("received video ready: {}", msg);
-				return Transitions.stay();
-			});
-			onMessageType("video_info", msg -> {
-				VideoInfo video = MAPPER.treeToValue(msg, VideoInfo.class);
-				getLogger().info("received video info: {}", video);
-
-				getContext().setVideoInfo(video);
-				if ( video.downloadUrl() != null ) {
-					notifyObserver(() -> m_observer.onVideoReady(video.downloadUrl()));
-				}
-				return Transitions.stay();
-			});
-		}
-	}
-	private record VideoProgress(String type, String fileName, String progress) { }
+	private record VideoInfo(String downloadUrl) { }
 
 	/**
 	 * 시뮬레이터의 중지 명령 응답을 기다리는 상태.
@@ -649,7 +608,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	 * 진입하면 시뮬레이터에 중지 명령을 보낸다. 다음 중 하나가 일어나면 종료 상태로 전이한다.
 	 * <ul>
 	 *   <li>{@code simulation_stop} 응답 - {@code Stopped}</li>
-	 *   <li>응답 대기 시간({@link #setStopResponseTimeout(Duration)}, 기본 10초) 초과 - 명령은 보냈으므로 경고를
+	 *   <li>응답 대기 시간({@link Builder#stopResponseTimeout(Duration)}, 기본 10초) 초과 - 명령은 보냈으므로 경고를
 	 *       남기고 {@code Stopped}</li>
 	 *   <li>연결 종료({@link ConnectionClosed}) 또는 연결 오류({@link WebSocketError}) - {@code Stopped}</li>
 	 *   <li>중지 명령 전송 실패({@link SendFailed}) - 시뮬레이터가 멈췄다고 볼 수 없으므로 {@code Failed}</li>
@@ -778,13 +737,15 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	}
 
 	/**
-	 * 현재 상태를 관찰자에게 알린다.
+	 * 진입한 상태의 단계를 관찰자에게 알린다.
 	 *
 	 * @param statePath	진입한 상태 경로 (예: {@code "/Running"})
 	 */
-	private void notifyStateChanged(String statePath) {
-		String displayName = STATE_NAMES.getOrDefault(statePath, statePath);
-		notifyObserver(() -> m_observer.onStateChanged(statePath, displayName));
+	private void notifyPhaseChanged(String statePath) {
+		RCKSimulationPhase phase = STATE_PHASES.get(statePath);
+		if ( phase != null ) {
+			notifyObserver(() -> m_observer.onPhaseChanged(phase));
+		}
 	}
 
 	/**
@@ -811,7 +772,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		RCKSimulationContext ctx = getContext();
 		RCKSimulationResult simResult = new RCKSimulationResult(termination,
 												termination == Termination.STOPPED && m_stopConfirmed,
-												ctx.getLatestProgress(), ctx.getVideoInfo(), cause);
+												ctx.getLatestProgress(), ctx.getVideoUrl(), cause);
 		m_result = simResult;
 		notifyObserver(() -> m_observer.onFinished(simResult));
 	}
@@ -841,9 +802,14 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 
 	/**
 	 * 연결이 열려 있으면 중지 명령을 보내고 전송 완료를 잠시({@link #STOP_SEND_TIMEOUT}) 기다린다. 연결을 닫기 직전에
-	 * 호출한다. 실패는 경고 로그만 남긴다(연결 정리를 막지 않는다).
+	 * 호출한다. 실패는 경고 로그만 남긴다(연결 정리를 막지 않는다). 설비 정보만 얻는 실행은 시뮬레이션을 시작하지
+	 * 않았고, 같은 공정에서 실행 중인 다른 시뮬레이션을 멈추면 안 되므로 보내지 않는다.
 	 */
 	private void trySendStopCommand() {
+		if ( m_equipmentOnly ) {
+			return;
+		}
+
 		WebSocket ws = getWebSocket();
 		// 연결이 없거나 이미 닫히는 중(상대가 close를 보냄 포함)이면 보낼 수 없다.
 		if ( ws == null || ws.isOutputClosed() || ws.isInputClosed() ) {
@@ -922,6 +888,152 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 															.thenCompose(ignored -> sendText(text));
 			m_sendTail = send;
 			return send;
+		}
+	}
+
+	/**
+	 * {@link RCKSimulation}을 만드는 빌더. 시작 전에만 바꿀 수 있는 설정(시간 제한, keep-alive)을 한 곳에서 받는다.
+	 * 서버 URL, 클라이언트 ID, 공정명, 레이아웃명은 필수다.
+	 */
+	public static final class Builder {
+		private String m_serverUrl;
+		private String m_clientId;
+		private String m_processName;
+		private String m_layoutName;
+		private SimulationObserver m_observer = SimulationObserver.NONE;
+		private Duration m_responseTimeout = DEFAULT_RESPONSE_TIMEOUT;
+		private Duration m_stopResponseTimeout = DEFAULT_STOP_RESPONSE_TIMEOUT;
+		private RCKSimulationProgress.Format m_progressFormat = RCKSimulationProgress.Format.DEFAULT;
+		private Duration m_pingInterval;
+		private Duration m_pongTimeout;
+
+		private Builder() { }
+
+		/** 시뮬레이터 WebSocket 서버 URL (필수). */
+		public Builder serverUrl(String serverUrl) {
+			m_serverUrl = serverUrl;
+			return this;
+		}
+
+		/** 시뮬레이터에 등록할 클라이언트 식별자 (필수). */
+		public Builder clientId(String clientId) {
+			m_clientId = clientId;
+			return this;
+		}
+
+		/** 시뮬레이션 대상 공정명 (필수). */
+		public Builder processName(String processName) {
+			m_processName = processName;
+			return this;
+		}
+
+		/** 시뮬레이터에 등록된 레이아웃명 (필수). */
+		public Builder layoutName(String layoutName) {
+			m_layoutName = layoutName;
+			return this;
+		}
+
+		/** 진행 상황을 받을 관찰자. 기본은 {@link SimulationObserver#NONE}. */
+		public Builder observer(SimulationObserver observer) {
+			Preconditions.checkNotNullArgument(observer, "observer is null");
+			m_observer = observer;
+			return this;
+		}
+
+		/** 응답을 기다리는 상태들이 메시지 없이 기다리는 최대 시간. 기본 {@link RCKSimulation#DEFAULT_RESPONSE_TIMEOUT}. */
+		public Builder responseTimeout(Duration timeout) {
+			Preconditions.checkArgument(timeout != null && timeout.isPositive(), "invalid response timeout: %s", timeout);
+			m_responseTimeout = timeout;
+			return this;
+		}
+
+		/**
+		 * {@code Stopping}이 {@code simulation_stop} 응답을 기다리는 시간. 기본
+		 * {@link RCKSimulation#DEFAULT_STOP_RESPONSE_TIMEOUT}.
+		 */
+		public Builder stopResponseTimeout(Duration timeout) {
+			Preconditions.checkArgument(timeout != null && timeout.isPositive(), "invalid stop timeout: %s", timeout);
+			m_stopResponseTimeout = timeout;
+			return this;
+		}
+
+		/**
+		 * 진행 보고({@code simulation_status})에서 생산량을 읽는 규칙. 레이아웃에 맞춰 바꾼다.
+		 * 기본 {@link RCKSimulationProgress.Format#DEFAULT}.
+		 */
+		public Builder progressFormat(RCKSimulationProgress.Format format) {
+			Preconditions.checkNotNullArgument(format, "progressFormat is null");
+			m_progressFormat = format;
+			return this;
+		}
+
+		/**
+		 * 연결 유지 ping을 켠다. ping 주기마다 ping을 보내고, pong이 {@code pongTimeout} 안에 오지 않으면 연결 오류로
+		 * 실패한다. 지정하지 않으면 ping을 보내지 않는다.
+		 *
+		 * @param pingInterval	ping 발송 주기
+		 * @param pongTimeout	pong 응답 대기 시간
+		 */
+		public Builder keepAlive(Duration pingInterval, Duration pongTimeout) {
+			Preconditions.checkNotNullArgument(pingInterval, "pingInterval is null");
+			Preconditions.checkNotNullArgument(pongTimeout, "pongTimeout is null");
+			m_pingInterval = pingInterval;
+			m_pongTimeout = pongTimeout;
+			return this;
+		}
+
+		/**
+		 * 시뮬레이션을 만든다. 시작하려면 {@link RCKSimulation#start()}를 호출한다. 한 빌더로 여러 번 만들 수 있으며,
+		 * 만들 때마다 새 시뮬레이션이다.
+		 *
+		 * @return	새 시뮬레이션
+		 * @throws IllegalArgumentException	필수 항목이 빠졌거나 keep-alive 시간이 잘못된 경우
+		 */
+		public RCKSimulation build() {
+			return build(m_observer);
+		}
+
+		/**
+		 * 시뮬레이션을 실행하지 않고 레이아웃의 설비 정보만 얻는다. 호출한 스레드는 끝날 때까지 기다린다.
+		 * <p>
+		 * 접속, 등록, 레이아웃 요청을 거쳐 {@code facility} 메시지를 받으면 연결을 닫는다. 시작 명령과 중지 명령은 실패나
+		 * 인터럽트로 끝날 때를 포함해 보내지 않는다. 다만 같은 공정에서 시뮬레이션이 실행 중일 때 레이아웃 요청이
+		 * 시뮬레이터에 주는 영향은 확인되지 않았다.
+		 * <p>
+		 * {@link #observer(SimulationObserver) 관찰자}에게는 알리지 않는다. 이 실행은 시뮬레이션이 아니므로, 예를 들어
+		 * MDT 출력에 시뮬레이션 완료로 반영되면 안 되기 때문이다. 전체 소요 시간에는 제한이 없고,
+		 * {@link #responseTimeout(Duration) 응답 대기 시간}은 메시지를 받을 때마다 다시 시작된다.
+		 *
+		 * @return	설비 정보
+		 * @throws IllegalArgumentException	필수 항목이 빠졌거나 keep-alive 시간이 잘못된 경우
+		 * @throws ExecutionException	설비 정보를 얻지 못한 경우. 원인은 접속 실패, 응답 대기 시간 초과, 연결 종료,
+		 * 								{@code facility} 메시지 형식 오류 등이다.
+		 * @throws InterruptedException	기다리는 중 인터럽트된 경우. 이때 실행은 취소된다.
+		 */
+		public RCKEquipmentProperties loadEquipmentProperties() throws ExecutionException, InterruptedException {
+			RCKSimulation sim = build(SimulationObserver.NONE);
+			sim.m_equipmentOnly = true;
+			sim.start();
+			try {
+				return sim.get().getEquipmentProperties();
+			}
+			catch ( InterruptedException e ) {
+				sim.cancel(true);
+				throw e;
+			}
+		}
+
+		private RCKSimulation build(SimulationObserver observer) {
+			RCKSimulationContext ctx = new RCKSimulationContext(m_serverUrl, m_clientId, m_processName, m_layoutName);
+			RCKSimulation sim = new RCKSimulation(ctx, observer);
+			sim.m_responseTimeout = m_responseTimeout;
+			sim.m_stopResponseTimeout = m_stopResponseTimeout;
+			sim.m_progressFormat = m_progressFormat;
+			if ( m_pingInterval != null ) {
+				sim.setPingInterval(m_pingInterval);
+				sim.setPongTimeout(m_pongTimeout);
+			}
+			return sim;
 		}
 	}
 }

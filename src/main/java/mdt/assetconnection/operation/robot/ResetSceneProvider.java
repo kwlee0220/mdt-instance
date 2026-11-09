@@ -88,15 +88,15 @@ public class ResetSceneProvider extends RobotTwinOperationProvider {
 
 		ResetScene.Check check = runOperation(new ResetScene(m_twin, scene.trim(),
 				seed != null ? seed.longValue() : null, m_twin.getOperationTimeout(), m_freshOptions));
-		throwIfRemoteFailed(check.result(), check.why(), s_logger);
-		if ( !check.applied() ) {
+		throwIfRemoteFailed(check.result(), check.failureReason(), s_logger);
+		if ( !check.goalReached() ) {
 			s_logger.warn("scene reset application could not be confirmed: twin={}, details={}",
-					m_rtConfig.getTwinId(), check.why());
-			throw new TaskException("reset_scene application could not be confirmed: " + check.why());
+					m_rtConfig.getTwinId(), check.failureReason());
+			throw new TaskException("reset_scene application could not be confirmed: " + check.failureReason());
 		}
 
 		WaitForFreshVariable.Result observation = check.observation().orElseThrow();
-		if ( !observation.fresh() ) {
+		if ( !observation.goalReached() ) {
 			s_logger.warn("scene_objects refresh could not be confirmed within {}, "
 					+ "it may still report the previous placement: twin={}, details={}",
 					m_freshOptions.timeout(), m_rtConfig.getTwinId(), observation.summary());

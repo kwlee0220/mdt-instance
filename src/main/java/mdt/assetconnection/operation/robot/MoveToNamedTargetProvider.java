@@ -16,6 +16,8 @@ import utils.Preconditions;
 
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.robot.client.RobotTwinClient;
+import mdt.robot.client.operation.MotionLimits;
+import mdt.robot.client.operation.ClosedLoopCheck;
 import mdt.robot.client.operation.MoveToNamedTarget;
 
 
@@ -63,9 +65,9 @@ public class MoveToNamedTargetProvider extends RobotTwinOperationProvider {
 		if ( maxDuration != null ) {
 			Preconditions.checkArgument(maxDuration > 0, "MaxDurationSec must be positive: " + maxDuration);
 		}
-		MoveToNamedTarget.Options options = new MoveToNamedTarget.Options(vs != null ? Double.valueOf(vs.toString()) : null,
+		MotionLimits options = new MotionLimits(vs != null ? Double.valueOf(vs.toString()) : null,
 				maxDuration != null ? Duration.ofSeconds(maxDuration) : null, getClientTimeout(maxDuration));
-		MoveToNamedTarget.Check check = runOperation(new MoveToNamedTarget(m_twin, target, options));
-		handleMotionResult(check.result(), check.reached(), check.why(), s_logger, finalPoseSmc, finalJointsSmc);
+		ClosedLoopCheck check = runOperation(new MoveToNamedTarget(m_twin, target, options));
+		handleMotionResult(check.result(), check.goalReached(), check.failureReason(), s_logger, finalPoseSmc, finalJointsSmc);
 	}
 }

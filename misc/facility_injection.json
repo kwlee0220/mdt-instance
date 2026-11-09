@@ -1,0 +1,281 @@
+{
+  "type": "facility",
+  "message": {
+    "Injection": [
+      {
+        "Name": "No1_LGH850M",
+        "Index": 1,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No1MovingPlateSpeed": 100,
+        "No1TraverseSpeed": 300,
+        "No1Crosswise1Speed": 300,
+        "No1Crosswise2Speed": 300,
+        "No1Vertical1Speed": 300
+      },
+      {
+        "Name": "No2_JSE_850ELIII",
+        "Index": 2,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No2MovingPlateSpeed": 300,
+        "No2TraverseSpeed": 300,
+        "No2CrosswiseSpeed": 300,
+        "No2Vertical1Speed": 300,
+        "No2Vertical2Speed": 300,
+        "No2GripperMainSpeed": 200
+      },
+      {
+        "Name": "No3_IDE850EN",
+        "Index": 3,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No3MovingPlateSpeed": 300,
+        "No3TraverseSpeed": 300,
+        "No3CrosswiseSpeed": 300,
+        "No3Vertical1Speed": 300,
+        "No3Vertical2Speed": 300,
+        "No3GripperSpeed": 100
+      },
+      {
+        "Name": "No4_WIZ-350E",
+        "Index": 4,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No4MovingPlateSpeed": 100,
+        "No4TraverseSpeed": 300,
+        "No4CrosswiseSpeed": 300,
+        "No4Vertical1Speed": 300,
+        "No4GripperMainSpeed": 100
+      },
+      {
+        "Name": "No5_WIZ900PlusDC",
+        "Index": 5,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No5MovingPlateSpeed": 300,
+        "No5TraverseSpeed": 300,
+        "No5CrosswiseSpeed": 300,
+        "No5Vertical1Speed": 300,
+        "No5Vertical2Speed": 300,
+        "No5GripperSpeed": 100
+      },
+      {
+        "Name": "No6_LGH-1800SE",
+        "Index": 6,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No6MovingPlateSpeed": 300,
+        "No6TraverseSpeed": 300,
+        "No6CrosswiseSpeed": 300,
+        "No6Vertical1Speed": 300,
+        "No6Vertical2Speed": 300,
+        "No6GripperMainSpeed": 150
+      },
+      {
+        "Name": "No7_WIZ-1800X",
+        "Index": 7,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No7MovingPlateSpeed": 300,
+        "No7TraverseSpeed": 300,
+        "No7CrosswiseSpeed": 300,
+        "No7Vertical1Speed": 300,
+        "No7Vertical2Speed": 300,
+        "No7TakeoutGripperMainSpeed": 100,
+        "No7TakeoutGripperArmLSpeed": 100
+      },
+      {
+        "Name": "No8_ID-1300HM",
+        "Index": 8,
+        "CycleTime": 120,
+        "DelayTime": 1,
+        "No8MovingPlateSpeed": 300,
+        "No8TraverseSpeed": 300,
+        "No8CrosswiseSpeed": 300,
+        "No8Vertical1Speed": 300,
+        "No8Vertical2Speed": 300,
+        "No8GripperMainSpeed": 200
+      },
+      {
+        "Name": "No9_LGH-1300HM",
+        "Index": 9,
+        "CycleTime": 120,
+        "No9MovingPlateSpeed": 300
+      },
+      {
+        "Name": "No10_tub outer bottom external cooling system body",
+        "Index": 10,
+        "CycleTime": 120,
+        "CoolingTime": 10,
+        "DelayTime": 2,
+        "DelayTime2": 1,
+        "No10MovablePlateSpeed": 200,
+        "No10InoutRobotShuttleSpeed": 300,
+        "No10InoutRobotShuttle001Speed": 300,
+        "No10InoutRobotArm1Speed": 300,
+        "No10InoutRobotArm2Speed": 300,
+        "No10TubOuterGripperBODYSpeed": 200,
+        "No10ExternalCoolingSystemMovingPartSpeed": 300,
+        "No10ExternalCoolingSystemMovingPartGripperSpeed": 300,
+        "ExternalCoolingSystemMovingPartGripper001Speed": 200
+      },
+      {
+        "Name": "Inner Auto Input Rolling",
+        "Index": 11,
+        "DelayTime": 1,
+        "InnerAutoInputRollingVacuumGripperBodySpeed": 300,
+        "InnerAutoInputRollingVacuumGripperSpeed": 100,
+        "DeliverFWDSpeed": 300,
+        "InnerAutoInputRollingDeliverWeldingBottomSpeed": 300,
+        "InnerAutoInputRollingTakeOutGripperSpeed": 300
+      },
+      {
+        "Name": "Auto Laser Welding Frame",
+        "Index": 12,
+        "DelayTime": 2,
+        "AutoLaserWeldingBaseSpeed": 100,
+        "AutoLaserWeldingBase1LBSpeed": 100,
+        "AutoLaserWeldingBase1LFSpeed": 100,
+        "AutoLaserWeldingBase1LTSpeed": 100,
+        "AutoLaserWeldingBase2LBSpeed": 100,
+        "AutoLaserWeldingBase2LFSpeed": 100,
+        "AutoLaserWeldingBase2LTSpeed": 100,
+        "AutoLaserWeldingBase3LBSpeed": 100,
+        "AutoLaserWeldingBase3LTSpeed": 100,
+        "AutoLaserWeldingBase3LFSpeed": 100,
+        "AutoLaserWeldingBase4LBSpeed": 100,
+        "AutoLaserWeldingBase4LFSpeed": 100,
+        "AutoLaserWeldingBase4LTSpeed": 100,
+        "Gun1Speed": 100,
+        "Gun2Speed": 100,
+        "TopFinger1Speed": 100,
+        "TopFinger2Speed": 100
+      },
+      {
+        "Name": "Erikson Check",
+        "Index": 13,
+        "ShifterSlideSpeed": 300,
+        "ShifterUpdownSpeed": 300,
+        "EriksonCheckInputSlideBodySpeed": 300,
+        "EriksonCheckInputSlideSpeed": 300,
+        "RotateSpeed": 300,
+        "EriksonCheckMovingPlateSpeed": 300,
+        "EriksonCheckPassFlangingMovingPlateSpeed": 300
+      },
+      {
+        "Name": "Flanging",
+        "Index": 14,
+        "CycleTime": 6,
+        "FlangingUpdownSpeed": 100
+      },
+      {
+        "Name": "Curling",
+        "Index": 15,
+        "CycleTime": 10,
+        "Curling1UpdownSpeed": 100,
+        "Curling2UpdownSpeed": 100
+      },
+      {
+        "Name": "Lifter",
+        "Index": 16,
+        "CycleTime": 6,
+        "DelayTime": 1,
+        "InnerToPunchingSpeed": 300,
+        "InnerUpSpeed": 300,
+        "LifterAutoFastenerMovingBodySpeed": 300,
+        "LifterAutoFastenerBodySpeed": 300,
+        "LifterAutoFastenerFixTableInSpeed": 300,
+        "LiftSlideSpeed": 300,
+        "LiftUpdown2Speed": 300,
+        "Gripper2Speed": 300,
+        "LiftUpdown1Speed": 300,
+        "Gripper1Speed": 300,
+        "InnerDrumMoveSpeed": 300,
+        "InnerDrumUpSpeed": 300,
+        "InnerDrumGrab1Speed": 100,
+        "InnerDrumGrab11Speed": 100,
+        "Screw1Speed": 100,
+        "Work1Speed": 100
+      },
+      {
+        "Name": "Punching",
+        "Index": 17,
+        "PunchingBurringSF3Speed": 300,
+        "PunchingBurringSF31Speed": 300,
+        "PunchingBurringSF31LFSpeed": 100,
+        "PunchingBurringSF32Speed": 300,
+        "PunchingBurringSF32LFSpeed": 100,
+        "PunchingBurringSF33Speed": 300,
+        "PunchingBurringSF33LFSpeed": 100,
+        "PunchToSpiderConvUpSpeed": 300,
+        "PunchToSpiderConvSpeed": 300
+      },
+      {
+        "Name": "Spider_Fastening",
+        "Index": 18,
+        "SpiderFasteningGripperSpeed": 300,
+        "SpiderFasteningGripperToInnerBridgeSpeed": 300,
+        "SpiderFasteningGripperTIBFingerLSpeed": 100,
+        "SpiderFasteningGripperToSpiderSpeed": 300,
+        "SpiderFasteningGripperTSFingerLSpeed": 100
+      },
+      {
+        "Name": "Inner_Drum",
+        "Index": 19,
+        "DelayTime": 2,
+        "InnerDrumConvOverBridgeElevatorInSpeed": 500,
+        "InnerDrumConvOverBridgeElevatorOutSpeed": 500,
+        "InnerDrumGripperSpeed": 300,
+        "InnerDrumGripperUpdownSpeed": 300
+      },
+      {
+        "Name": "Bearing_Insert_MC",
+        "Index": 20,
+        "DelayTime": 1,
+        "BearingInsertMC1Speed": 500,
+        "BearingInsertMC2Speed": 500,
+        "BearingInsertMC3Speed": 500,
+        "BearingInsertMCD1Speed": 500,
+        "BearingInsertMCD3Speed": 500,
+        "BearingInsertMCPDShiftUPSpeed": 500,
+        "BearingInsertMCPDShiftSpeed": 500
+      },
+      {
+        "Name": "ORING",
+        "Index": 21,
+        "ORINGRotationPlateSpeed": 100
+      },
+      {
+        "Name": "Side Bolt",
+        "Index": 22,
+        "DelayTime": 2,
+        "SideBoltFastenerAutoSideARMRSpeed": 100,
+        "SideBoltFastenerAutoCenterPushARMSpeed": 100
+      },
+      {
+        "Name": "180_Turn",
+        "Index": 23,
+        "180TurnGripperTurnClampBodySpeed": 500,
+        "180TurnGripperTurnClampUpdownSpeed": 500,
+        "180TurnGripperTurnClampRotationSpeed": 500,
+        "180TurnGripperTurnClampRArmSpeed": 500,
+        "180TurnGripperTurnClampRightTurnClampSpeed": 500
+      },
+      {
+        "Name": "90_Turn",
+        "Index": 24,
+        "90TurnGripperTurnClampBodySpeed": 300,
+        "90TurnGripperTurnClampUpdownSpeed": 300,
+        "90TurnGripperTurnClampRotationSpeed": 100,
+        "90TurnGripperTurnClampLArmSpeed": 100,
+        "90TurnGripperTurnClampLeftTurnClampSpeed": 100
+      },
+      {
+        "Name": "PM Global Variables",
+        "Index": 25,
+        "ConveyorSpeed": 100
+      }
+    ]
+  }
+}

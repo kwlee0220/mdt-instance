@@ -174,7 +174,7 @@ public class MoveLinearProviderTest {
 			logs.list.clear();
 			server.status = outcome;
 			OperationFailedException failure = assertThrows(OperationFailedException.class, this::invoke);
-			assertEquals(outcome, failure.getResult().status());
+			assertEquals(outcome, failure.getResult().status().name());
 			assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("status=" + outcome)
 					&& e.getFormattedMessage().contains("twin=panda01")
 					&& e.getFormattedMessage().contains("operation=move_linear")

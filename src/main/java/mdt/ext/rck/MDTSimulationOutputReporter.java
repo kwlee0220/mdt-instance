@@ -13,22 +13,25 @@ import javax.annotation.concurrent.GuardedBy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+
 import utils.json.JacksonUtils;
 
 import mdt.model.instance.MDTInstanceManager;
-import mdt.model.sm.ref.ElementReference;
-import mdt.model.sm.ref.ElementReferences;
+import mdt.model.sm.ref.DefaultSubmodelReference;
+import mdt.model.sm.ref.MDTArgumentKind;
 import mdt.model.sm.ref.MDTArgumentReference;
+import mdt.model.sm.ref.MDTSubmodelReference;
 import mdt.model.sm.value.PropertyValue;
 
 /**
- * 시뮬레이션 진행을 MDT 인스턴스의 {@code PressSimulation} 오퍼레이션 출력 인자에 비동기로 반영한다.
+ * 시뮬레이션 진행을 MDT 인스턴스의 시뮬레이션 오퍼레이션 Submodel 출력 인자에 비동기로 반영한다. 대상 Submodel은
+ * 생성할 때 준 함수가 정한다({@link RCKSimulationOperation}은 자기 오퍼레이션이 속한 Submodel을 쓴다).
  * <p>
- * 반영하는 출력 인자는 {@code State}, {@code Progress}, {@code Production}, {@code AverageUtilization}(JSON 문자열),
+ * 반영하는 출력 인자는 {@code State}, {@code Progress}, {@code Production}, {@code EquipmentUtilizationList}(JSON 문자열),
  * {@code SimulationVideoUrl}이다. {@code State}에는 사람이 보는 표시 이름(예: {@code 시뮬레이션 진행중})을 쓴다.
- * 프로그램이 읽는 결과 코드는 오퍼레이션의 {@code FinalState} 출력이다({@link RCKSimulationOperation} 참조).
  * <p>
- * <b>오퍼레이션 인스턴스당 하나</b>를 두고 모든 실행이 함께 쓴다. 실행마다 {@link #startRun()}으로 그 실행 전용
+ * <b>오퍼레이션 인스턴스당 하나</b>를 두고 모든 실행이 함께 쓴다. 실행마다 {@link #newRunObserver()}으로 그 실행 전용
  * {@link SimulationObserver}를 얻는다. 기록 대상이 같은 인스턴스의 같은 출력 인자이므로, 실행마다 갱신기를 따로 두면
  * 늦게 도착한 이전 실행의 갱신(예: "시뮬레이션 완료")이 다음 실행의 갱신("소켓 연결중")을 덮어쓸 수 있다. 하나의
  * 갱신 작업이 모든 실행의 갱신을 순서대로 쓰므로 이미 보내고 있는 요청까지 포함해 순서가 보장되고, 새 실행이
@@ -36,7 +39,7 @@ import mdt.model.sm.value.PropertyValue;
  * <p>
  * 관찰자 메소드는 갱신 요청을 기록만 하고 바로 반환한다. MDT 매니저 준비와 출력 인자 준비, 실제 갱신(MDT
  * 인스턴스로의 HTTP 요청)은 모두 RCK 전용 스레드({@link RCKExecutors#WORKERS})가 한다. 그래서 생성과
- * {@link #startRun()}도 MDT에 접속하지 않고 바로 반환한다. 갱신이 밀려 있는 동안 같은 인자에 새 값이 오면 최신 값만
+ * {@link #newRunObserver()}도 MDT에 접속하지 않고 바로 반환한다. 갱신이 밀려 있는 동안 같은 인자에 새 값이 오면 최신 값만
  * 쓴다. 출력 인자를 준비하지 못하면 경고 로그만 남기고 그 인자는 반영하지 않으며, 다음 실행에서 다시 시도한다.
  *
  * @author Kang-Woo Lee (ETRI)
@@ -44,17 +47,14 @@ import mdt.model.sm.value.PropertyValue;
 public class MDTSimulationOutputReporter {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTSimulationOutputReporter.class);
 
-	/** 시뮬레이션 결과가 기록되는 MDT 오퍼레이션의 이름. */
-	static final String OPERATION_NAME = "PressSimulation";
-	private static final String ARGUMENT_EXPR_FORMAT = "oparg:%s:" + OPERATION_NAME + ":out:%s";
 
 	static final String ARG_STATE = "State";
 	static final String ARG_PROGRESS = "Progress";
 	static final String ARG_PRODUCTION = "Production";
-	static final String ARG_AVERAGE_UTILIZATION = "AverageUtilization";
+	static final String ARG_UTILIZATION = "EquipmentUtilizationList";
 	static final String ARG_VIDEO_URL = "SimulationVideoUrl";
 	static final List<String> ARG_NAMES = List.of(ARG_STATE, ARG_PROGRESS, ARG_PRODUCTION,
-													ARG_AVERAGE_UTILIZATION, ARG_VIDEO_URL);
+													ARG_UTILIZATION, ARG_VIDEO_URL);
 
 	/**
 	 * 출력 인자 reference를 준비하는 함수. 아직 준비하지 못한 인자 이름들을 받아, 준비한 것만 담은 맵을 돌려준다.
@@ -86,7 +86,7 @@ public class MDTSimulationOutputReporter {
 	private record PendingUpdate(long run, String argName, PropertyValue<?> value) { }
 
 	private final Object m_lock = new Object();
-	/** 현재 실행 번호. {@link #startRun()}마다 증가한다. */
+	/** 현재 실행 번호. {@link #newRunObserver()}마다 증가한다. */
 	@GuardedBy("m_lock") private long m_currentRun = 0;
 	/** 아직 쓰지 않은 갱신. 인자 이름별로 최신 값만 남는다. */
 	@GuardedBy("m_lock") private final Map<String,PendingUpdate> m_pendingUpdates = new LinkedHashMap<>();
@@ -95,15 +95,19 @@ public class MDTSimulationOutputReporter {
 	@GuardedBy("m_lock") private final List<CompletableFuture<Void>> m_flushWaiters = new ArrayList<>();
 
 	/**
-	 * 주어진 MDT 인스턴스의 출력 인자에 반영하는 갱신기를 만든다. MDT에 접속하지 않고 바로 반환한다.
+	 * 주어진 시뮬레이션 오퍼레이션 Submodel의 출력 인자에 반영하는 갱신기를 만든다. MDT에 접속하지 않고 바로 반환한다.
+	 * <p>
+	 * 대상 Submodel은 보통 {@link DefaultSubmodelReference#ofId(String)}(Submodel id)나
+	 * {@link DefaultSubmodelReference#ofIdShort(String, String)}(인스턴스 id와 Submodel idShort)로 만든다.
 	 *
-	 * @param managerSupplier		MDT 인스턴스 매니저를 주는 함수. 갱신 스레드에서 불린다(MQTT 연결 등 시간이 걸릴 수
-	 * 								있으므로). 실패하면 다음 실행에서 다시 부른다.
-	 * @param instanceIdSupplier	대상 인스턴스 식별자를 주는 함수. {@code null}을 주면 반영하지 않는다.
+	 * @param managerSupplier	MDT 인스턴스 매니저를 주는 함수. 갱신 스레드에서 불린다(MQTT 연결 등 시간이 걸릴 수
+	 * 							있으므로). 실패하면 다음 실행에서 다시 부른다.
+	 * @param submodelSupplier	출력 인자가 있는 시뮬레이션 오퍼레이션 Submodel의 참조를 주는 함수. 갱신 스레드에서
+	 * 							불린다. {@code null}을 주면 반영하지 않는다.
 	 */
 	public MDTSimulationOutputReporter(Supplier<MDTInstanceManager> managerSupplier,
-										Supplier<String> instanceIdSupplier) {
-		this(argNames -> resolveArguments(managerSupplier, instanceIdSupplier, argNames));
+										Supplier<? extends MDTSubmodelReference> submodelSupplier) {
+		this(argNames -> resolveArguments(managerSupplier, submodelSupplier, argNames));
 	}
 
 	/**
@@ -123,7 +127,7 @@ public class MDTSimulationOutputReporter {
 	 *
 	 * @return	새 실행의 관찰자
 	 */
-	public SimulationObserver startRun() {
+	public SimulationObserver newRunObserver() {
 		long run;
 		synchronized ( m_lock ) {
 			run = ++m_currentRun;
@@ -153,14 +157,23 @@ public class MDTSimulationOutputReporter {
 	}
 
 	/**
-	 * 설비 유형별 평균 이용률을 {@code AverageUtilization} 출력 인자에 기록하는 JSON 문자열로 만든다.
+	 * 설비별 이용률을 {@code EquipmentUtilizationList} 출력 인자에 기록하는 JSON 문자열로 만든다.
 	 * 진행 중 반영과 {@link RCKSimulationOperation}의 최종 출력이 같은 형식을 쓰도록 한 곳에 둔다.
+	 * <p>
+	 * JSON 배열이며, 각 원소는 설비 그룹({@code group}), 설비 이름({@code equipment}), 그룹 안의 설비 번호
+	 * ({@code index}), 이용률({@code utilization})을 담은 객체다. 순서는 {@code utilizations}를 따른다.
 	 *
-	 * @param utilizations	설비 유형별 평균 이용률
+	 * @param utilizations	설비별 이용률
 	 * @return	JSON 문자열
 	 */
-	static String toUtilizationJson(Map<String,Float> utilizations) {
-		return JacksonUtils.MAPPER.valueToTree(utilizations).toPrettyString();
+	static String toUtilizationJson(Map<RCKEquipment,Float> utilizations) {
+		ArrayNode array = JacksonUtils.MAPPER.createArrayNode();
+		utilizations.forEach((equipment, utilization) -> array.addObject()
+															.put("group", equipment.group())
+															.put("equipment", equipment.name())
+															.put("index", equipment.index())
+															.put("utilization", utilization));
+		return array.toPrettyString();
 	}
 
 	/**
@@ -174,16 +187,16 @@ public class MDTSimulationOutputReporter {
 		}
 
 		@Override
-		public void onStateChanged(String statePath, String displayName) {
-			enqueueOutputUpdate(m_run, ARG_STATE, PropertyValue.STRING(displayName));
+		public void onPhaseChanged(RCKSimulationPhase phase) {
+			enqueueOutputUpdate(m_run, ARG_STATE, PropertyValue.STRING(phase.displayName()));
 		}
 
 		@Override
 		public void onProgressUpdated(RCKSimulationProgress progress) {
 			enqueueOutputUpdate(m_run, ARG_PROGRESS, PropertyValue.INTEGER(progress.progress()));
 			enqueueOutputUpdate(m_run, ARG_PRODUCTION, PropertyValue.INTEGER(progress.production()));
-			enqueueOutputUpdate(m_run, ARG_AVERAGE_UTILIZATION,
-								PropertyValue.STRING(toUtilizationJson(progress.averageUtilizations())));
+			enqueueOutputUpdate(m_run, ARG_UTILIZATION,
+								PropertyValue.STRING(toUtilizationJson(progress.utilizations())));
 		}
 
 		@Override
@@ -291,7 +304,9 @@ public class MDTSimulationOutputReporter {
 	private Map<String,MDTArgumentReference> getOutputReferences(long run) {
 		if ( m_lastResolvedRun != run && m_outputReferences.size() < ARG_NAMES.size() ) {
 			m_lastResolvedRun = run;
-			List<String> missing = ARG_NAMES.stream().filter(name -> !m_outputReferences.containsKey(name)).toList();
+			List<String> missing = ARG_NAMES.stream()
+											.filter(name -> !m_outputReferences.containsKey(name))
+											.toList();
 			try {
 				m_outputReferences.putAll(m_outputReferenceResolver.resolve(missing));
 			}
@@ -303,35 +318,29 @@ public class MDTSimulationOutputReporter {
 	}
 
 	/**
-	 * MDT 인스턴스에 등록된 시뮬레이션 오퍼레이션의 출력 인자 reference들을 생성·활성화한다.
+	 * 시뮬레이션 오퍼레이션 Submodel의 출력 인자 reference들을 생성·활성화한다.
 	 *
 	 * @return	인자 이름 → 활성화된 reference. 준비하지 못한 인자는 경고 로그를 남기고 빠진다.
 	 */
 	private static Map<String,MDTArgumentReference> resolveArguments(Supplier<MDTInstanceManager> managerSupplier,
-																	Supplier<String> instanceIdSupplier,
-																	List<String> argNames) {
-		String instId = instanceIdSupplier.get();
-		if ( instId == null ) {
-			s_logger.warn("unknown MDT instance id; simulation progress is not reported to MDT");
+											Supplier<? extends MDTSubmodelReference> submodelSupplier,
+											List<String> argNames) {
+		MDTSubmodelReference smRef = submodelSupplier.get();
+		if ( smRef == null ) {
+			s_logger.warn("unknown simulation operation submodel; simulation progress is not reported to MDT");
 			return Map.of();
 		}
 		MDTInstanceManager manager = managerSupplier.get();
 
 		Map<String,MDTArgumentReference> refs = new HashMap<>();
 		for ( String argName: argNames ) {
-			String argExpr = String.format(ARGUMENT_EXPR_FORMAT, instId, argName);
+			MDTArgumentReference argRef = MDTArgumentReference.newInstance(smRef, MDTArgumentKind.OUTPUT, argName);
 			try {
-				ElementReference ref = ElementReferences.parseExpr(argExpr);
-				if ( ref instanceof MDTArgumentReference argRef ) {
-					argRef.activate(manager);
-					refs.put(argName, argRef);
-				}
-				else {
-					s_logger.warn("simulation output is not an operation argument: {}", argExpr);
-				}
+				argRef.activate(manager);
+				refs.put(argName, argRef);
 			}
 			catch ( Exception e ) {
-				s_logger.warn("failed to prepare simulation output {}: {}", argExpr, ""+e);
+				s_logger.warn("failed to prepare simulation output {}: {}", argRef.toStringExpr(), ""+e);
 			}
 		}
 		return refs;

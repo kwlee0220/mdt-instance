@@ -103,11 +103,11 @@ public class PlaceProvider extends RobotTwinOperationProvider {
 					m_rtConfig.getTwinId(), stopped.failedStage(), progress.releaseAttempted(), details);
 			throw e;
 		}
-		writeOutputs(reached, attempted, failedStage, reason, check.goalsReached(), check.releaseAttempted(),
-				check.failedStage(), check.why());
-		if ( !check.goalsReached() ) {
+		writeOutputs(reached, attempted, failedStage, reason, check.goalReached(), check.releaseAttempted(),
+				check.failedStage(), check.failureReason());
+		if ( !check.goalReached() ) {
 			s_logger.warn("place goal not confirmed: twin={}, stage={}, releaseAttempted={}, details={}",
-					m_rtConfig.getTwinId(), check.failedStage(), check.releaseAttempted(), check.why());
+					m_rtConfig.getTwinId(), check.failedStage(), check.releaseAttempted(), check.failureReason());
 		}
 	}
 

@@ -434,6 +434,7 @@ flowchart TD
 
 | 문서 | 다루는 내용 |
 | --- | --- |
+| [mdt 루트 패키지](src/main/java/mdt/README.md) | 요소 위치 표현, FA³ST 요청을 통한 요소 읽기·쓰기, 전역 설정 조회, 연결 설정 참조, MQTT 연결 공유 |
 | [mdt.endpoint 패키지](src/main/java/mdt/endpoint/README.md) | Manager 연결 관리, MQTT 수신, 동반 프로그램의 설정·생명주기·확장 방법 |
 | [mdt.assetconnection 패키지](src/main/java/mdt/assetconnection/README.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
 | [로봇 트윈 연산 Provider](src/main/java/mdt/assetconnection/operation/robot/README.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |

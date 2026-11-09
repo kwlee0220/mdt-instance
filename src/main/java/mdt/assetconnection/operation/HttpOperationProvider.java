@@ -28,7 +28,7 @@ import mdt.model.sm.value.ElementValues;
 
 
 /**
- * HTTP 연산 서버({@code mdt-operation-http}의 {@code RpcServerDispatcher})에 등록된 연산을
+ * HTTP 연산 서버({@code mdt-operation-http}의 {@code OperationController})에 등록된 연산을
  * {@link RESTfulAsyncRpcClient}로 호출하는 {@link OperationProvider}.
  * <p>
  * 설정의 {@code endpoint}는 연산 서버의 기본 URL(예: {@code http://localhost:12987})이고,

@@ -36,8 +36,10 @@ import mdt.robot.client.operation.StepResult;
  * 들어 올리는 동안 손목이 돌아도 단단히 쥔 물체는 실패로 보지 않는다. 그리퍼의 파지 판정은 원하는 물체를
  * 들었는지까지 판정하지 않으므로, 물체가 탁자에 남았거나 다른 물체를 문 경우를 이 장면 관측으로 걸러 낸다.
  * 두 측정 사이에 도구 기준점이 실제로 HoldTolerance의 2배 이상 움직이지 않았으면(상승이 짧거나 상승 뒤 관측이
- * 갱신되지 않았으면) 유지를 판정할 수 없으므로 같은 실패로 반환하며, LiftPose가 GraspPose에서 그보다 가까우면
- * 움직이기 전에 IllegalArgumentException으로 거부한다.
+ * 갱신되지 않았으면) 유지를 판정할 수 없으므로 같은 실패로 반환한다. 두 실패는 선택 출력 HoldVerdict
+ * (NOT_HELD / UNDETERMINED)로 구분한다. 하강·상승이 각각 축별 Tolerance 안에서 덜 갔다고 가정한 최소 상승이
+ * HoldTolerance의 2배보다 짧으면 움직이기 전에 IllegalArgumentException으로 거부한다. 수직 상승이면 LiftPose가
+ * GraspPose에서 HoldTolerance의 2배 + 두 Tolerance(기본 30 mm) 이상 떨어져야 하고, 대각선이면 더 멀어야 한다.
  * ObjectName이 없거나 빈 값이면 재지 않으며 GoalsReached=true도 실제 파지를 보장하지 않는다.
  * <p>
  * 모든 입력과 출력 바인딩을 첫 개방 전에 검증한다. 단계 목표 미확인(원격 FAILED/CANCELLED 포함)과 유지 판정
@@ -61,7 +63,9 @@ import mdt.robot.client.operation.StepResult;
  * MEASURE_HELD다. 선택 출력 HoldDriftM (xs:double, 들기 전후 물린 위치를 도구 좌표계에서 비교한 차이),
  * HeldOffset (SMC x/y/z, 들어 올린 뒤의 물린 위치, 기준 좌표계), Objects (SMC, 들어 올린 뒤 측정의 scene 물체)는
  * 두 측정을 모두 마쳤을 때만 갱신하며, 그렇지 않으면 이전 값이 남는다. Objects는 AAS idShort로 쓸 수 없는 물체
- * 이름 등으로 변환할 수 없으면 경고 로그만 남기고 이전 값을 둔다. 나머지 출력은 정상 반환한다.</dd>
+ * 이름 등으로 변환할 수 없으면 경고 로그만 남기고 이전 값을 둔다. 나머지 출력은 정상 반환한다.
+ * 선택 출력 HoldVerdict (xs:string, HELD/NOT_HELD/UNDETERMINED/NOT_CHECKED)는 정상 반환할 때마다 갱신한다.
+ * NOT_CHECKED는 ObjectName이 없거나 두 측정 전에 단계가 실패한 경우다.</dd>
  * </dl>
  * TimeoutSec는 서버 실행 상한이나 전체 Pick 상한이 아니다. 동기 그리퍼에는 HTTP 읽기 제한 30초가,
  * 개루프 이동에는 각 단계의 SettleTimeout이, 측정에는 측정별 5초 상한이 별도로 적용된다.
@@ -88,6 +92,7 @@ public class PickProvider extends RobotTwinOperationProvider {
 		Property failedStage = getRequiredPropertyVariable(outputVarList, "FailedStage", DataTypeDefXsd.STRING);
 		Property reason = getRequiredPropertyVariable(outputVarList, "FailureReason", DataTypeDefXsd.STRING);
 		Property driftM = getPropertyVariable(outputVarList, "HoldDriftM", DataTypeDefXsd.DOUBLE);
+		Property holdVerdict = getPropertyVariable(outputVarList, "HoldVerdict", DataTypeDefXsd.STRING);
 		SubmodelElementCollection heldOffset = getSMCVariable(outputVarList, "HeldOffset");
 		SubmodelElementCollection objects = getSMCVariable(outputVarList, "Objects");
 
@@ -108,13 +113,19 @@ public class PickProvider extends RobotTwinOperationProvider {
 		objectName = (objectName != null && !objectName.isBlank()) ? objectName : null;
 		MeasureObjectOffset.TcpReference tcpReference = tcpReference(getStringVariableValue(inputVarList, "TcpReference"));
 		Double holdTolerance = getDoubleVariableValue(inputVarList, "HoldTolerance");
+		// ObjectName이 없어 재지 않을 때도 잘못된 값은 거부한다.
+		Preconditions.checkArgument(holdTolerance == null || (Double.isFinite(holdTolerance) && holdTolerance > 0),
+									"HoldTolerance must be finite and positive");
 		Pick.Options options = new Pick.Options(
 				new MoveLinear.Options(tolerance, speed(inputVarList, "ApproachVelocityScaling"), settleTimeout),
 				new MoveLinear.Options(tolerance, speed(inputVarList, "DescentVelocityScaling"), settleTimeout),
 				new MoveLinear.Options(tolerance, speed(inputVarList, "LiftVelocityScaling"), settleTimeout),
-				openTarget != null ? openTarget : "open", graspTarget != null ? graspTarget : "grasp",
-				MeasureObjectOffset.Options.DEFAULT, holdTolerance != null ? holdTolerance : 0.01);
-		Pick operation = new Pick(m_twin, approach, grasp, lift, objectName, tcpReference, options, Duration.ofSeconds(timeout));
+				openTarget != null ? openTarget : "open", graspTarget != null ? graspTarget : "grasp");
+		Pick.HoldCheck holdCheck = objectName != null
+				? new Pick.HoldCheck(objectName, tcpReference, MeasureObjectOffset.Options.DEFAULT,
+									holdTolerance != null ? holdTolerance : Pick.HoldCheck.DEFAULT_TOLERANCE_M)
+				: null;
+		Pick operation = new Pick(m_twin, approach, grasp, lift, holdCheck, options, Duration.ofSeconds(timeout));
 		writeOutputs(reached, attempted, failedStage, reason, false, false, null, null);
 		Pick.Check check;
 		try {
@@ -149,11 +160,14 @@ public class PickProvider extends RobotTwinOperationProvider {
 				objects.setValue(sceneObjects);
 			}
 		}
-		writeOutputs(reached, attempted, failedStage, reason, check.goalsReached(), check.graspAttempted(),
-				check.failedStage(), check.why());
-		if ( !check.goalsReached() ) {
+		if ( holdVerdict != null ) {
+			holdVerdict.setValue(check.holdVerdict().name());
+		}
+		writeOutputs(reached, attempted, failedStage, reason, check.goalReached(), check.graspAttempted(),
+				check.failedStage(), check.failureReason());
+		if ( !check.goalReached() ) {
 			s_logger.warn("pick goal not confirmed: twin={}, object={}, stage={}, graspAttempted={}, details={}",
-					m_rtConfig.getTwinId(), objectName, check.failedStage(), check.graspAttempted(), check.why());
+					m_rtConfig.getTwinId(), objectName, check.failedStage(), check.graspAttempted(), check.failureReason());
 		}
 	}
 

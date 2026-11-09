@@ -66,10 +66,10 @@ public class MDTSimulationOutputReporterTest {
 		MDTSimulationOutputReporter reporter = new MDTSimulationOutputReporter(names -> Map.of(STATE, stateRef));
 
 		long started = System.nanoTime();
-		SimulationObserver run = reporter.startRun();
-		run.onStateChanged("/Registering", "등록중");
-		run.onStateChanged("/LayoutLoading", "레이아웃 로딩중");
-		run.onStateChanged("/Running", "진행중");
+		SimulationObserver run = reporter.newRunObserver();
+		run.onPhaseChanged(RCKSimulationPhase.REGISTERING);
+		run.onPhaseChanged(RCKSimulationPhase.LOADING_LAYOUT);
+		run.onPhaseChanged(RCKSimulationPhase.RUNNING);
 		run.onFinished(result(Termination.COMPLETED));
 		long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
 		assertTrue("observer calls must not wait for MDT: " + elapsedMillis + "ms", elapsedMillis < 500);
@@ -102,13 +102,13 @@ public class MDTSimulationOutputReporterTest {
 		}).when(stateRef).updatePropertyValue(any());
 		MDTSimulationOutputReporter reporter = new MDTSimulationOutputReporter(names -> Map.of(STATE, stateRef));
 
-		SimulationObserver first = reporter.startRun();
+		SimulationObserver first = reporter.newRunObserver();
 		first.onFinished(result(Termination.COMPLETED));
 		firstWriteStarted.await();				// 이전 실행의 쓰기가 전송 중
 
-		SimulationObserver second = reporter.startRun();
-		second.onStateChanged("/ConnectingWebSocket", "소켓 연결중");
-		first.onStateChanged("/Running", "진행중");	// 이전 실행의 늦은 갱신은 버려진다
+		SimulationObserver second = reporter.newRunObserver();
+		second.onPhaseChanged(RCKSimulationPhase.CONNECTING);
+		first.onPhaseChanged(RCKSimulationPhase.RUNNING);	// 이전 실행의 늦은 갱신은 버려진다
 		releaseFirstWrite.countDown();
 
 		awaitLast(written, "소켓 연결중");
@@ -124,7 +124,7 @@ public class MDTSimulationOutputReporterTest {
 		MDTSimulationOutputReporter reporter = new MDTSimulationOutputReporter(names -> Map.of(STATE, stateRef));
 		assertTrue("nothing pending", reporter.flushAsync().isDone());
 
-		reporter.startRun().onFinished(result(Termination.FAILED));
+		reporter.newRunObserver().onFinished(result(Termination.FAILED));
 		CompletableFuture<Void> flushed = reporter.flushAsync();
 		Thread.sleep(100);
 		assertFalse("a write is still pending", flushed.isDone());
@@ -136,7 +136,7 @@ public class MDTSimulationOutputReporterTest {
 
 	@Test(timeout = 10_000)
 	public void arguments_are_prepared_lazily_on_the_writer_thread_and_retried_per_run() throws Exception {
-		// 생성자와 startRun()은 MDT에 접속하지 않는다. 준비하지 못한 인자는 다음 실행에서 다시 준비한다.
+		// 생성자와 newRunObserver()은 MDT에 접속하지 않는다. 준비하지 못한 인자는 다음 실행에서 다시 준비한다.
 		CountDownLatch slowMdt = new CountDownLatch(1);
 		List<List<String>> resolveCalls = new CopyOnWriteArrayList<>();
 		List<Object> written = new CopyOnWriteArrayList<>();
@@ -153,8 +153,8 @@ public class MDTSimulationOutputReporterTest {
 		});
 
 		long started = System.nanoTime();
-		SimulationObserver first = reporter.startRun();
-		first.onStateChanged("/Running", "진행중");
+		SimulationObserver first = reporter.newRunObserver();
+		first.onPhaseChanged(RCKSimulationPhase.RUNNING);
 		long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
 		assertTrue("preparing outputs must not block the caller: " + elapsedMillis + "ms", elapsedMillis < 500);
 
@@ -162,10 +162,10 @@ public class MDTSimulationOutputReporterTest {
 		reporter.flushAsync().get(5, TimeUnit.SECONDS);
 		assertTrue("nothing is written while State is not prepared", written.isEmpty());
 
-		reporter.startRun().onStateChanged("/Running", "진행중");
+		reporter.newRunObserver().onPhaseChanged(RCKSimulationPhase.RUNNING);
 		reporter.flushAsync().get(5, TimeUnit.SECONDS);
 		assertEquals(2, resolveCalls.size());
-		assertEquals("진행중", written.get(written.size() - 1));
+		assertEquals("시뮬레이션 진행중", written.get(written.size() - 1));
 	}
 
 	@Test(timeout = 10_000)
@@ -177,7 +177,7 @@ public class MDTSimulationOutputReporterTest {
 										MDTSimulationOutputReporter.ARG_PROGRESS, progressRef,
 										MDTSimulationOutputReporter.ARG_PRODUCTION, productionRef));
 
-		reporter.startRun();
+		reporter.newRunObserver();
 
 		verify(productionRef, timeout(5000)).updatePropertyValue(any());
 	}
@@ -197,8 +197,8 @@ public class MDTSimulationOutputReporterTest {
 		}).when(stateRef).updatePropertyValue(any());
 		MDTSimulationOutputReporter reporter = new MDTSimulationOutputReporter(names -> Map.of(STATE, stateRef));
 
-		SimulationObserver run = reporter.startRun();
-		run.onStateChanged("/Registering", "등록중");
+		SimulationObserver run = reporter.newRunObserver();
+		run.onPhaseChanged(RCKSimulationPhase.REGISTERING);
 		verify(stateRef, timeout(5000)).updatePropertyValue(any());
 		run.onFinished(result(Termination.COMPLETED));
 

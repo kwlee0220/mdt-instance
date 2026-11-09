@@ -48,7 +48,7 @@ The HTTPS port is taken from the instance endpoint URL, not from `--port`; `--po
 - **`mdt.ksx9101`** — KS X 9101 manufacturing-data JPA mapping (`KSX9101Persistence`); not wired by `MDTInstanceMain`.
 - **`mdt.ext`** — project-specific operation providers (e.g. `ext/rck`, RCK press simulation over WebSocket; see its [README](src/main/java/mdt/ext/rck/README.md) and [CLAUDE.md](src/main/java/mdt/ext/rck/CLAUDE.md)).
 
-Detailed behaviour, config formats, and known limitations are in the package READMEs: [mdt.endpoint](src/main/java/mdt/endpoint/README.md), [mdt.assetconnection](src/main/java/mdt/assetconnection/README.md), [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md), [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md), [mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md), and [mdt.ext.rck](src/main/java/mdt/ext/rck/README.md). Read the relevant guide before changing a package, and update it when behaviour changes.
+Detailed behaviour, config formats, and known limitations are in the package READMEs: [mdt (root)](src/main/java/mdt/README.md) (with its [CLAUDE.md](src/main/java/mdt/CLAUDE.md)), [mdt.endpoint](src/main/java/mdt/endpoint/README.md), [mdt.assetconnection](src/main/java/mdt/assetconnection/README.md), [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md), [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md), [mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md), and [mdt.ext.rck](src/main/java/mdt/ext/rck/README.md). Read the relevant guide before changing a package, and update it when behaviour changes.
 
 ## Extension points
 

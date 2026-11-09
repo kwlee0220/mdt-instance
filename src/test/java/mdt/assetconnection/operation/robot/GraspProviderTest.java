@@ -323,7 +323,7 @@ public class GraspProviderTest {
 		assertNull(GraspProvider.describeStop(List.of(), null).failedStage());
 		assertTrue(GraspProvider.describeStop(List.of(), null).context().contains("OPEN 진입 전"));
 		for (Grasp.Stage stage : Grasp.Stage.values()) {
-			var successfulStep = new StepResult<>(stage, null, new GripperCheck(true, false, null, null),
+			var successfulStep = new StepResult<>(stage, new GripperCheck(true, false, null, null),
 					Optional.empty(), null);
 			var stopped = GraspProvider.describeStop(List.of(successfulStep), null);
 			assertNull(stopped.failedStage());
@@ -334,7 +334,7 @@ public class GraspProviderTest {
 				assertTrue(stopped.context().contains(stage + " 완료 후"));
 				assertTrue(stopped.context().contains(Grasp.Stage.values()[stage.ordinal() + 1] + " 진입 전"));
 			}
-			var failedStep = new StepResult<>(stage, null, null, Optional.empty(), new InterruptedException());
+			var failedStep = new StepResult<>(stage, null, Optional.empty(), new InterruptedException());
 			assertEquals(stage, GraspProvider.describeStop(List.of(failedStep), null).failedStage());
 		}
 	}

@@ -100,11 +100,11 @@ public class GraspProvider extends RobotTwinOperationProvider {
 					m_rtConfig.getTwinId(), stage, progress.graspAttempted(), details);
 			throw e;
 		}
-		writeOutputs(reached, attempted, failedStage, reason, check.goalsReached(), check.graspAttempted(),
-				check.failedStage(), check.why());
-		if ( !check.goalsReached() ) {
+		writeOutputs(reached, attempted, failedStage, reason, check.goalReached(), check.graspAttempted(),
+				check.failedStage(), check.failureReason());
+		if ( !check.goalReached() ) {
 			s_logger.warn("grasp goal not confirmed: twin={}, stage={}, graspAttempted={}, details={}",
-					m_rtConfig.getTwinId(), check.failedStage(), check.graspAttempted(), check.why());
+					m_rtConfig.getTwinId(), check.failedStage(), check.graspAttempted(), check.failureReason());
 		}
 	}
 

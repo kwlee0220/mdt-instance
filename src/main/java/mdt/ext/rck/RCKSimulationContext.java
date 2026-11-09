@@ -1,7 +1,5 @@
 package mdt.ext.rck;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 import utils.Preconditions;
 import utils.websocket.WebSocketContext;
 
@@ -12,7 +10,7 @@ import utils.websocket.WebSocketContext;
  * <p>
  * {@link RCKSimulation} 상태 차트와 짝을 이루며, 시뮬레이션 한 건을 식별하는 불변 정보
  * (클라이언트 ID, 공정명, 레이아웃명)와 차트가 진행되면서 채워지는 가변 결과 정보
- * (설비 정보, 최근 진행 상황, 결과 영상 정보)를 함께 보유한다.
+ * (설비 정보, 최근 진행 상황, 결과 영상 URL)을 함께 보유한다.
  * <p>
  * 불변 식별 정보는 생성 시점에 확정되며, 가변 결과 정보는 {@link RCKSimulation}의 각 상태
  * 핸들러가 WebSocket 메시지를 처리하는 과정에서 갱신한 뒤, 차트 종료 후 호출자가 조회한다.
@@ -25,9 +23,9 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	private final String m_processName;
 	private final String m_layoutName;
 
-	private JsonNode m_facility;
-	private RCKSimulationProgress m_latestProgress;
-	private VideoInfo m_videoInfo;
+	private volatile RCKEquipmentProperties m_equipmentProperties;
+	private volatile RCKSimulationProgress m_latestProgress;
+	private volatile String m_videoUrl;
 	
 	/**
 	 * RCK 시뮬레이션 컨텍스트를 생성한다.
@@ -38,7 +36,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	 * @param layoutName	시뮬레이션 대상 레이아웃명 (non-null)
 	 * @throws IllegalArgumentException 인자 중 하나라도 {@code null}인 경우
 	 */
-	public RCKSimulationContext(String serverUrl, String clientId, String processName, String layoutName) {
+	RCKSimulationContext(String serverUrl, String clientId, String processName, String layoutName) {
 		super(serverUrl);
 		
 		Preconditions.checkNotNullArgument(clientId, "clientId is null");
@@ -79,21 +77,21 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	}
 
 	/**
-	 * 시뮬레이터가 {@code facility} 메시지로 보낸 설비 정보를 반환한다. 시뮬레이션 시작 명령에 그대로 담아 보낸다.
+	 * 시뮬레이터가 {@code facility} 메시지로 보낸 설비 정보를 반환한다. 시뮬레이션 시작 명령의 {@code message}에 담아 보낸다.
 	 *
-	 * @return	설비 정보 JSON. 아직 받지 않았으면 {@code null}.
+	 * @return	설비 정보. 아직 받지 않았으면 {@code null}.
 	 */
-	public JsonNode getFacility() {
-		return m_facility;
+	public RCKEquipmentProperties getEquipmentProperties() {
+		return m_equipmentProperties;
 	}
 
 	/**
 	 * 시뮬레이터가 보낸 설비 정보를 설정한다.
 	 *
-	 * @param facility	설비 정보 JSON
+	 * @param equipmentProperties	설비 정보
 	 */
-	public void setFacility(JsonNode facility) {
-		m_facility = facility;
+	void setEquipmentProperties(RCKEquipmentProperties equipmentProperties) {
+		m_equipmentProperties = equipmentProperties;
 	}
 
 	/**
@@ -112,26 +110,26 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	 *
 	 * @param progress	진행 상황
 	 */
-	public void setLatestProgress(RCKSimulationProgress progress) {
+	void setLatestProgress(RCKSimulationProgress progress) {
 		m_latestProgress = progress;
 	}
 	
 	/**
-	 * 결과 영상 정보({@code video_info})를 반환한다.
+	 * 시뮬레이터가 {@code video_info} 메시지로 알린 결과 영상의 다운로드 URL을 반환한다.
 	 *
-	 * @return	결과 영상 정보. 아직 받지 않았으면 {@code null}.
+	 * @return	다운로드 URL. 아직 받지 않았거나 메시지에 URL이 없었으면 {@code null}.
 	 */
-	public VideoInfo getVideoInfo() {
-		return m_videoInfo;
+	public String getVideoUrl() {
+		return m_videoUrl;
 	}
 	
 	/**
-	 * 결과 영상 정보를 설정한다.
+	 * 결과 영상의 다운로드 URL을 설정한다.
 	 *
-	 * @param videoInfo	결과 영상 정보
+	 * @param videoUrl	다운로드 URL
 	 */
-	public void setVideoInfo(VideoInfo videoInfo) {
-		m_videoInfo = videoInfo;
+	void setVideoUrl(String videoUrl) {
+		m_videoUrl = videoUrl;
 	}
 
 	@Override

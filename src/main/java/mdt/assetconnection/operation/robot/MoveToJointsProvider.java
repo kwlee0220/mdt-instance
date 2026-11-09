@@ -19,6 +19,8 @@ import utils.Preconditions;
 
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.robot.client.RobotTwinClient;
+import mdt.robot.client.operation.MotionLimits;
+import mdt.robot.client.operation.ClosedLoopCheck;
 import mdt.robot.client.operation.MoveToJoints;
 import mdt.rt.Ros2SerDes;
 
@@ -67,9 +69,9 @@ public class MoveToJointsProvider extends RobotTwinOperationProvider {
 		if ( maxDuration != null ) {
 			Preconditions.checkArgument(maxDuration > 0, "MaxDurationSec must be positive: " + maxDuration);
 		}
-		MoveToJoints.Options options = new MoveToJoints.Options(vs != null ? Double.valueOf(vs.toString()) : null,
+		MotionLimits options = new MotionLimits(vs != null ? Double.valueOf(vs.toString()) : null,
 				maxDuration != null ? Duration.ofSeconds(maxDuration) : null, getClientTimeout(maxDuration));
-		MoveToJoints.Check check = runOperation(new MoveToJoints(m_twin, joints, options));
-		handleMotionResult(check.result(), check.reached(), check.why(), s_logger, finalPoseSmc, finalJointsSmc);
+		ClosedLoopCheck check = runOperation(new MoveToJoints(m_twin, joints, options));
+		handleMotionResult(check.result(), check.goalReached(), check.failureReason(), s_logger, finalPoseSmc, finalJointsSmc);
 	}
 }

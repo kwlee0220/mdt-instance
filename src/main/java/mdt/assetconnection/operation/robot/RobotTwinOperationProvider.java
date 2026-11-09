@@ -45,7 +45,7 @@ import mdt.rt.Ros2SerDes;
  * 신규 Provider는 대응하는 클라이언트 연산이 있으면 {@link #createRobotTwinClient()}와
  * {@link #runOperation(AbstractThreadedExecution)}을 우선 사용하고 AAS 변환·출력 처리를 담당한다.
  * 상태 변수 조회와 갱신 대기도 RobotTwinClient 및 클라이언트의 관측 연산을 사용한다.
- * 정착 판정은 클라이언트의 {@code WaitUntilStill}에 맡긴다.
+ * 정착 판정은 클라이언트의 {@code WaitUntilArmStill}에 맡긴다.
  *
  * @author Kang-Woo Lee (ETRI)
  */

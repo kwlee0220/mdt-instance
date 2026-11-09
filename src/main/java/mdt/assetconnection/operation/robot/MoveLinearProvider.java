@@ -123,10 +123,10 @@ public class MoveLinearProvider extends RobotTwinOperationProvider {
 		MoveLinear operation = MoveLinear.builder(m_twin, target)
 				.velocityScaling(vs != null ? Double.valueOf(vs.toString()) : null)
 				.maxDuration(maxDuration != null ? Duration.ofSeconds(maxDuration) : null)
-				.tolerance(tolerance).settleTimeout(settleTimeout)
+				.positionToleranceM(tolerance).settleTimeout(settleTimeout)
 				.timeout(getClientTimeout(maxDuration)).build();
 		MoveCheck check = runOperation(operation);
-		throwIfRemoteFailed(check.result(), check.why(), s_logger);
+		throwIfRemoteFailed(check.result(), check.failureReason(), s_logger);
 
 		JsonNode finalPose = nonNull(check.result().output("final_pose"));
 		JsonNode finalJoints = nonNull(check.result().output("final_joints"));
@@ -151,11 +151,11 @@ public class MoveLinearProvider extends RobotTwinOperationProvider {
 			}
 		}
 
-		boolean reached = check.reached();
+		boolean reached = check.goalReached();
 		Double posError = check.errorM();
-		if ( MoveCheck.SETTLE_TIMEOUT.equals(check.reason()) ) {
+		if ( MoveCheck.SETTLE_TIMEOUT.equals(check.failureCode()) ) {
 			s_logger.warn("robot settling could not be confirmed: twin={}, details={}",
-					m_rtConfig.getTwinId(), check.why());
+					m_rtConfig.getTwinId(), check.failureReason());
 		}
 		if ( posErrorProp != null && posError != null ) {
 			posErrorProp.setValue(Double.toString(posError));
@@ -170,7 +170,7 @@ public class MoveLinearProvider extends RobotTwinOperationProvider {
 			String details = (posError != null)
 							? String.format("target is not reached: error=%.2fmm, tolerance=%.2fmm",
 											posError * 1000, tolerance * 1000)
-							: (check.why() != null ? check.why() : "final pose is not reported, cannot judge reaching");
+							: (check.failureReason() != null ? check.failureReason() : "final pose is not reported, cannot judge reaching");
 			throw new TaskException(details);
 		}
 	}

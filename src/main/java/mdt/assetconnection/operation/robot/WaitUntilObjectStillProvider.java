@@ -93,7 +93,7 @@ public class WaitUntilObjectStillProvider extends RobotTwinOperationProvider {
 		List<SubmodelElement> objects = (objectsSmc != null && result.sample().isPresent())
 				? sceneObjectsOrNull(result.sample().get().path("value").get("objects"), s_logger)
 				: null;
-		settledProp.setValue(Boolean.toString(result.settled()));
+		settledProp.setValue(Boolean.toString(result.goalReached()));
 		outcomeProp.setValue(result.outcome().name());
 		if ( objects != null ) {
 			objectsSmc.setValue(objects);
@@ -101,7 +101,7 @@ public class WaitUntilObjectStillProvider extends RobotTwinOperationProvider {
 		if ( diagProp != null ) {
 			diagProp.setValue(result.summary());
 		}
-		if ( !result.settled() ) {
+		if ( !result.goalReached() ) {
 			s_logger.warn("object did not settle: twin={}, elapsed={}, details={}",
 							m_rtConfig.getTwinId(), result.elapsed(), result.summary());
 		}

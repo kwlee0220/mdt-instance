@@ -9,7 +9,7 @@ import utils.Preconditions;
  * 끝난 {@link RCKSimulation}의 결과.
  * <p>
  * 호출자가 상태 차트의 현재 상태 경로와 가변 문맥({@link RCKSimulationContext})을 조합하지 않고도 종료 사유, 마지막
- * 진행 상황, 결과 영상 정보를 한 번에 얻을 수 있게 한다. {@link RCKSimulation#getSimulationResult()}와
+ * 진행 상황, 결과 영상 URL을 한 번에 얻을 수 있게 한다. {@link RCKSimulation#getSimulationResult()}와
  * {@link SimulationObserver#onFinished(RCKSimulationResult)}가 같은 값을 준다.
  *
  * @param termination	종료 사유
@@ -17,12 +17,14 @@ import utils.Preconditions;
  * 						응답 대기 시간 초과나 연결 종료·오류로 {@code Stopped}가 되었으면 {@code false}. 다른 종료
  * 						사유에서는 항상 {@code false}.
  * @param progress		마지막으로 받은 진행 상황 (non-null)
- * @param videoInfo		결과 영상 정보. 받지 못했으면 {@code null}.
+ * @param videoUrl		결과 영상 다운로드 URL. 받지 못했으면 {@code null}.
  * @param failureCause	실패 원인. {@link Termination#FAILED}가 아니면 {@code null}.
  * @author Kang-Woo Lee (ETRI)
  */
-public record RCKSimulationResult(Termination termination, boolean stopConfirmed, RCKSimulationProgress progress,
-									@Nullable VideoInfo videoInfo, @Nullable Throwable failureCause) {
+public record RCKSimulationResult(Termination termination, boolean stopConfirmed,
+									RCKSimulationProgress progress,
+									@Nullable String videoUrl,
+									@Nullable Throwable failureCause) {
 	/**
 	 * 시뮬레이션의 종료 사유.
 	 */
@@ -45,7 +47,7 @@ public record RCKSimulationResult(Termination termination, boolean stopConfirmed
 		}
 
 		/**
-		 * 프로그램이 읽는 결과 코드. 오퍼레이션의 {@code FinalState} 출력에 쓴다.
+		 * 프로그램이 읽는 결과 코드.
 		 *
 		 * @return	결과 코드 (예: {@code "Completed"})
 		 */
@@ -66,14 +68,5 @@ public record RCKSimulationResult(Termination termination, boolean stopConfirmed
 	public RCKSimulationResult {
 		Preconditions.checkNotNullArgument(termination, "termination is null");
 		Preconditions.checkNotNullArgument(progress, "progress is null");
-	}
-
-	/**
-	 * 영상 다운로드 URL을 반환한다.
-	 *
-	 * @return	다운로드 URL. 영상 정보를 받지 못했으면 {@code null}.
-	 */
-	public @Nullable String videoUrl() {
-		return (videoInfo != null) ? videoInfo.downloadUrl() : null;
 	}
 }

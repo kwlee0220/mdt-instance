@@ -78,7 +78,7 @@ public class MoveGripperToTargetProvider extends RobotTwinOperationProvider {
 
 		String target = getRequiredStringVariableValue(inputVarList, "Target");
 		GripperCheck check = runOperation(new MoveGripperToNamedTarget(m_twin, target));
-		throwIfRemoteFailed(check.result(), check.why(), s_logger);
+		throwIfRemoteFailed(check.result(), check.failureReason(), s_logger);
 		var outputs = check.result().outputs();
 
 		// 일부 출력 변수만 갱신되지 않도록, 필요한 값을 모두 확인한 뒤에 반영한다.

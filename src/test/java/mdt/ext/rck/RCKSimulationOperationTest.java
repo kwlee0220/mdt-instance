@@ -1,10 +1,12 @@
 package mdt.ext.rck;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -12,11 +14,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
+import org.eclipse.digitaltwin.aas4j.v3.model.KeyTypes;
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
+import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
+import org.eclipse.digitaltwin.aas4j.v3.model.ReferenceTypes;
 import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultKey;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultOperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultProperty;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultReference;
 import org.junit.After;
 import org.junit.Test;
 
@@ -29,6 +36,7 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
+import mdt.model.sm.ref.DefaultSubmodelReference;
 
 
 /**
@@ -85,8 +93,7 @@ public class RCKSimulationOperationTest {
 		Map<String,SubmodelElement> outputs = new HashMap<>();
 		outputs.put("Progress", property("Progress", DataTypeDefXsd.INT, null));
 		outputs.put("Production", property("Production", DataTypeDefXsd.INT, null));
-		outputs.put("FinalState", property("FinalState", DataTypeDefXsd.STRING, null));
-		outputs.put("AverageUtilization", property("AverageUtilization", DataTypeDefXsd.STRING, null));
+		outputs.put("EquipmentUtilizationList", property("EquipmentUtilizationList", DataTypeDefXsd.STRING, null));
 		outputs.put("SimulationVideoUrl", property("SimulationVideoUrl", DataTypeDefXsd.STRING, "old"));
 		return outputs;
 	}
@@ -98,15 +105,15 @@ public class RCKSimulationOperationTest {
 	@Test(timeout = 15_000)
 	public void completed_simulation_writes_outputs() throws Exception {
 		String url = startServer(new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0)));
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo()));
 		Map<String,SubmodelElement> outputs = outputs();
 
 		operation(config(url, Map.of())).invokeSync(inputs("layout"), Map.of(), outputs);
 
 		assertEquals("100", value(outputs, "Progress"));
 		assertEquals("7", value(outputs, "Production"));
-		assertEquals("Completed", value(outputs, "FinalState"));
-		assertEquals(MDTSimulationOutputReporter.toUtilizationJson(Map.of("TP-75", 40f)), value(outputs, "AverageUtilization"));
+		assertEquals(MDTSimulationOutputReporter.toUtilizationJson(
+						Map.of(new RCKEquipment("Press", "TP-75 #1", 1), 40f)), value(outputs, "EquipmentUtilizationList"));
 		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
 	}
 
@@ -132,7 +139,7 @@ public class RCKSimulationOperationTest {
 	public void invoke_async_returns_at_once_and_reports_outputs_on_completion() throws Exception {
 		// 비동기 호출은 시뮬레이션을 시작만 하고 반환한다. 끝나면 출력 변수를 채워 성공 콜백을 부른다.
 		FakeRckServer server = new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0));
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo());
 		server.m_startDelayMillis = 500;
 		String url = startServer(server);
 		Map<String,SubmodelElement> outputs = outputs();
@@ -146,7 +153,6 @@ public class RCKSimulationOperationTest {
 
 		assertTrue("invokeAsync must not wait for the simulation: " + elapsedMillis + "ms", elapsedMillis < 400);
 		success.get(5, TimeUnit.SECONDS);
-		assertEquals("Completed", value(outputs, "FinalState"));
 		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
 	}
 
@@ -164,6 +170,45 @@ public class RCKSimulationOperationTest {
 		Throwable cause = failure.get(5, TimeUnit.SECONDS);
 		assertTrue("" + cause, cause instanceof ExecutionException && cause.getCause() instanceof TimeoutException);
 		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void call_while_running_is_rejected_and_accepted_after_finish() throws Exception {
+		// 실행 중인 시뮬레이션이 있으면 새 호출은 시작하지 않고 거부한다. 끝나면 다음 호출을 받는다.
+		FakeRckServer first = new FakeRckServer(false, false);
+		first.m_ignoreLayout = true;
+		String url = startServer(first);
+		RCKSimulationOperation op = operation(config(url, Map.of("maxDuration", "500ms")));
+		CompletableFuture<Throwable> failure = new CompletableFuture<>();
+
+		op.invokeAsync(toVars(inputs("layout")), new OperationVariable[0], toVars(outputs()),
+						(out, inout) -> failure.complete(null), failure::complete);
+		assertThrows(IllegalStateException.class, () -> op.invokeSync(inputs("layout"), Map.of(), outputs()));
+
+		assertTrue("" + failure.get(5, TimeUnit.SECONDS), failure.get() instanceof ExecutionException);
+		m_server.enqueue(new MockResponse().withWebSocketUpgrade(
+							new FakeRckServer(false, false).thenSend(RCKSimulationTest.STATUS,
+																	RCKSimulationTest.videoInfo())));
+		Map<String,SubmodelElement> outputs = outputs();
+		// 결과 콜백이 불렸으면 다음 호출을 받는다.
+		op.invokeSync(inputs("layout"), Map.of(), outputs);
+		assertEquals("100", value(outputs, "Progress"));
+	}
+
+	@Test
+	public void progress_target_is_the_submodel_of_the_operation_reference() {
+		Reference opRef = new DefaultReference.Builder()
+								.type(ReferenceTypes.MODEL_REFERENCE)
+								.keys(new DefaultKey.Builder().type(KeyTypes.SUBMODEL).value("urn:sm:press-sim").build())
+								.keys(new DefaultKey.Builder().type(KeyTypes.OPERATION).value("Run").build())
+								.build();
+		assertEquals(DefaultSubmodelReference.ofId("urn:sm:press-sim").toStringExpr(),
+					RCKSimulationOperation.toOperationSubmodel(opRef, () -> "inst").toStringExpr());
+		// 오퍼레이션 reference가 없으면 인스턴스의 기본 Submodel, 인스턴스도 모르면 반영하지 않는다.
+		assertEquals(DefaultSubmodelReference.ofIdShort("inst", RCKSimulationOperation.DEFAULT_SUBMODEL_ID_SHORT)
+											.toStringExpr(),
+					RCKSimulationOperation.toOperationSubmodel(null, () -> "inst").toStringExpr());
+		assertNull(RCKSimulationOperation.toOperationSubmodel(null, () -> null));
 	}
 
 	@Test
@@ -185,20 +230,19 @@ public class RCKSimulationOperationTest {
 	public void omitted_optional_output_is_skipped() throws Exception {
 		// 모델에 SimulationVideoUrl 출력 변수가 없어도 나머지 출력을 기록하고 성공한다(이전에는 NPE로 실패했다).
 		String url = startServer(new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0)));
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo()));
 		Map<String,SubmodelElement> outputs = outputs();
 		outputs.remove("SimulationVideoUrl");
 
 		operation(config(url, Map.of())).invokeSync(inputs("layout"), Map.of(), outputs);
 
-		assertEquals("Completed", value(outputs, "FinalState"));
 		assertEquals("100", value(outputs, "Progress"));
 	}
 
 	@Test(timeout = 15_000)
 	public void a_throwing_success_callback_does_not_trigger_the_failure_callback() throws Exception {
 		String url = startServer(new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo(0)));
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo()));
 		java.util.concurrent.atomic.AtomicInteger successes = new java.util.concurrent.atomic.AtomicInteger();
 		java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
 		CompletableFuture<Void> called = new CompletableFuture<>();
@@ -248,6 +292,8 @@ public class RCKSimulationOperationTest {
 					() -> operation(config("ws://x", Map.of("pongTimeout", "abc"))));
 		assertThrows(ConfigurationInitializationException.class,
 					() -> operation(config("", Map.of())));
+		assertThrows(ConfigurationInitializationException.class,
+					() -> operation(config("ws://x", Map.of("productionPath", "Line..Count"))));
 	}
 
 	@Test

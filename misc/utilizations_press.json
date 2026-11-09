@@ -1,0 +1,139 @@
+{
+  "Progress": 5,
+  "ProcessName": "press",
+  "Utilizations": {
+    "Press": [
+      {
+        "Name": "TP-75",
+        "Index": 1,
+        "Utilization": 97.7733466267863
+      },
+      {
+        "Name": "TP-75",
+        "Index": 2,
+        "Utilization": 97.7733466267863
+      },
+      {
+        "Name": "TP-75",
+        "Index": 3,
+        "Utilization": 97.7733466267863
+      },
+      {
+        "Name": "TP-75",
+        "Index": 4,
+        "Utilization": 97.7733466267863
+      },
+      {
+        "Name": "TP-75",
+        "Index": 5,
+        "Utilization": 97.7733466267863
+      },
+      {
+        "Name": "TP-75",
+        "Index": 6,
+        "Utilization": 97.7733466267863
+      }
+    ],
+    "Feeder": [
+      {
+        "Name": "파츠피더",
+        "Index": 1,
+        "Utilization": 81.50258499252666
+      },
+      {
+        "Name": "파츠피더",
+        "Index": 2,
+        "Utilization": 81.50258499252703
+      }
+    ],
+    "Conveyor_1": {
+      "Name": "CONVERYOR(적재 투입)",
+      "Index": 1,
+      "Utilization": 9.072781655034895
+    },
+    "Conveyor_2": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "Utilization": 8.374875373878366
+    },
+    "Conveyor_3": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "Utilization": 10.734463276836157
+    },
+    "Conveyor_4": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "Utilization": 6.547025589896975
+    },
+    "Conveyor_5": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "Utilization": 4.253904951811233
+    },
+    "Conveyor_6": {
+      "Name": "CONVERYOR(적재 배출)",
+      "Index": 1,
+      "Utilization": 1.1299435028248588,
+      "Production": 2
+    },
+    "Heater_1": [
+      {
+        "Name": "가열로L",
+        "Index": 1,
+        "Utilization": 63.53876091643173
+      },
+      {
+        "Name": "가열로R",
+        "Index": 2,
+        "Utilization": 64.08665873070979
+      }
+    ],
+    "Heater_2": [
+      {
+        "Name": "가열로L",
+        "Index": 1,
+        "Utilization": 69.52271452372929
+      },
+      {
+        "Name": "가열로R",
+        "Index": 2,
+        "Utilization": 64.9553983546499
+      }
+    ],
+    "Washer_1": {
+      "Name": "세척기",
+      "Index": 1,
+      "Utilization": 48.567447162658496
+    },
+    "Washer_2": [
+      {
+        "Name": "세척기",
+        "Index": 1,
+        "Utilization": 58.50154216495661
+      },
+      {
+        "Name": "세척기",
+        "Index": 2,
+        "Utilization": 100
+      }
+    ],
+    "Tempering": [
+      {
+        "Name": "템퍼링호",
+        "Index": 1,
+        "Utilization": 100
+      },
+      {
+        "Name": "템퍼링호",
+        "Index": 2,
+        "Utilization": 100
+      },
+      {
+        "Name": "템퍼링호",
+        "Index": 3,
+        "Utilization": 42.12299783800521
+      }
+    ]
+  }
+}

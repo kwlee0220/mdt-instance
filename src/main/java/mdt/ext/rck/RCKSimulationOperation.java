@@ -1,6 +1,8 @@
 package mdt.ext.rck;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -11,10 +13,13 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.annotation.concurrent.GuardedBy;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.DataTypeDefXsd;
+import org.eclipse.digitaltwin.aas4j.v3.model.Key;
+import org.eclipse.digitaltwin.aas4j.v3.model.KeyTypes;
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Property;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
@@ -37,6 +42,8 @@ import mdt.client.HttpMDTManager;
 import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTService;
 import mdt.model.instance.MDTInstanceManager;
+import mdt.model.sm.ref.DefaultSubmodelReference;
+import mdt.model.sm.ref.MDTSubmodelReference;
 import mdt.model.sm.value.ElementValues;
 import mdt.model.sm.value.PropertyValue;
 import mdt.task.TaskException;
@@ -45,7 +52,7 @@ import mdt.task.TaskException;
 /**
  * RCK 프레스 공정 시뮬레이션을 수행하는 MDT 오퍼레이션.
  * <p>
- * 호출될 때마다 {@link RCKSimulation}을 하나 만들어 끝까지 구동하고, 마지막 진행 상황과 최종 상태, 결과 영상 URL을
+ * 호출될 때마다 {@link RCKSimulation}을 하나 만들어 끝까지 구동하고, 마지막 진행 상황과 결과 영상 URL을
  * 출력 변수에 기록한다. 구동하는 동안에는 {@link MDTSimulationOutputReporter}로 이 인스턴스의 출력 인자에 진행
  * 상황을 반영한다. 갱신기는 오퍼레이션 인스턴스당 하나이며, 결과를 알리기 전에 진행 상황 반영이 끝나기를 최대
  * {@value #OUTPUT_FLUSH_TIMEOUT_SECONDS}초 기다린다.
@@ -54,26 +61,27 @@ import mdt.task.TaskException;
  * 시뮬레이션이 끝나면 그 결과로 성공 또는 실패 콜백을 한 번 부른다. 동기 호출({@link #invokeSync})은 끝날 때까지
  * 기다리며, 기다리다 인터럽트되면 시뮬레이션을 취소한다.
  * <p>
- * 상태를 담는 출력은 두 가지이며 용도가 다르다.
- * <ul>
- *   <li>{@code FinalState} - 프로그램이 읽는 결과 코드({@link RCKSimulationResult.Termination#code()}:
- *       {@code Completed}, {@code Stopped})이며, 오퍼레이션이 성공할 때만 기록된다. 실패·취소·시간 초과는
- *       예외로 알린다.</li>
- *   <li>{@code State} - 사람이 보는 실시간 표시 이름(예: {@code 시뮬레이션 진행중}). 진행 중 상태가 바뀔 때마다
- *       {@link MDTSimulationOutputReporter}가 갱신하며, 실패·취소로 끝난 경우에도 마지막 상태가 남는다. 표시 문구는
- *       바뀔 수 있으므로 분기 조건으로 쓰지 않는다.</li>
- * </ul>
+ * 한 오퍼레이션은 시뮬레이션을 한 번에 하나만 실행한다. 진행 상황을 같은 출력 인자에 쓰고 시뮬레이터에 같은
+ * {@code clientId}로 등록하기 때문이다. 실행 중에 들어온 호출은 시작하지 않고 {@link IllegalStateException}을 던진다.
+ * <p>
+ * 실패·취소·시간 초과는 예외로 알린다. 출력 인자 {@code State}는 사람이 보는 실시간 표시 이름(예:
+ * {@code 시뮬레이션 진행중})이다. 진행 중 상태가 바뀔 때마다 {@link MDTSimulationOutputReporter}가 갱신하며,
+ * 실패·취소로 끝난 경우에도 마지막 상태가 남는다. 표시 문구는 바뀔 수 있으므로 분기 조건으로 쓰지 않는다.
+ * <p>
  * 출력 변수는 모두 선택이다. 모델에 없는 출력 변수는 기록하지 않는다.
  * <p>
  * 설정 인자:
  * <ul>
  *   <li>{@code clientId} / {@code processName} / {@code rckServerUrl} (필수) - 시뮬레이터 등록 ID, 공정명,
  *       WebSocket 서버 URL.</li>
- *   <li>{@code responseTimeout} (선택, 기본 2분) - 시뮬레이터 응답 대기 시간({@link RCKSimulation#setResponseTimeout}).</li>
+ *   <li>{@code responseTimeout} (선택, 기본 2분) - 시뮬레이터 응답 대기 시간
+ *       ({@link RCKSimulation.Builder#responseTimeout}).</li>
  *   <li>{@code pingInterval} / {@code pongTimeout} (선택, 기본 10초 / 2초) - 연결 유지 ping 간격과 pong 대기 시간.</li>
  *   <li>{@code maxDuration} (선택, 기본 1시간) - 시뮬레이션 전체의 최대 수행 시간. 넘으면 시뮬레이션을 취소하고
  *       {@link TimeoutException}으로 실패한다. 시뮬레이션 시작부터 재며, MDT 출력 준비 시간은 들어가지 않는다(출력
  *       준비는 별도 스레드에서 한다).</li>
+ *   <li>{@code productionPath} (선택, 기본 {@code Utilizations.Conveyor_6.Production}) - 진행 보고에서 생산량을 읽을 필드 경로.
+ *       {@code '.'}으로 구분한다.</li>
  * </ul>
  * 시간 값은 {@link UnitUtils#parseDuration(String)} 형식(예: {@code "90s"}, {@code "2m"})이다.
  *
@@ -88,7 +96,11 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	/** 결과를 알리기 전에 MDT 출력 반영이 끝나기를 기다리는 최대 시간(초). */
 	private static final long OUTPUT_FLUSH_TIMEOUT_SECONDS = 5;
 
+	/** 오퍼레이션 reference에서 Submodel을 찾지 못했을 때(시험 등) 쓰는 시뮬레이션 오퍼레이션 Submodel의 idShort. */
+	static final String DEFAULT_SUBMODEL_ID_SHORT = "PressSimulation";
+
 	private final ServiceContext m_serviceContext;
+	private final Reference m_opRef;
 	private final String m_clientId;
 	private final String m_rckServerUrl;
 	private final String m_processName;
@@ -96,8 +108,12 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private final Duration m_pingInterval;
 	private final Duration m_pongTimeout;
 	private final Duration m_maxDuration;
+	private final RCKSimulationProgress.Format m_progressFormat;
 	/** 이 오퍼레이션의 모든 실행이 함께 쓰는 MDT 출력 갱신기. */
 	private final MDTSimulationOutputReporter m_outputReporter;
+
+	// 이 오퍼레이션의 시뮬레이션이 실행 중인지 여부. 한 번에 하나만 실행하며, 실행 중의 새 호출은 거부한다.
+	private final AtomicBoolean m_running = new AtomicBoolean();
 
 	// MDT 인스턴스 매니저 클라이언트. 처음 필요할 때(갱신 스레드에서) 만들어 이후 호출에서 재사용한다.
 	// 접속에 실패하면 캐시하지 않으므로 다음에 다시 시도한다.
@@ -109,6 +125,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		super(serviceContext, opRef, config);
 
 		m_serviceContext = serviceContext;
+		m_opRef = opRef;
 		m_clientId = getRequiredNonEmptyArgument("clientId");
 		m_processName = getRequiredNonEmptyArgument("processName");
 		m_rckServerUrl = getRequiredNonEmptyArgument("rckServerUrl");
@@ -116,7 +133,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		m_pingInterval = getDurationArgument("pingInterval", DEFAULT_PING_INTERVAL);
 		m_pongTimeout = getDurationArgument("pongTimeout", DEFAULT_PONG_TIMEOUT);
 		m_maxDuration = getDurationArgument("maxDuration", DEFAULT_MAX_DURATION);
-		m_outputReporter = new MDTSimulationOutputReporter(this::getMdtManager, this::findInstanceId);
+		m_progressFormat = getProgressFormatArgument();
+		m_outputReporter = new MDTSimulationOutputReporter(this::getMdtManager, this::findOperationSubmodel);
 
 		if ( s_logger.isInfoEnabled() ) {
 			Object path = (opRef != null) ? IdShortPath.fromReference(opRef) : null;
@@ -128,7 +146,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	/**
 	 * 시뮬레이션을 시작하고 바로 반환한다. 시뮬레이션이 끝나면 출력 변수를 기록하고 {@code callbackSuccess}를,
 	 * 실패·취소·시간 초과로 끝나거나 출력 기록에 실패하면 {@code callbackFailure}를 정확히 한 번 부른다. 콜백이 던진
-	 * 예외는 로그만 남긴다. 입력 변수나 출력 변수가 잘못되었으면 시작하지 않고 예외를 던진다.
+	 * 예외는 로그만 남긴다. 입력 변수나 출력 변수가 잘못되었거나 이미 실행 중이면 시작하지 않고 예외를 던진다.
 	 */
 	@Override
 	public void invokeAsync(OperationVariable[] inputVars, OperationVariable[] inoutputVars,
@@ -197,6 +215,10 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 				awaitOutputFlush().get();
 			}
 			catch ( ExecutionException ignored ) { }
+			catch ( InterruptedException e ) {
+				// 반영 대기만 그만둔다. 여기서 던지면 try에서 던지던 원래 예외(시뮬레이션 실패)를 가린다.
+				Thread.currentThread().interrupt();
+			}
 		}
 	}
 
@@ -227,22 +249,46 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	 * 시뮬레이션을 만들어 시작한다. 시뮬레이션이 어떤 경로로 끝나든 {@code onFinished}가 차트 lock 밖에서 한 번 불린다.
 	 * {@code maxDuration}이 지나면 시뮬레이션을 취소한다.
 	 *
+	 * <p>
+	 * 한 번에 하나만 실행한다. 진행 상황을 같은 출력 인자에 쓰고 시뮬레이터에 같은 {@code clientId}로 등록하므로, 실행
+	 * 중에 들어온 호출은 거부한다. 시뮬레이션이 끝나면 {@code onFinished}를 부르기 전에 다음 호출을 받을 수 있게 된다.
+	 *
 	 * @param inputVarList	입력 변수
 	 * @param onFinished	시뮬레이션이 끝났을 때 결과를 받을 콜백
 	 * @return	시작한 시뮬레이션
 	 * @throws IllegalArgumentException	입력 변수 {@code LayoutName}이 없거나 비어 있는 경우
+	 * @throws IllegalStateException	이 오퍼레이션의 시뮬레이션이 이미 실행 중인 경우
 	 */
-	private RCKSimulation startSimulation(Map<String, SubmodelElement> inputVarList, Consumer<Outcome> onFinished) {
+	private RCKSimulation startSimulation(Map<String, SubmodelElement> inputVarList,
+											Consumer<Outcome> onFinished) {
 		String layoutName = getRequiredStringVariableValue(inputVarList, "LayoutName");
 		if ( layoutName == null || layoutName.isBlank() ) {
 			throw new IllegalArgumentException("input variable 'LayoutName' is empty");
 		}
+		if ( !m_running.compareAndSet(false, true) ) {
+			throw new IllegalStateException("a simulation of this operation is already running");
+		}
+		try {
+			return startSimulation(layoutName, onFinished);
+		}
+		catch ( RuntimeException | Error e ) {
+			// 종료 리스너를 등록하기 전이나 시작조차 못 한 실패. 끝날 시뮬레이션이 없으므로 여기서 놓는다.
+			m_running.set(false);
+			throw e;
+		}
+	}
 
-		var ctx = new RCKSimulationContext(m_rckServerUrl, m_clientId, m_processName, layoutName);
-		RCKSimulation sim = new RCKSimulation(ctx, createObserver());
-		sim.setResponseTimeout(m_responseTimeout);
-		sim.setPingInterval(m_pingInterval);
-		sim.setPongTimeout(m_pongTimeout);
+	private RCKSimulation startSimulation(String layoutName, Consumer<Outcome> onFinished) {
+		RCKSimulation sim = RCKSimulation.builder()
+										.serverUrl(m_rckServerUrl)
+										.clientId(m_clientId)
+										.processName(m_processName)
+										.layoutName(layoutName)
+										.responseTimeout(m_responseTimeout)
+										.keepAlive(m_pingInterval, m_pongTimeout)
+										.progressFormat(m_progressFormat)
+										.observer(createObserver())
+										.build();
 
 		AtomicBoolean timedOut = new AtomicBoolean();
 		// 취소는 중지 명령 전송을 기다리므로 공용 스케줄러가 아니라 RCK 전용 스레드에서 한다.
@@ -253,6 +299,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		}, m_maxDuration);
 		sim.whenFinishedAsync(result -> {
 			timer.cancel(false);
+			// 결과를 알리기 전에 놓는다. 결과 콜백 안에서 바로 다음 호출을 해도 거부되지 않게 하기 위해서다.
+			m_running.set(false);
 			onFinished.accept(new Outcome(sim, result, timedOut.get(), m_maxDuration));
 		});
 
@@ -260,7 +308,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			sim.start();
 		}
 		catch ( RuntimeException e ) {
-			// 시작 중 실패(초기 상태 진입 실패)는 종료 리스너가 실패로 알린다. 시작조차 못 했으면 여기서 던진다.
+			// 시작 중 실패(초기 상태 진입 실패)는 종료 리스너가 실패로 알리고 실행 표시도 놓는다. 시작조차 못 했으면
+			// 종료 리스너가 불리지 않으므로 여기서 던진다(호출자가 실행 표시를 놓는다).
 			if ( !sim.isDone() ) {
 				timer.cancel(false);
 				throw e;
@@ -315,8 +364,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	/**
 	 * 오퍼레이션의 출력 변수들. 출력 변수는 모두 선택이며, 모델에 없는 항목은 {@code null}이고 기록하지 않는다.
 	 */
-	private static record OperationOutputBindings(Property progress, Property production, Property finalState,
-												Property averageUtilization, Property videoUrl) {
+	private static record OperationOutputBindings(Property progress, Property production,
+												Property equipmentUtilizations, Property videoUrl) {
 		/**
 		 * 끝난 시뮬레이션의 결과를 출력 변수에 기록한다.
 		 */
@@ -324,9 +373,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			RCKSimulationProgress progress = result.progress();
 			update(this.progress, PropertyValue.INTEGER(progress.progress()));
 			update(production, PropertyValue.INTEGER(progress.production()));
-			update(finalState, PropertyValue.STRING(result.termination().code()));
-			update(averageUtilization,
-					PropertyValue.STRING(MDTSimulationOutputReporter.toUtilizationJson(progress.averageUtilizations())));
+			update(equipmentUtilizations,
+					PropertyValue.STRING(MDTSimulationOutputReporter.toUtilizationJson(progress.utilizations())));
 
 			// 영상 정보를 받기 전에 끝났으면(중지 등) URL은 빈 문자열로 둔다.
 			String url = result.videoUrl();
@@ -349,19 +397,18 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private OperationOutputBindings bindOutputs(Map<String, SubmodelElement> outputVarList) {
 		return new OperationOutputBindings(getPropertyVariable(outputVarList, "Progress", DataTypeDefXsd.INT),
 										getPropertyVariable(outputVarList, "Production", DataTypeDefXsd.INT),
-										getPropertyVariable(outputVarList, "FinalState", DataTypeDefXsd.STRING),
-										getPropertyVariable(outputVarList, "AverageUtilization", DataTypeDefXsd.STRING),
+										getPropertyVariable(outputVarList, "EquipmentUtilizationList", DataTypeDefXsd.STRING),
 										getPropertyVariable(outputVarList, "SimulationVideoUrl", DataTypeDefXsd.STRING));
 	}
 
 	/**
 	 * 이번 실행의 진행 상황을 이 인스턴스의 출력 인자에 반영할 관찰자를 만든다. MDT에 접속하지 않고 바로 반환한다
-	 * ({@link MDTSimulationOutputReporter#startRun()}).
+	 * ({@link MDTSimulationOutputReporter#newRunObserver()}).
 	 *
 	 * @return	진행 상황 관찰자
 	 */
 	SimulationObserver createObserver() {
-		return m_outputReporter.startRun();
+		return m_outputReporter.newRunObserver();
 	}
 
 	/**
@@ -375,6 +422,27 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			m_mdtManager = HttpMDTManager.connectWithDefault().getInstanceManager();
 		}
 		return m_mdtManager;
+	}
+
+	/**
+	 * 진행 상황을 반영할 시뮬레이션 오퍼레이션 Submodel의 참조를 만든다. 이 오퍼레이션의 reference가 가리키는
+	 * Submodel(첫 {@code SUBMODEL} key의 id)을 쓰고, 없으면 이 인스턴스의 {@value #DEFAULT_SUBMODEL_ID_SHORT}
+	 * Submodel을 쓴다. 인스턴스 식별자도 모르면 {@code null}(반영하지 않음)이다.
+	 */
+	private MDTSubmodelReference findOperationSubmodel() {
+		return toOperationSubmodel(m_opRef, this::findInstanceId);
+	}
+
+	static MDTSubmodelReference toOperationSubmodel(Reference opRef, Supplier<String> instanceIdSupplier) {
+		if ( opRef != null && opRef.getKeys() != null ) {
+			for ( Key key: opRef.getKeys() ) {
+				if ( key.getType() == KeyTypes.SUBMODEL && key.getValue() != null ) {
+					return DefaultSubmodelReference.ofId(key.getValue());
+				}
+			}
+		}
+		String instId = instanceIdSupplier.get();
+		return (instId != null) ? DefaultSubmodelReference.ofIdShort(instId, DEFAULT_SUBMODEL_ID_SHORT) : null;
 	}
 
 	/**
@@ -399,6 +467,29 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			throw new ConfigurationInitializationException("argument '" + name + "' is empty: " + m_config);
 		}
 		return value;
+	}
+
+	/**
+	 * 설정 인자 {@code productionPath}로 진행 보고 규칙을 만든다. 없으면 기본값을 쓴다.
+	 */
+	private RCKSimulationProgress.Format getProgressFormatArgument() throws ConfigurationInitializationException {
+		RCKSimulationProgress.Format defaults = RCKSimulationProgress.Format.DEFAULT;
+		List<String> productionPath = getListArgument("productionPath", "\\.", defaults.productionPath());
+		return new RCKSimulationProgress.Format(productionPath);
+	}
+
+	private List<String> getListArgument(String name, String separatorRegex, List<String> defaultValue)
+		throws ConfigurationInitializationException {
+		String str = getStringArgument(name);
+		if ( str == null ) {
+			return defaultValue;
+		}
+		List<String> items = Arrays.stream(str.split(separatorRegex, -1)).map(String::trim).toList();
+		if ( items.stream().anyMatch(String::isEmpty) ) {
+			throw new ConfigurationInitializationException("invalid argument '" + name + "': '" + str
+															+ "' (empty item)");
+		}
+		return items;
 	}
 
 	private Duration getDurationArgument(String name, Duration defaultValue)

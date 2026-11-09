@@ -153,7 +153,7 @@ public class ResetSceneProviderTest {
 				logs.list.clear();
 				server.status = status;
 				var failure = assertThrows(OperationFailedException.class, this::invoke);
-				assertEquals(status, failure.getResult().status());
+				assertEquals(status, failure.getResult().status().name());
 				assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("status=" + status)
 						&& e.getFormattedMessage().contains("operation=reset_scene")));
 				assertEquals(0, observations.get());

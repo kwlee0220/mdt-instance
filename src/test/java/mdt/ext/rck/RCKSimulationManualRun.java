@@ -24,17 +24,18 @@ public class RCKSimulationManualRun {
 //		String layoutName = "프레스 공정_설비추가_NOCON.vcmx";
 		String layoutName = "프레스 공정_사람_NOCON.vcmx";
         
-		RCKSimulationContext ctxt = new RCKSimulationContext(serverUrl, "mdt", processName, layoutName);
-        RCKSimulation sim = new RCKSimulation(ctxt);
-        sim.setPingInterval(Duration.ofSeconds(30));
-        sim.setPongTimeout(Duration.ofSeconds(5));
+        RCKSimulation sim = RCKSimulation.builder()
+        									.serverUrl(serverUrl).clientId("mdt")
+        									.processName(processName).layoutName(layoutName)
+        									.keepAlive(Duration.ofSeconds(30), Duration.ofSeconds(5))
+        									.build();
         sim.start();
         
         try {
         	sim.waitForFinished(50, TimeUnit.MINUTES);
 			
-        	VideoInfo video = ctxt.getVideoInfo();
-	        System.out.println("Simulation video url: " + (video != null ? video.downloadUrl() : "(none)"));
+        	String url = sim.getContext().getVideoUrl();
+	        System.out.println("Simulation video url: " + (url != null ? url : "(none)"));
 		}
 		catch ( TimeoutException e ) {
 	        if ( sim.isRunning() ) {

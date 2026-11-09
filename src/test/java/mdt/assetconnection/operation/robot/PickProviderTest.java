@@ -90,6 +90,7 @@ public class PickProviderTest {
 		out.put("FailedStage", property("FailedStage", DataTypeDefXsd.STRING, "old"));
 		out.put("FailureReason", property("FailureReason", DataTypeDefXsd.STRING, "old"));
 		out.put("HoldDriftM", property("HoldDriftM", DataTypeDefXsd.DOUBLE, "99"));
+		out.put("HoldVerdict", property("HoldVerdict", DataTypeDefXsd.STRING, "old"));
 		out.put("HeldOffset", collection("HeldOffset", property("x", DataTypeDefXsd.DOUBLE, "9")));
 		out.put("Objects", collection("Objects", collection("oldObject")));
 	}
@@ -104,6 +105,7 @@ public class PickProviderTest {
 		assertEquals(0.3, m_commands.get(4).path("pose").path("position").path("z").asDouble(), 1e-6);
 		assertEquals("0.2", m_commands.get(4).path("velocity_scaling").asText());
 		assertEquals("true", value("GoalsReached"));
+		assertEquals("NOT_CHECKED", value("HoldVerdict"));
 		assertEquals("true", value("GraspAttempted"));
 		assertEquals("", value("FailedStage"));
 		assertEquals("", value("FailureReason"));
@@ -129,6 +131,7 @@ public class PickProviderTest {
 		input("ObjectName", DataTypeDefXsd.STRING, "box");
 		invoke();
 		assertEquals("true", value("GoalsReached"));
+		assertEquals("HELD", value("HoldVerdict"));
 		assertEquals("", value("FailedStage"));
 		assertEquals(0, Double.parseDouble(value("HoldDriftM")), 1e-9);
 		assertEquals(HELD[0], component("x"), 1e-9);
@@ -157,6 +160,7 @@ public class PickProviderTest {
 		assertEquals("true", value("GraspAttempted"));
 		assertEquals("MEASURE_HELD", value("FailedStage"));
 		assertTrue(value("FailureReason"), value("FailureReason").startsWith("물체가 그리퍼와 함께 움직이지 않았다"));
+		assertEquals("NOT_HELD", value("HoldVerdict"));
 		// 들어 올린 높이(0.3 - 0.1)만큼 벌어진다.
 		assertEquals(0.2, Double.parseDouble(value("HoldDriftM")), 1e-6);	// 입력 pose가 xs:float이다.
 		assertEquals(HELD[2] - 0.2, component("z"), 1e-6);
@@ -183,6 +187,7 @@ public class PickProviderTest {
 		assertEquals("true", value("GraspAttempted"));
 		assertEquals("false", value("GoalsReached"));
 		assertEquals("99", value("HoldDriftM"));
+		assertEquals("old", value("HoldVerdict"));
 	}
 
 	@Test(timeout = 10000)
@@ -236,7 +241,7 @@ public class PickProviderTest {
 		input("ObjectName", DataTypeDefXsd.STRING, "box");
 		inputs.put("LiftPose", poseAt("LiftPose", GRASP_Z + 0.005));
 		var e = assertThrows(IllegalArgumentException.class, this::invoke);
-		assertTrue(e.getMessage(), e.getMessage().startsWith("liftPose must be at least 20.0 mm"));
+		assertTrue(e.getMessage(), e.getMessage().startsWith("liftPose is too close to graspPose"));
 		assertTrue(server.requests.isEmpty());
 		assertEquals("old", value("FailedStage"));
 	}
@@ -250,11 +255,11 @@ public class PickProviderTest {
 
 	@Test
 	public void interruptionAfterGraspNamesNextStageOfThisRun() {
-		var grasped = new StepResult<>(Pick.Stage.GRASP, null, new GripperCheck(true, true, null, null), Optional.empty(), null);
+		var grasped = new StepResult<>(Pick.Stage.GRASP, new GripperCheck(true, true, null, null), Optional.empty(), null);
 		var steps = List.of(grasped);
 		assertTrue(PickProvider.describeStop(steps, null, false).context().contains("GRASP 완료 후 LIFT 진입 전"));
 		assertTrue(PickProvider.describeStop(steps, null, true).context().contains("GRASP 완료 후 MEASURE_GRIP 진입 전"));
-		var lifted = new StepResult<>(Pick.Stage.LIFT, null, new GripperCheck(true, false, null, null), Optional.empty(), null);
+		var lifted = new StepResult<>(Pick.Stage.LIFT, new GripperCheck(true, false, null, null), Optional.empty(), null);
 		assertEquals("모든 단계 목표 확인 후 중단", PickProvider.describeStop(List.of(lifted), null, false).context());
 		assertNull(PickProvider.describeStop(List.of(lifted), null, false).failedStage());
 	}

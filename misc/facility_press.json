@@ -1,0 +1,173 @@
+{
+  "type": "facility",
+  "message": {
+    "Press": [
+      {
+        "Name": "TP-75",
+        "Index": 1,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      },
+      {
+        "Name": "TP-75",
+        "Index": 2,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      },
+      {
+        "Name": "TP-75",
+        "Index": 3,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      },
+      {
+        "Name": "TP-75",
+        "Index": 4,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      },
+      {
+        "Name": "TP-75",
+        "Index": 5,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      },
+      {
+        "Name": "TP-75",
+        "Index": 6,
+        "Time": 45,
+        "PressTime": 1,
+        "ClampTime": 2
+      }
+    ],
+    "Feeder": [
+      {
+        "Name": "파츠피더",
+        "Index": 1,
+        "Time": 0,
+        "HolePathTime": 55,
+        "PalettePathTime": 55
+      },
+      {
+        "Name": "파츠피더",
+        "Index": 2,
+        "Time": 0,
+        "HolePathTime": 55,
+        "PalettePathTime": 55
+      }
+    ],
+    "Conveyor_1": {
+      "Name": "CONVERYOR(적재 투입)",
+      "Index": 1,
+      "InputTime": 10
+    },
+    "Conveyor_2": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "InputTime": 10
+    },
+    "Conveyor_3": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "InputTime": 10
+    },
+    "Conveyor_4": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "InputTime": 10
+    },
+    "Conveyor_5": {
+      "Name": "컨베이어",
+      "Index": 1,
+      "InputTime": 10
+    },
+    "Conveyor_6": {
+      "Name": "CONVERYOR(적재 배출)",
+      "Index": 1,
+      "Time": 60
+    },
+    "Heater_1": [
+      {
+        "Name": "가열로L",
+        "Index": 1,
+        "Time": 200,
+        "HeatTreatmentInputTime": 10,
+        "HeatTreatmentDoorTime": 10
+      },
+      {
+        "Name": "가열로R",
+        "Index": 2,
+        "Time": 200,
+        "HeatTreatmentInputTime": 10,
+        "HeatTreatmentDoorTime": 10
+      }
+    ],
+    "Heater_2": [
+      {
+        "Name": "가열로L",
+        "Index": 1,
+        "Time": 200,
+        "HeatTreatmentInputTime": 10,
+        "HeatTreatmentDoorTime": 10
+      },
+      {
+        "Name": "가열로R",
+        "Index": 2,
+        "Time": 200,
+        "HeatTreatmentInputTime": 10,
+        "HeatTreatmentDoorTime": 10
+      }
+    ],
+    "Washer_1": {
+      "Name": "세척기",
+      "Index": 1,
+      "Time": 90,
+      "DoorTime": 3,
+      "InputTime": 10
+    },
+    "Washer_2": [
+      {
+        "Name": "세척기",
+        "Index": 1,
+        "Time": 200,
+        "DoorTime": 3,
+        "InputTime": 10
+      },
+      {
+        "Name": "세척기",
+        "Index": 2,
+        "Time": 200,
+        "DoorTime": 3,
+        "InputTime": 10
+      }
+    ],
+    "Tempering": [
+      {
+        "Name": "템퍼링호",
+        "Index": 1,
+        "Time": 450,
+        "TemperingInputTime": 10,
+        "TemperingDoorTime": 7
+      },
+      {
+        "Name": "템퍼링호",
+        "Index": 2,
+        "Time": 450,
+        "TemperingInputTime": 10,
+        "TemperingDoorTime": 7
+      },
+      {
+        "Name": "템퍼링호",
+        "Index": 3,
+        "Time": 450,
+        "TemperingInputTime": 10,
+        "TemperingDoorTime": 7
+      }
+    ]
+  }
+}

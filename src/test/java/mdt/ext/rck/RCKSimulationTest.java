@@ -2,12 +2,15 @@ package mdt.ext.rck;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -61,13 +64,13 @@ public class RCKSimulationTest {
 		final List<String> m_events = Collections.synchronizedList(new ArrayList<>());
 
 		@Override
-		public void onStateChanged(String statePath, String displayName) {
-			m_events.add(statePath);
+		public void onPhaseChanged(RCKSimulationPhase phase) {
+			m_events.add(phase.name());
 		}
 		@Override
 		public void onProgressUpdated(RCKSimulationProgress progress) {
 			m_events.add("status:" + progress.progress() + "/" + progress.production() + "/"
-						+ progress.averageUtilizations());
+						+ progress.utilizations());
 		}
 		@Override
 		public void onVideoReady(String downloadUrl) {
@@ -201,20 +204,37 @@ public class RCKSimulationTest {
 		server.assertStopBeforeClose();
 	}
 
+	@Test
+	public void builder_requires_identity_and_sets_context() {
+		RCKSimulation.Builder builder = RCKSimulation.builder().serverUrl("ws://127.0.0.1:1/rck")
+															.clientId("c").processName("p");
+		assertThrows(IllegalArgumentException.class, builder::build);		// layoutName 없음
+		assertThrows(IllegalArgumentException.class,
+					() -> RCKSimulation.builder().responseTimeout(java.time.Duration.ZERO));
+
+		RCKSimulation sim = builder.layoutName("l")
+									.keepAlive(java.time.Duration.ofSeconds(10), java.time.Duration.ofSeconds(2))
+									.build();
+		RCKSimulationContext ctx = sim.getContext();
+		assertEquals("c", ctx.getClientId());
+		assertEquals("p", ctx.getProcessName());
+		assertEquals("l", ctx.getLayoutName());
+		assertTrue(sim.isNotStarted());
+	}
+
 	static final String STATUS
 		= "{\"type\":\"simulation_status\",\"message\":{\"Progress\":100,"
-			+ "\"Conveyor_6\":{\"Production\":7},\"e1\":{\"Name\":\"TP-75 #1\",\"Utilization\":40}}}";
-	static String videoInfo(long fileSize) {
+			+ "\"ProcessName\":\"Injection\","
+			+ "\"Utilizations\":{\"Press\":{\"Name\":\"TP-75 #1\",\"Index\":1,\"Utilization\":40},\"Conveyor_6\":{\"Production\":7}}}}";
+	static String videoInfo() {
 		// 모르는 필드(extra)가 있어도 실패하지 않아야 한다.
-		return "{\"type\":\"video_info\",\"status\":\"ready\",\"fileName\":\"v.mp4\",\"fileSize\":" + fileSize
-				+ ",\"downloadUrl\":\"http://video/v.mp4\",\"extra\":1}";
+		return "{\"type\":\"video_info\",\"downloadUrl\":\"http://video/v.mp4\",\"extra\":1}";
 	}
 
 	@Test(timeout = 15_000)
-	public void video_info_reports_url_and_completes_after_receiving_video() throws Exception {
-		// video_info는 한 번만 온다. 받으면 바로 영상 수신으로 가고, 영상을 다 받으면 Completed로 끝난다.
-		FakeRckServer server = new FakeRckServer(false, false)
-									.thenSend(STATUS, videoInfo(6), new byte[] {1, 2, 3}, new byte[] {4, 5, 6});
+	public void video_info_reports_url_and_completes() throws Exception {
+		// video_info를 받으면 URL을 알리고 바로 Completed로 끝난다.
+		FakeRckServer server = new FakeRckServer(false, false).thenSend(STATUS, videoInfo());
 		RecordingObserver observer = new RecordingObserver();
 		List<String> events = observer.m_events;
 		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
@@ -223,17 +243,17 @@ public class RCKSimulationTest {
 
 		assertTrue(m_sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Completed", m_sim.getCurrentState().getPath());
-		assertEquals("http://video/v.mp4", ctx.getVideoInfo().downloadUrl());
+		assertEquals("http://video/v.mp4", ctx.getVideoUrl());
 		assertEquals(100, ctx.getLatestProgress().progress());
 		RCKSimulationResult result = sim.getSimulationResult();
 		assertEquals(RCKSimulationResult.Termination.COMPLETED, result.termination());
 		assertEquals("http://video/v.mp4", result.videoUrl());
 		assertEquals(100, result.progress().progress());
-		assertTrue(events.toString(), events.contains("status:100/7/{TP-75=40.0}"));
+		assertTrue(events.toString(), events.contains(
+					"status:100/7/{Press[1](TP-75 #1)=40.0}"));
 		assertTrue(events.toString(), events.contains("video:http://video/v.mp4"));
 		// 접속 단계부터 알리고(이전 실행의 상태가 남지 않게), 종료는 onFinished로 한 번 알린다.
-		assertEquals(events.toString(), "/ConnectingWebSocket", events.get(0));
-		assertTrue(events.toString(), events.indexOf("/ReceivingVideo") >= 0);
+		assertEquals(events.toString(), "CONNECTING", events.get(0));
 		assertEquals(events.toString(), "finished:Completed:시뮬레이션 완료:null", observer.last());
 		server.assertStopBeforeClose();
 	}
@@ -245,7 +265,7 @@ public class RCKSimulationTest {
 				.thenSend("{\"type\":\"simulation_status\",\"message\":{}}",
 						"{\"type\":\"video_progress\",\"progress\":{\"percent\":10}}",
 						"{\"type\":\"video_ready\",\"fileSize\":\"big\"}",
-						STATUS, videoInfo(0));
+						STATUS, videoInfo());
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
@@ -273,30 +293,18 @@ public class RCKSimulationTest {
 	}
 
 	@Test(timeout = 15_000)
-	public void connection_error_while_receiving_video_completes() throws Exception {
-		// 영상 수신 중의 연결 오류는 URL을 이미 받았으므로 Completed로 끝난다.
-		FakeRckServer server = new FakeRckServer(false, false).thenSend(videoInfo(1000));
-		RCKSimulation sim = startSimulation(server, new MockResponse());
-		awaitState(sim, "/ReceivingVideo");
-
-		sim.handleSignal(new WebSocketError(sim.getWebSocket(), new java.io.IOException("pong timeout")));
-
-		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
-		assertEquals("/Completed", sim.getCurrentState().getPath());
-		assertEquals("http://video/v.mp4", sim.getContext().getVideoInfo().downloadUrl());
-	}
-
-	@Test(timeout = 15_000)
-	public void request_stop_while_receiving_video_goes_through_stopping() throws Exception {
-		FakeRckServer server = new FakeRckServer(true, false).thenSend(videoInfo(1000));
-		RCKSimulation sim = startSimulation(server, new MockResponse());
-		awaitState(sim, "/ReceivingVideo");
-
-		sim.requestStop();
+	public void video_info_without_url_completes_with_null_url() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false)
+									.thenSend(STATUS, "{\"type\":\"video_info\"}");
+		RecordingObserver observer = new RecordingObserver();
+		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
+		sim.start();
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
-		assertEquals("/Stopped", sim.getCurrentState().getPath());
-		server.assertStopBeforeClose();
+		RCKSimulationResult result = sim.getSimulationResult();
+		assertEquals(RCKSimulationResult.Termination.COMPLETED, result.termination());
+		assertNull(result.videoUrl());
+		assertFalse(observer.m_events.toString(), observer.m_events.stream().anyMatch(e -> e.startsWith("video:")));
 	}
 
 	@Test(timeout = 15_000)
@@ -384,7 +392,7 @@ public class RCKSimulationTest {
 	}
 
 	@Test(timeout = 15_000)
-	public void connection_closed_while_receiving_video_completes_with_url() throws Exception {
+	public void connection_closed_right_after_video_info_completes_with_url() throws Exception {
 		FakeRckServer server = new FakeRckServer(false, false) {
 			@Override
 			public void onMessage(okhttp3.WebSocket ws, String text) {
@@ -393,12 +401,12 @@ public class RCKSimulationTest {
 					ws.close(1000, "done");
 				}
 			}
-		}.thenSend(videoInfo(1000));
+		}.thenSend(videoInfo());
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 
 		assertTrue(sim.waitForFinished(5, TimeUnit.SECONDS).isCompleted());
 		assertEquals("/Completed", sim.getCurrentState().getPath());
-		assertEquals("http://video/v.mp4", sim.getContext().getVideoInfo().downloadUrl());
+		assertEquals("http://video/v.mp4", sim.getContext().getVideoUrl());
 	}
 
 	@Test(timeout = 15_000)
@@ -415,6 +423,139 @@ public class RCKSimulationTest {
 		assertEquals("/Failed", sim.getCurrentState().getPath());
 		assertTrue("" + result.getFailureCause(), result.getFailureCause() instanceof TimeoutException);
 		server.assertStopBeforeClose();
+	}
+
+	@Test(timeout = 15_000)
+	public void start_command_carries_facility_message() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5},"
+								+ "\"Conveyor\":[{\"Name\":\"c\",\"Index\":1,\"Speed\":3},"
+								+ "{\"Name\":\"c\",\"Index\":2,\"Speed\":4}]}";
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+		awaitState(sim, "/Running");
+
+		assertEquals("press", server.m_startCommand.path("target").asText());
+		assertEquals(server.m_equipmentMessage, server.m_startCommand.get("message").toString());
+	}
+
+	@Test(timeout = 15_000)
+	public void facility_message_without_message_field_fails() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false) {
+			@Override
+			public void onMessage(okhttp3.WebSocket ws, String text) {
+				if ( text.contains("\"layout\"") ) {
+					ws.send("{\"type\":\"facility\"}");
+				}
+				else {
+					super.onMessage(ws, text);
+				}
+			}
+		};
+		RCKSimulation sim = startSimulation(server, new MockResponse());
+
+		AsyncResult<RCKSimulationContext> result = sim.waitForFinished(5, TimeUnit.SECONDS);
+		assertTrue(result.isFailed());
+		assertEquals("/Failed", sim.getCurrentState().getPath());
+		assertTrue("" + result.getFailureCause(),
+					result.getFailureCause() instanceof utils.json.JacksonDeserializationException);
+		assertFalse("start command must not be sent", server.m_events.contains("command"));
+	}
+
+	private RCKSimulation.Builder equipmentLoader(okhttp3.WebSocketListener serverListener) throws Exception {
+		m_server = new MockWebServer();
+		m_server.enqueue(new MockResponse().withWebSocketUpgrade(serverListener));
+		m_server.start();
+
+		return RCKSimulation.builder()
+							.serverUrl("ws://" + m_server.getHostName() + ":" + m_server.getPort() + "/rck")
+							.clientId("test-client").processName("press").layoutName("layout");
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_returns_equipments_without_starting() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5}}";
+		RecordingObserver observer = new RecordingObserver();
+
+		RCKEquipmentProperties props = equipmentLoader(server).observer(observer).loadEquipmentProperties();
+
+		assertEquals(server.m_equipmentMessage, props.toString());
+		assertTrue("connection was not closed", server.m_closing.await(5, TimeUnit.SECONDS));
+		assertFalse("start command must not be sent", server.m_events.contains("command"));
+		assertFalse("stop command must not be sent", server.m_events.contains("stop"));
+		assertTrue("observer must not be notified: " + observer.m_events, observer.m_events.isEmpty());
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_reports_malformed_facility_message() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_equipmentMessage = "[]";
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+											() -> equipmentLoader(server).loadEquipmentProperties());
+		assertTrue("" + e.getCause(), e.getCause() instanceof utils.json.JacksonDeserializationException);
+		assertTrue("connection was not closed", server.m_closing.await(5, TimeUnit.SECONDS));
+		assertFalse("start command must not be sent", server.m_events.contains("command"));
+		assertFalse("stop command must not be sent", server.m_events.contains("stop"));
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_reports_response_timeout() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_ignoreLayout = true;
+		RCKSimulation.Builder builder = equipmentLoader(server).responseTimeout(java.time.Duration.ofMillis(200));
+
+		ExecutionException e = assertThrows(ExecutionException.class, builder::loadEquipmentProperties);
+		assertTrue("" + e.getCause(), e.getCause() instanceof TimeoutException);
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_reports_connection_closed() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false) {
+			@Override
+			public void onMessage(okhttp3.WebSocket ws, String text) {
+				if ( text.contains("\"layout\"") ) {
+					ws.close(1000, "bye");
+				}
+				else {
+					super.onMessage(ws, text);
+				}
+			}
+		};
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+											() -> equipmentLoader(server).loadEquipmentProperties());
+		assertTrue("" + e.getCause(), e.getCause() instanceof WebSocketClosedException);
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_cancels_when_interrupted() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_ignoreLayout = true;
+		RCKSimulation.Builder builder = equipmentLoader(server);
+
+		List<Throwable> thrown = Collections.synchronizedList(new ArrayList<>());
+		Thread caller = new Thread(() -> {
+			try {
+				builder.loadEquipmentProperties();
+			}
+			catch ( Throwable e ) {
+				thrown.add(e);
+			}
+		});
+		caller.start();
+
+		long due = System.currentTimeMillis() + 5000;
+		while ( !server.m_events.contains("layout") && System.currentTimeMillis() < due ) {
+			Thread.sleep(20);
+		}
+		caller.interrupt();
+		caller.join(5000);
+
+		assertEquals(1, thrown.size());
+		assertTrue("" + thrown.get(0), thrown.get(0) instanceof InterruptedException);
+		assertTrue("connection was not closed", server.m_closing.await(5, TimeUnit.SECONDS));
+		assertFalse("stop command must not be sent", server.m_events.contains("stop"));
 	}
 
 	@Test(timeout = 15_000)
