@@ -83,7 +83,7 @@ class ScriptOperationProvider implements OperationProvider {
 				String script = prop.getValue();
 				if ( script != null && !script.isBlank() ) {
 					scriptFile = FileUtils.path(workingDir, "__script.py");
-					IOUtils.toFile(script, scriptFile);
+					IOUtils.writeString(scriptFile, script);
 				}
 			}
 			else {

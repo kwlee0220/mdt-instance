@@ -128,14 +128,16 @@ class ProgramOperationProvider implements OperationProvider {
 					String details = String.format("AASFile has empty path: OperationVariable[%s]", name);
 					throw new TaskException(details);
 				}
-				cvFile = new File(workingDir, path);
+				// 저장소 경로가 아니라 변수 이름으로 복사한다. 경로를 쓰면 같은 저장소 키를 결과로 쓰는 출력 변수의
+				// 파일과 겹쳐(출력 변수는 생성할 때 기존 파일을 지운다) 입력이 사라지고, 경로의 '/'가 하위 폴더가 된다.
+				cvFile = new File(workingDir, name);
 				
 				try {
 					// AASFile을 통해 파일 content를 읽어서 File CommandVariable 객체를 생성한다.
 					@SuppressWarnings("rawtypes")
 					FileStorage fileStore = m_svcContext.getFileStorage();
 					byte[] content = fileStore.get(path);
-					IOUtils.toFile(content, cvFile);
+					IOUtils.write(cvFile, content);
 					
 					// 실행을 위해 복사해 둔 파일이므로 변수 close 시 삭제한다.
 					return CommandVariable.inputFile(name, cvFile, true);
@@ -157,7 +159,7 @@ class ProgramOperationProvider implements OperationProvider {
 				}
 				else {
 					String valStr = smev.toValueJsonString();
-					IOUtils.toFile(valStr, StandardCharsets.UTF_8, cvFile);
+					IOUtils.writeString(cvFile, valStr, StandardCharsets.UTF_8);
 					return CommandVariable.input(name, valStr, cvFile);
 				}
 					
@@ -181,17 +183,17 @@ class ProgramOperationProvider implements OperationProvider {
 		throws IOException, PersistenceException {
 		SubmodelElement old = opv.getValue();
 		if ( old instanceof org.eclipse.digitaltwin.aas4j.v3.model.File aasFile ) {
-			String outFilePath = var.getValue();
-			if ( outFilePath == null || outFilePath.length() == 0 ) {
-				s_logger.warn("Output CommandVariable[{}] has empty value", var.getName());
+			// 출력 변수의 값(getValue())은 파일 내용이므로, 명령이 결과를 기록한 파일 자체를 쓴다.
+			File cvFile = var.getFile();
+			if ( cvFile == null || !cvFile.isFile() ) {
+				s_logger.warn("Output CommandVariable[{}] has no output file: {}", var.getName(), cvFile);
 				return;
 			}
 
-			File cvFile = new File(outFilePath);
 			try {
 				// 출력 파일을 읽어서 AASFile에 upload하도록 한다.
 				String aasFileName = cvFile.getName();
-				byte[] content = IOUtils.toBytes(cvFile);
+				byte[] content = IOUtils.readAllBytes(cvFile);
 				aasFile.setValue(aasFileName);
 				
 				@SuppressWarnings("rawtypes")

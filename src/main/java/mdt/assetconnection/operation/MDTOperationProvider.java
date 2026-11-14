@@ -3,6 +3,7 @@ package mdt.assetconnection.operation;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -38,6 +39,15 @@ import mdt.model.MDTModelSerDe;
  */
 public class MDTOperationProvider implements AssetOperationProvider<MDTOperationProviderConfig> {
 	private static final Logger s_logger = LoggerFactory.getLogger(MDTOperationProvider.class);
+
+	/**
+	 * 비동기 연산 실패 결과에 실리는 오류 메시지의 최대 길이(문자 수).
+	 * <p>
+	 * FA³ST는 실패 원인의 {@link Throwable#getMessage()}를 연산 결과 메시지에 그대로 넣는다. 메시지가 아주 크면
+	 * (예: 파일 내용이 들어간 예외) 클라이언트가 결과 JSON을 읽지 못해 원래 오류 대신 파싱 오류만 보게 되므로,
+	 * 이 길이를 넘는 메시지는 잘라서 전달한다. 서버 로그에는 원래 예외가 그대로 남는다.
+	 */
+	static final int MAX_FAILURE_MESSAGE_LENGTH = 4096;
 	
 	private final ServiceContext m_serviceContext;
 	private final Reference m_opRef;
@@ -132,7 +142,8 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 			OperationVariable[] outputVars = FStream.from(m_outputVariables)
 													.mapOrThrow(this::duplicateOperationVariable)
 													.toArray(OperationVariable.class);
-			m_opProvider.invokeAsync(inputVars, inoutputVars, outputVars, callbackSuccess, callbackFailure);
+			Consumer<Throwable> limitedFailure = error -> callbackFailure.accept(limitMessageLength(error));
+			m_opProvider.invokeAsync(inputVars, inoutputVars, outputVars, callbackSuccess, limitedFailure);
 		}
 		catch ( Exception e ) {
 			s_logger.error("Failed to start operation: op-ref={}", IdShortPath.fromReference(m_opRef), e);
@@ -141,6 +152,29 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 		}
     }
     
+	/**
+	 * 오류 메시지가 {@link #MAX_FAILURE_MESSAGE_LENGTH}를 넘으면 잘린 메시지를 갖는 예외로 감싼다.
+	 * <p>
+	 * 잘린 메시지 끝에는 {@code "... (<남은 문자 수> more chars)"}를 붙인다. 원래 예외는 감싼 예외의 원인으로
+	 * 남는다.
+	 *
+	 * @param error	실패 원인.
+	 * @return	메시지 길이가 제한 이내이면 {@code error} 자신, 아니면 잘린 메시지의 {@link ExecutionException}.
+	 */
+	static Throwable limitMessageLength(Throwable error) {
+		String msg = (error != null) ? error.getMessage() : null;
+		if ( msg == null || msg.length() <= MAX_FAILURE_MESSAGE_LENGTH ) {
+			return error;
+		}
+
+		int end = MAX_FAILURE_MESSAGE_LENGTH;
+		if ( Character.isHighSurrogate(msg.charAt(end - 1)) ) {
+			--end;	// surrogate pair를 가르지 않는다.
+		}
+		String limited = String.format("%s... (%d more chars)", msg.substring(0, end), msg.length() - end);
+		return new ExecutionException(limited, error);
+	}
+
     private OperationVariable duplicateOperationVariable(OperationVariable var)
     	throws DeserializationException, SerializationException {
     	String jsonStr = MDTModelSerDe.JSON_SERIALIZER.write(var);

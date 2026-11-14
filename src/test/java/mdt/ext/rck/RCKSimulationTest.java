@@ -438,6 +438,42 @@ public class RCKSimulationTest {
 		assertEquals(server.m_equipmentMessage, server.m_startCommand.get("message").toString());
 	}
 
+	private static RCKEquipmentPropertiesList equipmentProps(String json) throws Exception {
+		return RCKEquipmentPropertiesList.parse(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+	}
+
+	@Test(timeout = 15_000)
+	public void start_command_carries_overridden_equipment_properties() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5,\"ClampTime\":1},"
+								+ "\"Conveyor\":[{\"Name\":\"c\",\"Index\":1,\"Speed\":3},"
+								+ "{\"Name\":\"c\",\"Index\":2,\"Speed\":4}]}";
+		// Conveyor[2]는 바꾸고, 없는 설비(Robot)와 없는 속성(Unknown)은 무시된다.
+		RCKEquipmentPropertiesList overrides = equipmentProps(
+							"{\"Conveyor\":{\"Name\":\"c\",\"Index\":2,\"Speed\":9,\"Unknown\":1},"
+							+ "\"Robot\":{\"Name\":\"r\",\"Index\":1,\"Speed\":5}}");
+		m_sim = equipmentLoader(server).overrideEquipmentProperties(overrides).build();
+		m_sim.start();
+		awaitState(m_sim, "/Running");
+
+		assertEquals("{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5,\"ClampTime\":1},"
+					+ "\"Conveyor\":[{\"Name\":\"c\",\"Index\":1,\"Speed\":3},"
+					+ "{\"Name\":\"c\",\"Index\":2,\"Speed\":9}]}",
+					server.m_startCommand.get("message").toString());
+	}
+
+	@Test(timeout = 15_000)
+	public void loadEquipmentProperties_returns_overridden_values() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5,\"ClampTime\":1}}";
+		RCKEquipmentPropertiesList overrides = equipmentProps("{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":40}}");
+
+		RCKEquipmentPropertiesList props = equipmentLoader(server).overrideEquipmentProperties(overrides)
+																	.loadEquipmentProperties();
+
+		assertEquals("{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":40,\"ClampTime\":1}}", props.toString());
+	}
+
 	@Test(timeout = 15_000)
 	public void facility_message_without_message_field_fails() throws Exception {
 		FakeRckServer server = new FakeRckServer(false, false) {
@@ -477,7 +513,7 @@ public class RCKSimulationTest {
 		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5}}";
 		RecordingObserver observer = new RecordingObserver();
 
-		RCKEquipmentProperties props = equipmentLoader(server).observer(observer).loadEquipmentProperties();
+		RCKEquipmentPropertiesList props = equipmentLoader(server).observer(observer).loadEquipmentProperties();
 
 		assertEquals(server.m_equipmentMessage, props.toString());
 		assertTrue("connection was not closed", server.m_closing.await(5, TimeUnit.SECONDS));

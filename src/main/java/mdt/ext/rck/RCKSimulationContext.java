@@ -23,7 +23,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	private final String m_processName;
 	private final String m_layoutName;
 
-	private volatile RCKEquipmentProperties m_equipmentProperties;
+	private volatile RCKEquipmentPropertiesList m_equipmentProperties;
 	private volatile RCKSimulationProgress m_latestProgress;
 	private volatile String m_videoUrl;
 	
@@ -81,7 +81,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	 *
 	 * @return	설비 정보. 아직 받지 않았으면 {@code null}.
 	 */
-	public RCKEquipmentProperties getEquipmentProperties() {
+	public RCKEquipmentPropertiesList getEquipmentProperties() {
 		return m_equipmentProperties;
 	}
 
@@ -90,7 +90,7 @@ public class RCKSimulationContext extends WebSocketContext<RCKSimulationContext>
 	 *
 	 * @param equipmentProperties	설비 정보
 	 */
-	void setEquipmentProperties(RCKEquipmentProperties equipmentProperties) {
+	void setEquipmentProperties(RCKEquipmentPropertiesList equipmentProperties) {
 		m_equipmentProperties = equipmentProperties;
 	}
 

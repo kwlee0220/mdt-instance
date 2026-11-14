@@ -117,6 +117,51 @@ public class RCKSimulationOperationTest {
 		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
 	}
 
+	@Test
+	public void missing_or_empty_equipment_properties_list_means_no_overrides() {
+		for ( String json: new String[] { null, "", "  ", "{}" } ) {
+			assertEquals("" + json, "{}", RCKSimulationOperation.parseEquipmentPropertiesList(json).toString());
+		}
+	}
+
+	@Test
+	public void malformed_equipment_properties_list_is_rejected() {
+		for ( String json: new String[] { "not json", "[]", "{\"Press\":{\"Name\":\"p\"}}" } ) {
+			assertThrows(json, IllegalArgumentException.class,
+						() -> RCKSimulationOperation.parseEquipmentPropertiesList(json));
+		}
+	}
+
+	@Test(timeout = 15_000)
+	public void equipment_properties_list_input_overrides_start_command() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false)
+									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo());
+		server.m_equipmentMessage = "{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":2.5,\"ClampTime\":1}}";
+		String url = startServer(server);
+		Map<String,SubmodelElement> inputs = new HashMap<>(inputs("layout"));
+		inputs.put(RCKSimulationOperation.VAR_EQUIPMENT_PROPERTIES_LIST,
+					property(RCKSimulationOperation.VAR_EQUIPMENT_PROPERTIES_LIST, DataTypeDefXsd.STRING,
+							"{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":40}}"));
+
+		operation(config(url, Map.of())).invokeSync(inputs, Map.of(), outputs());
+
+		assertEquals("{\"Press\":{\"Name\":\"p\",\"Index\":1,\"Time\":40,\"ClampTime\":1}}",
+					server.m_startCommand.get("message").toString());
+	}
+
+	@Test(timeout = 15_000)
+	public void malformed_equipment_properties_list_input_fails_before_connecting() throws Exception {
+		FakeRckServer server = new FakeRckServer(false, false);
+		String url = startServer(server);
+		Map<String,SubmodelElement> inputs = new HashMap<>(inputs("layout"));
+		inputs.put(RCKSimulationOperation.VAR_EQUIPMENT_PROPERTIES_LIST,
+					property(RCKSimulationOperation.VAR_EQUIPMENT_PROPERTIES_LIST, DataTypeDefXsd.STRING, "[]"));
+		RCKSimulationOperation op = operation(config(url, Map.of()));
+
+		assertThrows(IllegalArgumentException.class, () -> op.invokeSync(inputs, Map.of(), outputs()));
+		assertEquals("must not connect", 0, m_server.getRequestCount());
+	}
+
 	@Test(timeout = 15_000)
 	public void max_duration_cancels_the_simulation_and_sends_stop() throws Exception {
 		// 시뮬레이터가 응답하지 않으면 maxDuration 뒤에 취소되고, 연결을 닫기 전에 중지 명령이 간다.

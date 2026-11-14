@@ -36,7 +36,7 @@ import mdt.model.sm.value.PropertyValue;
  * <ul>
  *   <li>{@code LayoutName} (입력, {@code xs:string}, 필수) - 설비 속성을 읽을 레이아웃 이름. 빈 값이나 공백은 안 된다.</li>
  *   <li>{@code EquipmentPropertiesList} (출력, {@code xs:string}, 필수) - 설비 속성 목록.
- *       {@link RCKEquipmentProperties#toJsonNode()} 형식, 즉 시뮬레이터가 보낸 {@code message}와 같은 형식의 JSON
+ *       {@link RCKEquipmentPropertiesList#toJsonNode()} 형식, 즉 시뮬레이터가 보낸 {@code message}와 같은 형식의 JSON
  *       문자열이다.</li>
  * </ul>
  * 설정 인자:
@@ -102,7 +102,7 @@ public class LoadEquipmentPropertiesList extends AbstractJavaOperationProvider {
 			throw new IllegalStateException("a request of this operation is already running");
 		}
 		try {
-			RCKEquipmentProperties properties = RCKSimulation.builder()
+			RCKEquipmentPropertiesList properties = RCKSimulation.builder()
 															.serverUrl(m_rckServerUrl)
 															.clientId(m_clientId)
 															.processName(m_processName)

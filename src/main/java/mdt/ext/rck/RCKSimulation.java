@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import org.jetbrains.annotations.Nullable;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +56,8 @@ import mdt.ext.rck.RCKSimulationResult.Termination;
  * <ol>
  *   <li>{@code ConnectingWebSocket} - WebSocket 연결을 수립한다({@link States.WebSocketConnectingState}).</li>
  *   <li>{@code Registering} - 클라이언트를 등록({@code register})하고 {@code connected} 응답을 기다린다.</li>
- *   <li>{@code LayoutLoading} - 레이아웃을 요청하고 {@code facility} 메시지로 설비 정보를 수신한다.</li>
+ *   <li>{@code LayoutLoading} - 레이아웃을 요청하고 {@code facility} 메시지로 설비 정보를 수신한다.
+ *       {@link Builder#overrideEquipmentProperties}로 준 속성 값이 있으면 받은 값에 덮어쓴다.</li>
  *   <li>{@code SimulationStarting} - 시뮬레이션 시작 명령을 보내고 {@code simulation_start}를 기다린다.</li>
  *   <li>{@code Running} - {@code simulation_status}로 진행 상황을 받는다. {@code video_info}를 받으면
  *       영상 다운로드 URL을 알리고 {@code Completed}로 전이한다.</li>
@@ -159,6 +162,9 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	private volatile RCKSimulationProgress.Format m_progressFormat = RCKSimulationProgress.Format.DEFAULT;
 	// 설비 정보만 얻고 끝내는지 여부(Builder#loadEquipmentProperties). 시작한 뒤에는 바뀌지 않는다.
 	private volatile boolean m_equipmentOnly = false;
+	// 시뮬레이터가 보낸 설비 속성에 덮어쓸 값(Builder#overrideEquipmentProperties). 없으면 null.
+	// 시작한 뒤에는 바뀌지 않는다.
+	private volatile @Nullable RCKEquipmentPropertiesList m_equipmentOverrides;
 
 	// 들어간 종료 상태의 종료 사유. 종료 알림(notifyFinished)이 결과를 만드는 데 쓴다.
 	// 종료 리스너는 차트 lock 없이 불릴 수 있어 getCurrentState() 대신 이 값을 읽는다.
@@ -496,7 +502,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 	/**
 	 * 시뮬레이터에 레이아웃 로딩을 요청하고 설비 정보를 기다리는 상태.
 	 * {@code loading} 메시지가 오는 동안은 대기하고, {@code facility} 메시지로 설비 정보가 도착하면
-	 * 이를 문맥에 저장한 뒤 {@code SimulationStarting} 상태로 전이한다. 설비 정보만 얻는 실행이면 시뮬레이션을
+	 * 빌더로 받은 설비 속성({@link Builder#overrideEquipmentProperties})으로 값을 바꿔 문맥에 저장한 뒤 {@code SimulationStarting} 상태로 전이한다. 설비 정보만 얻는 실행이면 시뮬레이션을
 	 * 시작하지 않고 {@code Completed}로 전이한다.
 	 */
 	private class LayoutLoading extends JsonMessageState {
@@ -506,10 +512,18 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			onMessageType("loading", Transitions.stay());
 			onMessageType("facility", msg -> {
 				JsonNode equipments = msg.get("message");
-				getContext().setEquipmentProperties(RCKEquipmentProperties.parse(equipments));
+				RCKEquipmentPropertiesList props = RCKEquipmentPropertiesList.parse(equipments);
 				if ( getLogger().isInfoEnabled() ) {
 					getLogger().info("received facility info: {}", equipments.toPrettyString());
 				}
+				RCKEquipmentPropertiesList overrides = m_equipmentOverrides;
+				if ( overrides != null ) {
+					props = props.overriddenBy(overrides, getLogger());
+					if ( getLogger().isInfoEnabled() ) {
+						getLogger().info("overridden facility info: {}", props.toJsonNode().toPrettyString());
+					}
+				}
+				getContext().setEquipmentProperties(props);
 				return Transitions.to(m_equipmentOnly ? STATE_COMPLETED : STATE_SIMULATION_STARTING);
 			});
 		}
@@ -906,6 +920,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		private RCKSimulationProgress.Format m_progressFormat = RCKSimulationProgress.Format.DEFAULT;
 		private Duration m_pingInterval;
 		private Duration m_pongTimeout;
+		private @Nullable RCKEquipmentPropertiesList m_equipmentOverrides;
 
 		private Builder() { }
 
@@ -983,6 +998,22 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		}
 
 		/**
+		 * 시뮬레이터가 {@code facility} 메시지로 보낸 설비 속성에 덮어쓸 값을 지정한다.
+		 * <p>
+		 * {@code LayoutLoading}에서 설비 정보를 받으면, {@code overrides}의 각 설비(그룹, {@code Name}, {@code Index}가
+		 * 같은 설비)의 속성 값을 받은 값 대신 쓴다. 바뀐 설비 정보가 시작 명령의 {@code message}로 나가고,
+		 * {@link #loadEquipmentProperties()}의 결과에도 들어간다. 시뮬레이터가 보낸 목록에 없는 설비나 속성은 경고
+		 * 로그만 남기고 무시한다. 지정하지 않으면 받은 값을 그대로 쓴다.
+		 *
+		 * @param overrides	덮어쓸 설비 속성
+		 */
+		public Builder overrideEquipmentProperties(RCKEquipmentPropertiesList overrides) {
+			Preconditions.checkNotNullArgument(overrides, "overrides is null");
+			m_equipmentOverrides = overrides;
+			return this;
+		}
+
+		/**
 		 * 시뮬레이션을 만든다. 시작하려면 {@link RCKSimulation#start()}를 호출한다. 한 빌더로 여러 번 만들 수 있으며,
 		 * 만들 때마다 새 시뮬레이션이다.
 		 *
@@ -1010,7 +1041,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 		 * 								{@code facility} 메시지 형식 오류 등이다.
 		 * @throws InterruptedException	기다리는 중 인터럽트된 경우. 이때 실행은 취소된다.
 		 */
-		public RCKEquipmentProperties loadEquipmentProperties() throws ExecutionException, InterruptedException {
+		public RCKEquipmentPropertiesList loadEquipmentProperties() throws ExecutionException, InterruptedException {
 			RCKSimulation sim = build(SimulationObserver.NONE);
 			sim.m_equipmentOnly = true;
 			sim.start();
@@ -1029,6 +1060,7 @@ public class RCKSimulation extends WebSocketStateChart<RCKSimulationContext> {
 			sim.m_responseTimeout = m_responseTimeout;
 			sim.m_stopResponseTimeout = m_stopResponseTimeout;
 			sim.m_progressFormat = m_progressFormat;
+			sim.m_equipmentOverrides = m_equipmentOverrides;
 			if ( m_pingInterval != null ) {
 				sim.setPingInterval(m_pingInterval);
 				sim.setPongTimeout(m_pongTimeout);

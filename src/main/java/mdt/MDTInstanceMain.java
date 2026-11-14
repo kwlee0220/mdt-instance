@@ -243,7 +243,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		}
 		
 		// 설정 파일을 미리 읽어서 variable substitution을 수행한다.
-		String confJson = IOUtils.toString(m_confFile.toFile());
+		String confJson = IOUtils.readString(m_confFile.toFile());
 		StringSubstitutor interpolator = StringSubstitutor.createInterpolator();
 		confJson = interpolator.replace(confJson);
     	
@@ -413,7 +413,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		
 		// FAAAST 서비스 설정 정보를 파일에 저장한다 (디버깅 목적).
 		String faaastServiceConfig = MDTModelSerDe.getPrettyJsonMapper().writeValueAsString(config);
-		IOUtils.toFile(faaastServiceConfig, new File("config_faaast.json"));
+		IOUtils.writeString(new File("config_faaast.json"), faaastServiceConfig);
 		
 		// FAAAST 서비스 실행
 		runService(config, mdtInstanceConfig);

@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.slf4j.Logger;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -25,7 +27,7 @@ import mdt.model.sm.value.ElementCollectionValue;
  *
  * @author Kang-Woo Lee (ETRI)
  */
-public final class RCKEquipmentProperties {
+public final class RCKEquipmentPropertiesList {
 	private static final String FIELD_NAME = "Name";
 	private static final String FIELD_INDEX = "Index";
 	// 숫자만으로는 AAS idShort가 될 수 없어(영문자로 시작해야 한다) 설비 번호 앞에 붙인다.
@@ -34,7 +36,7 @@ public final class RCKEquipmentProperties {
 	
 	private final Map<RCKEquipment,Map<String,Number>> m_equipmentProperties;
 	
-	private RCKEquipmentProperties(Map<RCKEquipment,Map<String,Number>> equipmentProperties) {
+	private RCKEquipmentPropertiesList(Map<RCKEquipment,Map<String,Number>> equipmentProperties) {
 		Preconditions.checkNotNullArgument(equipmentProperties, "equipmentProperties is null");
 		
 		m_equipmentProperties = equipmentProperties;
@@ -51,7 +53,7 @@ public final class RCKEquipmentProperties {
 	 * 										숫자가 아닌 속성이 있는 경우, 또는 같은 설비(그룹, {@code Name},
 	 * 										{@code Index})가 두 번 나오는 경우.
 	 */
-	public static RCKEquipmentProperties parse(JsonNode message) throws JacksonDeserializationException {
+	public static RCKEquipmentPropertiesList parse(JsonNode message) throws JacksonDeserializationException {
 		// properties()는 객체가 아닌 노드에서 빈 집합을 돌려주므로, 검사하지 않으면 빈 결과가 정상처럼 나간다.
 		if ( message == null || !message.isObject() ) {
 			throw new JacksonDeserializationException("facility message is not a JSON object: " + message);
@@ -65,7 +67,7 @@ public final class RCKEquipmentProperties {
 				}
 			}
 		}
-		return new RCKEquipmentProperties(map);
+		return new RCKEquipmentPropertiesList(map);
 	}
 	
 	/**
@@ -91,6 +93,41 @@ public final class RCKEquipmentProperties {
 		return Collections.unmodifiableMap(properties);
 	}
 	
+	/**
+	 * {@code overrides}의 속성 값으로 이 목록의 속성 값을 바꾼 새 목록을 반환한다. 이 객체는 바뀌지 않는다.
+	 * <p>
+	 * 설비는 그룹, {@code Name}, {@code Index}가 모두 같아야 같은 설비로 본다. 설비와 속성의 순서는 이 목록을 따른다.
+	 * 이 목록에 없는 설비나, 있는 설비라도 이 목록에 없는 속성은 바꾸거나 추가하지 않고 경고 로그만 남긴다.
+	 *
+	 * @param overrides	바꿀 설비 속성.
+	 * @param logger	무시한 설비·속성을 알릴 로거.
+	 * @return	속성 값을 바꾼 새 목록.
+	 */
+	RCKEquipmentPropertiesList overriddenBy(RCKEquipmentPropertiesList overrides, Logger logger) {
+		Preconditions.checkNotNullArgument(overrides, "overrides is null");
+		Preconditions.checkNotNullArgument(logger, "logger is null");
+
+		LinkedHashMap<RCKEquipment,Map<String,Number>> map = new LinkedHashMap<>();
+		m_equipmentProperties.forEach((equipment, props) -> map.put(equipment, new LinkedHashMap<>(props)));
+		overrides.m_equipmentProperties.forEach((equipment, props) -> {
+			Map<String,Number> target = map.get(equipment);
+			if ( target == null ) {
+				logger.warn("ignoring equipment override: no such equipment from the simulator: {}", equipment);
+				return;
+			}
+			props.forEach((name, value) -> {
+				if ( target.containsKey(name) ) {
+					target.put(name, value);
+				}
+				else {
+					logger.warn("ignoring equipment override: no such property from the simulator: "
+								+ "equipment={}, property={}", equipment, name);
+				}
+			});
+		});
+		return new RCKEquipmentPropertiesList(map);
+	}
+
 	/**
 	 * {@link #parse(JsonNode)}의 역변환: 설비 속성을 입력과 같은 형식의 JSON으로 만든다.
 	 * <p>

@@ -1,5 +1,6 @@
 package mdt.ext.rck;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -27,6 +28,8 @@ import org.eclipse.digitaltwin.aas4j.v3.model.SubmodelElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
@@ -35,6 +38,7 @@ import utils.Throwables;
 import utils.UnitUtils;
 import utils.func.FOption;
 import utils.func.Result;
+import utils.json.JacksonUtils;
 
 import mdt.assetconnection.operation.AbstractJavaOperationProvider;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
@@ -68,6 +72,11 @@ import mdt.task.TaskException;
  * {@code 시뮬레이션 진행중})이다. 진행 중 상태가 바뀔 때마다 {@link MDTSimulationOutputReporter}가 갱신하며,
  * 실패·취소로 끝난 경우에도 마지막 상태가 남는다. 표시 문구는 바뀔 수 있으므로 분기 조건으로 쓰지 않는다.
  * <p>
+ * 입력 변수 {@code LayoutName}(필수)은 실행할 레이아웃 이름이다. 선택 입력 변수 {@code EquipmentPropertiesList}는
+ * 시뮬레이터가 보낸 설비 속성에 덮어쓸 값으로, {@code facility} 메시지의 {@code message}와 같은 형식의 JSON
+ * 문자열이다({@link RCKSimulation.Builder#overrideEquipmentProperties}). 없거나 빈 문자열이면 {@code "{}"}(바꿀 설비
+ * 없음)로 본다. 형식이 잘못되면 시작하지 않고 {@link IllegalArgumentException}을 던진다.
+ * <p>
  * 출력 변수는 모두 선택이다. 모델에 없는 출력 변수는 기록하지 않는다.
  * <p>
  * 설정 인자:
@@ -95,6 +104,10 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	private static final Duration DEFAULT_MAX_DURATION = Duration.ofHours(1);
 	/** 결과를 알리기 전에 MDT 출력 반영이 끝나기를 기다리는 최대 시간(초). */
 	private static final long OUTPUT_FLUSH_TIMEOUT_SECONDS = 5;
+	/** 시뮬레이터가 보낸 설비 속성에 덮어쓸 값을 받는 선택 입력 변수. */
+	static final String VAR_EQUIPMENT_PROPERTIES_LIST = "EquipmentPropertiesList";
+	/** 입력 변수 {@value #VAR_EQUIPMENT_PROPERTIES_LIST}가 없거나 비어 있을 때 쓰는 값(바꿀 설비 없음). */
+	static final String DEFAULT_EQUIPMENT_PROPERTIES_LIST = "{}";
 
 	/** 오퍼레이션 reference에서 Submodel을 찾지 못했을 때(시험 등) 쓰는 시뮬레이션 오퍼레이션 Submodel의 idShort. */
 	static final String DEFAULT_SUBMODEL_ID_SHORT = "PressSimulation";
@@ -256,7 +269,8 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 	 * @param inputVarList	입력 변수
 	 * @param onFinished	시뮬레이션이 끝났을 때 결과를 받을 콜백
 	 * @return	시작한 시뮬레이션
-	 * @throws IllegalArgumentException	입력 변수 {@code LayoutName}이 없거나 비어 있는 경우
+	 * @throws IllegalArgumentException	입력 변수 {@code LayoutName}이 없거나 비어 있는 경우, 또는 입력 변수
+	 * 									{@value #VAR_EQUIPMENT_PROPERTIES_LIST}의 형식이 잘못된 경우
 	 * @throws IllegalStateException	이 오퍼레이션의 시뮬레이션이 이미 실행 중인 경우
 	 */
 	private RCKSimulation startSimulation(Map<String, SubmodelElement> inputVarList,
@@ -265,11 +279,13 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		if ( layoutName == null || layoutName.isBlank() ) {
 			throw new IllegalArgumentException("input variable 'LayoutName' is empty");
 		}
+		RCKEquipmentPropertiesList equipmentOverrides
+				= parseEquipmentPropertiesList(getStringVariableValue(inputVarList, VAR_EQUIPMENT_PROPERTIES_LIST));
 		if ( !m_running.compareAndSet(false, true) ) {
 			throw new IllegalStateException("a simulation of this operation is already running");
 		}
 		try {
-			return startSimulation(layoutName, onFinished);
+			return startSimulation(layoutName, equipmentOverrides, onFinished);
 		}
 		catch ( RuntimeException | Error e ) {
 			// 종료 리스너를 등록하기 전이나 시작조차 못 한 실패. 끝날 시뮬레이션이 없으므로 여기서 놓는다.
@@ -278,7 +294,26 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		}
 	}
 
-	private RCKSimulation startSimulation(String layoutName, Consumer<Outcome> onFinished) {
+	/**
+	 * 입력 변수 {@value #VAR_EQUIPMENT_PROPERTIES_LIST}의 값을 설비 속성 목록으로 파싱한다. 변수가 없거나 값이
+	 * {@code null}·빈 문자열·공백이면 {@value #DEFAULT_EQUIPMENT_PROPERTIES_LIST}로 보아 빈 목록을 돌려준다.
+	 *
+	 * @throws IllegalArgumentException	값이 JSON이 아니거나 {@link RCKEquipmentPropertiesList#parse(JsonNode)}의 형식에
+	 * 									맞지 않는 경우
+	 */
+	static RCKEquipmentPropertiesList parseEquipmentPropertiesList(String json) {
+		String text = (json == null || json.isBlank()) ? DEFAULT_EQUIPMENT_PROPERTIES_LIST : json;
+		try {
+			return RCKEquipmentPropertiesList.parse(JacksonUtils.MAPPER.readTree(text));
+		}
+		catch ( IOException e ) {
+			throw new IllegalArgumentException("invalid input variable '" + VAR_EQUIPMENT_PROPERTIES_LIST
+												+ "': " + e.getMessage(), e);
+		}
+	}
+
+	private RCKSimulation startSimulation(String layoutName, RCKEquipmentPropertiesList equipmentOverrides,
+											Consumer<Outcome> onFinished) {
 		RCKSimulation sim = RCKSimulation.builder()
 										.serverUrl(m_rckServerUrl)
 										.clientId(m_clientId)
@@ -287,6 +322,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 										.responseTimeout(m_responseTimeout)
 										.keepAlive(m_pingInterval, m_pongTimeout)
 										.progressFormat(m_progressFormat)
+										.overrideEquipmentProperties(equipmentOverrides)
 										.observer(createObserver())
 										.build();
 

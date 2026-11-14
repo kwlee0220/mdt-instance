@@ -20,7 +20,7 @@ public class EquipmentPropertiesTest {
 		JsonNode topNode = MAPPER.readTree(msgFile);
 		
 		JsonNode msg = topNode.path("message");
-		RCKEquipmentProperties equipProps = RCKEquipmentProperties.parse(msg);
+		RCKEquipmentPropertiesList equipProps = RCKEquipmentPropertiesList.parse(msg);
 		
 		// equipProps 를 다시 JSON 으로 변환하여 출력
 		System.out.println(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(equipProps.toJsonNode()));

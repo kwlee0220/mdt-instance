@@ -98,6 +98,7 @@ flowchart LR
 | 방향 | 이름 | `valueType` | 의미 |
 |---|---|---|---|
 | 입력·필수 | `LayoutName` | `xs:string` | 실행할 레이아웃 이름. 빈 값·공백 불가 |
+| 입력·선택 | `EquipmentPropertiesList` | `xs:string` | 시뮬레이터가 보낸 설비 속성에 덮어쓸 값. `facility` 메시지의 `message`와 같은 형식의 JSON 문자열(3.6절). 없거나 빈 문자열이면 `{}`(바꿀 설비 없음) |
 | 출력·선택 | `Progress` | `xs:int` | 마지막 진척도(%) |
 | 출력·선택 | `Production` | `xs:int` | 마지막 생산량 |
 | 출력·선택 | `EquipmentUtilizationList` | `xs:string` | 설비별 이용률을 담은 JSON 문자열 |
@@ -113,7 +114,9 @@ flowchart LR
 4. 성공하면 모델에 정의된 출력 변수에서 결과를 읽는다. 실패·취소·전체 시간 초과는 예외 또는 실패 콜백으로 처리한다.
 5. 한 오퍼레이션은 시뮬레이션을 한 번에 하나만 실행한다. 실행 중에 들어온 호출은 시작하지 않고 `IllegalStateException`으로 거부한다. 결과 콜백이 불릴 때는 이미 다음 호출을 받을 수 있다.
 
-입력 예: `LayoutName = "프레스 공정_사람_NOCON.vcmx"`.
+입력 예: `LayoutName = "프레스 공정_사람_NOCON.vcmx"`, `EquipmentPropertiesList = "{\"Press\":{\"Name\":\"TP-75\",\"Index\":1,\"Time\":40}}"`.
+
+`EquipmentPropertiesList`가 JSON이 아니거나 형식에 맞지 않으면(예: 배열, `Name`·`Index` 누락, 숫자가 아닌 속성) 시뮬레이터에 접속하지 않고 `IllegalArgumentException`으로 실패한다.
 
 성공 결과의 예는 다음과 같다. 실제 값은 시뮬레이터의 보고 내용에 따라 달라진다.
 
@@ -260,7 +263,7 @@ RCKSimulationResult result = simulation.getSimulationResult();
 레이아웃의 설비 정보만 필요하면 `build()` 대신 `loadEquipmentProperties()`를 호출한다. 호출한 스레드는 끝날 때까지 기다린다.
 
 ```java
-RCKEquipmentProperties props = RCKSimulation.builder()
+RCKEquipmentPropertiesList props = RCKSimulation.builder()
         .serverUrl(url).clientId(clientId).processName(processName).layoutName(layoutName)
         .loadEquipmentProperties();
 
@@ -296,6 +299,23 @@ for ( RCKEquipment equipment: props.equipments() ) {
 | 출력·필수 | `EquipmentPropertiesList` | `xs:string` | 시뮬레이터가 보낸 `facility` 메시지의 `message`와 같은 형식의 JSON 문자열 |
 
 한 오퍼레이션은 한 번에 하나의 요청만 처리하며, 처리 중에 들어온 호출은 `IllegalStateException`으로 거부한다. 설비 속성을 얻지 못하면 호출이 실패하고 출력 변수는 기록되지 않는다.
+
+### 3.6. 설비 속성 값을 바꿔 실행하기
+
+시뮬레이터가 `facility` 메시지로 보낸 설비 속성 대신 다른 값으로 실행하려면 빌더의 `overrideEquipmentProperties(...)`에 바꿀 값을 준다. 값은 `facility` 메시지의 `message`와 같은 형식으로 만든다.
+
+```java
+RCKEquipmentPropertiesList overrides = RCKEquipmentPropertiesList.parse(JacksonUtils.MAPPER.readTree("""
+        { "Press": { "Name": "TP-75", "Index": 1, "Time": 40 } }
+        """));
+
+RCKSimulation simulation = RCKSimulation.builder()
+        .serverUrl(url).clientId(clientId).processName(processName).layoutName(layoutName)
+        .overrideEquipmentProperties(overrides)
+        .build();
+```
+
+`LayoutLoading`에서 설비 정보를 받으면, 그룹·`Name`·`Index`가 모두 같은 설비의 속성 값을 지정한 값으로 바꾼다. 지정하지 않은 설비와 속성은 받은 값을 그대로 쓰며, 바뀐 설비 정보가 시작 명령의 `message`로 나간다. 시뮬레이터가 보낸 목록에 없는 설비나 속성은 추가하지 않고 경고 로그만 남긴다. `loadEquipmentProperties()`(3.4절)도 같은 빌더 설정을 따르므로, 지정하면 바뀐 값을 돌려준다.
 
 ## 4. 진행 상황과 결과 해석하기
 
@@ -395,7 +415,7 @@ stateDiagram-v2
 
 | 증상 | 확인할 내용 |
 |---|---|
-| 실행 전에 예외 발생 | 필수 설정, 양수 시간 값, `LayoutName`, 출력 Property 타입 |
+| 실행 전에 예외 발생 | 필수 설정, 양수 시간 값, `LayoutName`, `EquipmentPropertiesList` 형식, 출력 Property 타입 |
 | 등록·레이아웃 단계에서 시간 초과 | URL·클라이언트 등록 방식·공정명·서버 레이아웃 이름과 응답 로그 |
 | 진행 중 갑자기 실패 | `failureCause()`, pong 시간 초과, 영상 정보 수신 전 연결 종료 여부 |
 | 실행은 되지만 MDT 상태가 바뀌지 않음 | 관리자 접속 설정, 연산이 등록된 Submodel의 출력 인자와 경고 로그 |
