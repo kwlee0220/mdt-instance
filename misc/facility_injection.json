@@ -274,7 +274,7 @@
       {
         "Name": "PM Global Variables",
         "Index": 25,
-        "ConveyorSpeed": 100
+        "ConveyorSpeed": 200
       }
     ]
   }

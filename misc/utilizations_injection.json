@@ -1,169 +1,129 @@
 {
   "type": "simulation_status",
   "message": {
-    "Progress": 5,
+    "Progress": 60,
     "ProcessName": "injection",
     "Utilizations": {
       "Injection": [
         {
           "Name": "No1_LGH850M",
           "Index": 1,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No2_JSE_850ELIII",
           "Index": 2,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No3_IDE850EN",
           "Index": 3,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No4_WIZ-350E",
           "Index": 4,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No5_WIZ900PlusDC",
           "Index": 5,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No6_LGH-1800SE",
           "Index": 6,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No7_WIZ-1800X",
           "Index": 7,
-          "Utilization": 0
-        },
-        {
-          "Name": "No7_WIZ-1800X_external cooling system",
-          "Index": 8,
-          "Utilization": 0
+          "Utilization": 100
         },
         {
           "Name": "No8_ID-1300HM",
-          "Index": 9,
-          "Utilization": 0
+          "Index": 8,
+          "Utilization": 100
         },
         {
           "Name": "No9_LGH-1300HM",
-          "Index": 10,
-          "Utilization": 0
+          "Index": 9,
+          "Utilization": 86.7
         },
         {
           "Name": "No10_tub outer bottom external cooling system body",
-          "Index": 11,
-          "Utilization": 0
+          "Index": 10,
+          "Utilization": 94.8
         },
         {
           "Name": "Inner Auto Input Rolling",
-          "Index": 12,
-          "Utilization": 0
+          "Index": 11,
+          "Utilization": 86
         },
         {
           "Name": "Auto Laser Welding Frame",
-          "Index": 13,
-          "Utilization": 0
-        },
-        {
-          "Name": "Welding To Erikson",
-          "Index": 14,
-          "Utilization": 0
+          "Index": 12,
+          "Utilization": 74.4
         },
         {
           "Name": "Erikson Check",
-          "Index": 15,
-          "Utilization": 0
+          "Index": 13,
+          "Utilization": 82.3
         },
         {
           "Name": "Flanging",
-          "Index": 16,
-          "Utilization": 0
+          "Index": 14,
+          "Utilization": 49.2
         },
         {
           "Name": "Curling",
-          "Index": 17,
-          "Utilization": 0
+          "Index": 15,
+          "Utilization": 43.6
         },
         {
           "Name": "Lifter",
-          "Index": 18,
-          "Utilization": 0
+          "Index": 16,
+          "Utilization": 100
         },
         {
           "Name": "Punching",
-          "Index": 19,
-          "Utilization": 0
+          "Index": 17,
+          "Utilization": 50.7
         },
         {
           "Name": "Spider_Fastening",
-          "Index": 20,
-          "Utilization": 0
+          "Index": 18,
+          "Utilization": 49.7
         },
         {
           "Name": "Inner_Drum",
-          "Index": 21,
-          "Utilization": 0
+          "Index": 19,
+          "Utilization": 100
         },
         {
           "Name": "Bearing_Insert_MC",
-          "Index": 22,
-          "Utilization": 0
+          "Index": 20,
+          "Utilization": 36.6
         },
         {
           "Name": "ORING",
-          "Index": 23,
-          "Utilization": 0
+          "Index": 21,
+          "Utilization": 88.8
         },
         {
           "Name": "Side Bolt",
-          "Index": 24,
-          "Utilization": 0
-        },
-        {
-          "Name": "Sky_Conv_WB_Conv",
-          "Index": 25,
-          "Utilization": 0
+          "Index": 22,
+          "Utilization": 27.8
         },
         {
           "Name": "180_Turn",
-          "Index": 26,
-          "Utilization": 0
-        },
-        {
-          "Name": "Stator_Tower",
-          "Index": 27,
-          "Utilization": 0
-        },
-        {
-          "Name": "Sky_Conv_Stator_Rotor_Conv",
-          "Index": 28,
-          "Utilization": 0
-        },
-        {
-          "Name": "Rotor_Tower",
-          "Index": 29,
-          "Utilization": 0
+          "Index": 23,
+          "Utilization": 35.7
         },
         {
           "Name": "90_Turn",
-          "Index": 30,
-          "Utilization": 0
-        },
-        {
-          "Name": "Unloading_Conv",
-          "Index": 31,
-          "Utilization": 0
-        },
-        {
-          "Name": "Unloading_Daecha",
-          "Index": 32,
-          "Utilization": 0
+          "Index": 24,
+          "Utilization": 51.7
         }
       ]
     }
