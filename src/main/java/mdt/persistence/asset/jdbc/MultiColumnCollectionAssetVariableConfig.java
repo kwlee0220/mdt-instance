@@ -23,7 +23,7 @@ import mdt.persistence.asset.AssetVariableException;
  * 각 컬럼은 collection 내부의 하위 경로(subPath)와 짝지어지며({@link ColumnToSubPath}),
  * 조회 시 {@code SELECT <컬럼들> FROM <table> ...}로 한 행을 읽어 각 컬럼 값을 대응 하위 element에 채운다.
  * {@code table}에는 조인 식도 쓸 수 있다. 읽을 행은 {@code where}·{@code orderBy}·{@code limit}(모두 선택) 또는
- * 이전 방식의 {@code whereClause}로 고른다({@link RowSelection}). 예를 들어 가장 최근 행은
+ * 호환용 필드 {@code whereClause}로 고른다({@link RowSelection}). 예를 들어 가장 최근 행은
  * {@code "orderBy": "id desc", "limit": 1}로 읽는다.
  * <p>
  * 읽기 가능 여부는 {@code readable}로, 쓰기 동작은 {@code updateMode}(대소문자 무관)로 결정된다.

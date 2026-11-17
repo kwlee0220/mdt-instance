@@ -72,7 +72,7 @@ public class ConnectionConfigRefTest {
 		assertFalse(written.has("jdbcConfigName"));
 		assertTrue(byName.toString(), byName.toString().contains("jdbcs.factory"));
 
-		// 이전 형식의 jdbcConfigName으로 읽은 설정도 jdbcConfig 하나로 기록한다.
+		// 호환용 필드 jdbcConfigName으로 읽은 설정도 jdbcConfig 하나로 기록한다.
 		SimpleJdbcAssetVariableConfig legacy = SimpleJdbcAssetVariableConfig.deserializeFields(MAPPER.readTree("""
 			{ "element": "Data:Status", "jdbcConfigName": "factory", "readQuery": "select 1" }
 			"""));

@@ -4,7 +4,7 @@
 
 예를 들어 `Telemetry:Measurements.Temperature`를 DB의 온도 컬럼에 연결하면, 사용자는 AAS API로 온도를 조회하면서 DB의 값을 읽을 수 있다. `Measurements` Collection 전체를 연결해 온도와 압력을 한 번에 다룰 수도 있다. 연결할 요소의 구조와 타입은 초기 AAS 모델에 미리 정의해야 한다.
 
-이 문서는 MDT 인스턴스를 개발하거나 외부 시스템을 연동하는 개발자를 위한 문서다. 먼저 전체 구조와 공통 동작을 설명하고, 이어서 연결 방식별 설정과 구현상의 주의점을 다룬다. 설명은 2026년 10월 30일 소스를 기준으로 한다. `AssertVariableBasedPersistence`와 `AssertVariableBasedPersistenceConfig`는 실제 코드에 쓰인 클래스 이름이다.
+이 문서는 MDT 인스턴스를 개발하거나 외부 시스템을 연동하는 개발자를 위한 문서다. 먼저 전체 구조와 공통 동작을 설명하고, 이어서 연결 방식별 설정과 구현상의 주의점을 다룬다. `AssertVariableBasedPersistence`와 `AssertVariableBasedPersistenceConfig`는 실제 코드에 쓰인 클래스 이름이다.
 
 - 연동을 설정하려면 [설정 형식과 구현 선택](#설정-형식과-구현-선택)에서 사용할 구현을 고른 뒤 해당 연동 절의 예제를 참고한다.
 - 조회 결과나 갱신 동작을 이해하려면 [조회와 갱신 요청 처리](#조회와-갱신-요청-처리)를 먼저 읽는다.
@@ -231,7 +231,7 @@ sequenceDiagram
 
 JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문자열을 쓰면 전역 설정의 항목을 참조하고, 객체를 쓰면 그 자리에서 연결 정보를 정의한다.
 
-| 변수 | 연결 설정 필드 | 전역 설정 그룹 | 호환용 이전 필드 |
+| 변수 | 연결 설정 필드 | 전역 설정 그룹 | 호환용 이름 전용 필드 |
 | --- | --- | --- | --- |
 | JDBC 계열 | `jdbcConfig` | `jdbcs` | `jdbcConfigName` |
 | MQTT | `mqttBrokerConfig` | `mqttBrokers` | `mqttBrokerConfigName` |
@@ -255,11 +255,11 @@ JDBC, MQTT, RobotTwin은 연결 정보를 하나의 필드에 지정한다. 문�
 }
 ```
 
-필드를 생략하거나 null을 지정하면 `default` 이름으로 조회한다. 전역 설정에 그 이름이 없으면 해당 그룹의 첫 항목을 사용하므로, 연결 대상을 분명히 하려면 이름을 직접 지정한다. 새 필드와 이전 이름 필드에 모두 null이 아닌 값을 넣으면 설정 오류다.
+필드를 생략하거나 null을 지정하면 `default` 이름으로 조회한다. 전역 설정에 그 이름이 없으면 해당 그룹의 첫 항목을 사용하므로, 연결 대상을 분명히 하려면 이름을 직접 지정한다. 연결 설정 필드와 호환용 필드에 모두 null이 아닌 값을 넣으면 설정 오류다.
 
-설정을 다시 저장할 때는 새 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다. 단, 엔드포인트는 이전 형식인 `mqttBrokerConfigName`을 지원하지 않는다. 적으면 무시되어 `default` broker를 쓴다.
+설정을 다시 저장할 때는 연결 설정 필드 하나에 이름 또는 객체 형식을 유지한다. 객체 안의 null 필드는 생략한다. 설정 객체의 로그 문자열은 전역 설정을 읽지 않고 `jdbcs.factory`처럼 참조 이름을 표시한다. 인라인 JDBC 설정은 `(inline)`으로 표시한다. MQTT 수신 엔드포인트의 `mqttBrokerConfig`도 같은 연결 설정 방식을 사용한다. 단, 엔드포인트는 호환용 필드인 `mqttBrokerConfigName`을 지원하지 않는다. 적으면 무시되어 `default` broker를 쓴다.
 
-인라인 연결 객체에 지원하지 않는 필드가 있으면 JDBC(`jdbcConfig`)와 RobotTwin(`robotTwinConfig`)은 설정 로딩이 실패한다. 예를 들어 이전 버전의 `RobotTwinConfig`에 있던 `operations` 필드가 전역 `robotTwins` 항목이나 인라인 객체에 남아 있으면 읽지 못한다. 반면 MQTT는 해당 필드를 무시하고 경고만 남긴다. 인라인 `jdbcConfig`에는 `maxPoolSize`도 지정할 수 있다.
+인라인 연결 객체에 지원하지 않는 필드가 있으면 JDBC(`jdbcConfig`)와 RobotTwin(`robotTwinConfig`)은 설정 로딩이 실패한다. 예를 들어 `RobotTwinConfig`가 지원하지 않는 `operations` 필드가 전역 `robotTwins` 항목이나 인라인 객체에 있으면 읽지 못한다. 반면 MQTT는 해당 필드를 무시하고 경고만 남긴다. 인라인 `jdbcConfig`에는 `maxPoolSize`도 지정할 수 있다.
 
 관련 코드: [ConnectionConfigRef.java](../../ConnectionConfigRef.java), [MDTGlobalConfigurations.java](../../MDTGlobalConfigurations.java).
 
@@ -430,7 +430,7 @@ sequenceDiagram
 
 `UPDATE` 모드에서는 조건이 없으면 테이블 전체가 갱신되므로 `where`가 필수다. 갱신 SQL에는 `where`만 쓰이고 `orderBy`·`limit`은 쓰이지 않는다. 이 변수는 Collection 하나를 한 행에 연결하므로, 갱신된 행이 없거나 두 행 이상이면 실패로 처리하고 트랜잭션을 되돌린다.
 
-이전 방식인 `whereClause`도 그대로 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회 SQL과 `UPDATE` 모드의 갱신 SQL에 붙는다(`APPEND`의 INSERT에는 붙지 않는다). `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다. `UPDATE` 모드에서 `whereClause`를 쓰면, SQL 주석(`/* */`, `--`)을 지운 뒤 `WHERE` 키워드가 있어야 한다. 예를 들어 `"order by id desc limit 1"`이나 주석만 있는 문자열은 조건이 아니므로 설정 오류다.
+호환용 필드인 `whereClause`도 쓸 수 있다. `whereClause`는 SQL 끝에 그대로 붙는 문자열이라 `WHERE`, `ORDER BY`, `LIMIT` 같은 키워드를 포함해 쓰며(예: `"order by id desc limit 1"`), 조회 SQL과 `UPDATE` 모드의 갱신 SQL에 붙는다(`APPEND`의 INSERT에는 붙지 않는다). `whereClause`는 `where`·`orderBy`·`limit`과 함께 쓸 수 없다. 설정을 다시 저장할 때는 읽어 들인 방식을 유지한다. `UPDATE` 모드에서 `whereClause`를 쓰면, SQL 주석(`/* */`, `--`)을 지운 뒤 `WHERE` 키워드가 있어야 한다. 예를 들어 `"order by id desc limit 1"`이나 주석만 있는 문자열은 조건이 아니므로 설정 오류다.
 
 값은 PreparedStatement로 바인딩하지만 테이블명, 컬럼 표현식, 조건·정렬 문자열은 직접 SQL 구문이 된다.
 
@@ -459,7 +459,7 @@ sequenceDiagram
 
 ### 여러 행을 Collection 목록으로 매핑
 
-`MultiColumnCollectionListAssetVariable`은 결과 행마다 Collection을 만들고 대상 `SubmodelElementList`를 다시 채운다. 설정은 `table`, `columns`와 행 선택 필드(`where`, `orderBy`, `limit` 또는 `whereClause`)를 사용하며, `columns`의 각 항목은 `{ "column": "...", "subPath": "..." }` 형식이다. `columns`의 이전 이름인 `memberColumns`도 받지만 두 이름을 함께 쓸 수는 없다.
+`MultiColumnCollectionListAssetVariable`은 결과 행마다 Collection을 만들고 대상 `SubmodelElementList`를 다시 채운다. 설정은 `table`, `columns`와 행 선택 필드(`where`, `orderBy`, `limit` 또는 `whereClause`)를 사용하며, `columns`의 각 항목은 `{ "column": "...", "subPath": "..." }` 형식이다. `columns` 대신 호환용 이름 `memberColumns`도 받지만 두 이름을 함께 쓸 수는 없다.
 
 이 구현은 읽기 전용이다. 조회 결과로 List를 다시 채우므로 결과가 없으면 빈 목록이 된다. 조회나 변환 도중 실패하면 캐시는 바뀌지 않는다([공통 연결 설정과 캐시](#공통-연결-설정과-캐시)). 행 선택 필드는 multi-column과 같다([한 행의 여러 컬럼 매핑](#한-행의-여러-컬럼-매핑)).
 
@@ -599,7 +599,7 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 다만 RobotTwin 변수
 | `publishTimeout` | `10s` | QoS 1·2의 전달 확인 대기 시간. 양수여야 함 |
 | `whenDisconnected` | `skip` | 연결 끊김 또는 전달 확인 시간 초과 시 처리 방법 |
 
-이전 형식인 `mqttBrokerConfigName`도 지원하며, 두 형식의 사용 규칙은 [연결 설정 지정](#연결-설정-지정)과 같다. 연결 설정 객체에 지원하지 않는 필드(예: 오타인 `connectTimeout`)가 있으면 해당 필드는 무시하고 경고를 남긴다. MQTT 메시지를 구독해 AAS 값을 갱신하는 작업은 이 변수의 역할에 포함되지 않는다.
+호환용 필드인 `mqttBrokerConfigName`도 지원하며, 두 형식의 사용 규칙은 [연결 설정 지정](#연결-설정-지정)과 같다. 연결 설정 객체에 지원하지 않는 필드(예: 오타인 `connectTimeout`)가 있으면 해당 필드는 무시하고 경고를 남긴다. MQTT 메시지를 구독해 AAS 값을 갱신하는 작업은 이 변수의 역할에 포함되지 않는다.
 
 `whenDisconnected`는 브로커에 연결되어 있지 않거나 제한 시간 안에 전달 확인을 받지 못했을 때 적용한다. 연결은 비동기로 맺어지므로 초기화가 끝나도 곧바로 발행할 수 있다고 보장하지는 않는다. 인스턴스 시작 직후에도 이 정책이 적용될 수 있다. 또한 전달 확인 시간이 초과했더라도 메시지는 실제로 전달되었을 수 있다.
 
@@ -754,7 +754,7 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 
 단, 매핑 대상 요소 자체가 `xs:integer`·`xs:byte` Property이면 `DataTypes`가 이 타입을 지원하지 않아 값 변환 단계에서 읽기가 실패한다. 이 두 타입의 검사는 Collection·List의 하위 Property에만 의미가 있으며, HTTP 변수도 같다.
 
-Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range는 `min`·`max`를 따라 검사한다. 복합 값의 내부 구조나 누락 값에 대한 나머지 처리는 `ElementValues.updateFromValueJson()`(2026-11-01 이전 이름 `update(sme, JsonNode)`)이 담당한다.
+Collection은 같은 `idShort`의 필드, List는 같은 위치의 원소, Range는 `min`·`max`를 따라 검사한다. 복합 값의 내부 구조나 누락 값에 대한 나머지 처리는 `ElementValues.updateFromValueJson()`이 담당한다.
 
 모든 매핑을 캐시의 복사본에 적용하고, 처리가 끝나면 캐시를 교체한다. 따라서 중간에 변환 예외가 나면 일부 필드만 바뀐 캐시가 남지 않는다. 다만 누락되거나 `null`인 필드는 의도적으로 이전 값을 유지하므로, 정상 처리된 결과에도 이전 값과 새 값이 함께 있을 수 있다. JDBC·HTTP와 마찬가지로 캐시 갱신과 반환용 복사는 `Guard` 잠금 안에서 수행한다.
 

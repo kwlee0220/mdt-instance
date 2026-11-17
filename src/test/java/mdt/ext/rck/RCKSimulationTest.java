@@ -150,7 +150,7 @@ public class RCKSimulationTest {
 
 	@Test(timeout = 15_000)
 	public void cancel_while_connecting_cancels_chart() throws Exception {
-		// 이전에는 접속 중 cancel()이 STOP 신호만 보내 아무 일도 일어나지 않았는데 true를 반환했다.
+		// 접속 중 cancel()은 STOP 신호만 보내는 데 그치지 않고 실제로 차트를 취소한다.
 		FakeRckServer server = new FakeRckServer(true, false);
 		RCKSimulation sim = startSimulation(server,
 								new MockResponse().setHeadersDelay(500, TimeUnit.MILLISECONDS));
@@ -174,7 +174,7 @@ public class RCKSimulationTest {
 	@Test(timeout = 15_000)
 	public void requestStop_queued_inside_callback_cancels_while_connecting() throws Exception {
 		// 신호 처리 스레드 안(whenStarted 동기 리스너)에서 부르면 STOP은 큐에 들어갔다가 접속 상태에서 처리된다.
-		// 처리되지 않은 STOP도 취소로 이어져야 한다(이전에는 RUNNING, /OpenWebSocket에 남았다).
+		// 처리되지 않은 STOP도 취소로 이어져야 한다(RUNNING, /OpenWebSocket에 남지 않는다).
 		m_server = new MockWebServer();
 		m_server.enqueue(new MockResponse().setHeadersDelay(2, TimeUnit.SECONDS)
 								.withWebSocketUpgrade(new FakeRckServer(true, false)));
@@ -350,8 +350,8 @@ public class RCKSimulationTest {
 	@Test(timeout = 30_000)
 	public void back_to_back_sends_are_serialized() throws Exception {
 		// JDK WebSocket은 텍스트 송신을 한 번에 하나만 받는다. 큰 메시지를 연달아 보내면 소켓 버퍼가 차서 앞 송신이
-		// 밀린다. 그래도 실패하지 않고 순서대로 가야 한다(이전에는 시작 명령 직후의 중지 명령 등이
-		// IllegalStateException("Send pending")으로 실패할 수 있었다). 메시지 하나는 OkHttp 서버의 한도(16MB)보다 작게 한다.
+		// 밀린다. 그래도 실패하지 않고 순서대로 가야 한다(시작 명령 직후의 중지 명령 등이
+		// IllegalStateException("Send pending")으로 실패하지 않는다). 메시지 하나는 OkHttp 서버의 한도(16MB)보다 작게 한다.
 		FakeRckServer server = new FakeRckServer(false, false);
 		RCKSimulation sim = startSimulation(server, new MockResponse());
 		awaitState(sim, "/Running");
@@ -379,7 +379,7 @@ public class RCKSimulationTest {
 
 	@Test(timeout = 15_000)
 	public void cancel_reports_cancelled_finish() throws Exception {
-		// 종료 상태를 거치지 않는 취소도 관찰자에게 알린다(이전에는 State가 진행 중 상태에 멈췄다).
+		// 종료 상태를 거치지 않는 취소도 관찰자에게 알린다(State가 진행 중 상태에 멈추지 않는다).
 		FakeRckServer server = new FakeRckServer(false, false);
 		RecordingObserver observer = new RecordingObserver();
 		RCKSimulation sim = createSimulation(server, new MockResponse(), observer);
@@ -596,7 +596,7 @@ public class RCKSimulationTest {
 
 	@Test(timeout = 15_000)
 	public void connection_closed_by_simulator_while_running_fails() throws Exception {
-		// 시뮬레이션 도중 시뮬레이터가 정상 close해도 사용자가 취소한 것이 아니므로 Failed로 끝난다(이전에는 CANCELLED).
+		// 시뮬레이션 도중 시뮬레이터가 정상 close해도 사용자가 취소한 것이 아니므로 CANCELLED가 아니라 Failed로 끝난다.
 		FakeRckServer server = new FakeRckServer(false, false) {
 			@Override
 			public void onMessage(okhttp3.WebSocket ws, String text) {

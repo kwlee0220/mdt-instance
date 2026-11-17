@@ -20,7 +20,7 @@ Runs one RCK press-process simulation per MDT operation call: a WebSocket sessio
 `invokeAsync` (FA³ST's path) → `bindOutputs` (validate output variables before starting) → `startSimulation`: take the run slot (`m_running`), `RCKSimulation.builder()...observer(createObserver()).build()` where `createObserver()` = `m_outputReporter.newRunObserver()`, schedule the `maxDuration` cancel on `RCKExecutors`, register `whenFinishedAsync`, `sim.start()`, return. On finish: decide success/failure and write outputs (inside one `try`), then `awaitOutputFlush()` (reporter `flushAsync()`, ≤ 5 s), then call **exactly one** callback; callback exceptions are only logged. `invokeSync` shares `startSimulation` and blocks; an interrupt cancels the simulation.
 
 - Failure wrapping in the async path mirrors the default `OperationProvider.invokeAsync` (`toCallbackFailure`): unwrap, then wrap only `TimeoutException`/`TaskException`/`CancellationException`/`ExecutionException`/`InterruptedException` in `ExecutionException`.
-- Output variables are all optional. `ElementValues.update(null, …)` rejects a `null` target (`IllegalArgumentException("SubmodelElement is null")` since 2026-11-01; it used to be an NPE), so `OperationOutputBindings.update` skips `null` targets.
+- Output variables are all optional. `ElementValues.update(null, …)` rejects a `null` target (`IllegalArgumentException("SubmodelElement is null")`), so `OperationOutputBindings.update` skips `null` targets.
 - `maxDuration` (default 1 h) is measured from `sim.start()`; MDT output preparation is not included (it happens on the writer thread).
 
 ## State chart (`RCKSimulation`)
@@ -53,7 +53,7 @@ errors → /Failed
 
 ## MDT output reporting (`MDTSimulationOutputReporter`)
 
-- **One reporter per operation instance**, shared by all runs. Per-run reporters let a late write of the previous run ("완료") overwrite the next run's "소켓 연결중" (external review P1). A single drain task writes everything in order (an in-flight request included); `newRunObserver()` bumps the run number, clears pending updates and enqueues the reset values; updates from an older run's observer are dropped.
+- **One reporter per operation instance**, shared by all runs. Per-run reporters let a late write of the previous run ("완료") overwrite the next run's "소켓 연결중". A single drain task writes everything in order (an in-flight request included); `newRunObserver()` bumps the run number, clears pending updates and enqueues the reset values; updates from an older run's observer are dropped.
 - Pending updates are coalesced per argument (latest value wins). `flushAsync()` completes when everything enqueued so far has been attempted.
 - MDT manager creation (`HttpMDTManager.connectWithDefault()` may connect to **MQTT synchronously** when the client config has `mqttEndpoint`), instance-id lookup and argument activation all run on the writer thread, never in `invokeAsync` or a constructor. Arguments that fail to resolve are retried once per later run.
 - `drainPendingUpdates` resets `m_writerActive` in `finally` and reschedules if work remains, so an `Error` in a write does not stall the reporter forever.

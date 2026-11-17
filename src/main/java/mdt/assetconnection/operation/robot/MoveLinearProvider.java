@@ -43,7 +43,7 @@ import mdt.task.TaskException;
  *       자세(orientation)는 비교하지 않는다.</li>
  * </ol>
  * 목표는 서버 기본 EE 프레임(미설정 시 tip 프레임) 기준으로 전달한다. TargetPose와 ee_pose의
- * 좌표계·도구 기준점은 같아야 한다. Frame, MaxStep, JumpThreshold 입력은 더 이상 지원하지 않으며,
+ * 좌표계·도구 기준점은 같아야 한다. Frame, MaxStep, JumpThreshold 입력은 지원하지 않으며,
  * 값이 비어 있어도 변수가 전달되면 원격 요청 전에 거부한다. 해당 설정은 서버에서 관리한다.
  * 최종 위치를 판정할 수 없으면 Reached=false이고 PositionError는 갱신하지 않는다.
  * 기본적으로 목표에 도달하지 못한 것은 연산 실패로 처리하지 않고 {@code Reached}로 알린다. 접촉이

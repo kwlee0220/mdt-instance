@@ -97,7 +97,7 @@ public class FaaastRuntimeValueUpdaterTest {
 	public void testMalformedValueFails() {
 		ElementValueUpdater updater = m_runtime.newValueUpdater(location("Temperature"));
 		
-		// 예전에는 FA³ST가 오류 응답을 돌려주어도 예외 없이 무시되었다.
+		// FA³ST가 오류 응답을 돌려주면 무시하지 않고 예외로 알린다.
 		ElementUpdateException e = assertThrows(ElementUpdateException.class, () -> updater.update("abc"));
 		assertNotNull(e.getStatusCode());
 		assertFalse(e.getStatusCode().isSuccess());

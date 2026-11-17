@@ -204,7 +204,7 @@ public class MqttAssetVariableTest {
 			""");
 		assertEquals("factory", named.getMqttBrokerConfigName());
 		
-		// 이전 형식의 'mqttBrokerConfigName'도 받는다.
+		// 호환용 필드 'mqttBrokerConfigName'도 받는다.
 		MqttAssetVariableConfig legacy = load("""
 			{ "element": "Telemetry:Measurements", "topic": "t", "mqttBrokerConfigName": "factory" }
 			""");

@@ -38,7 +38,7 @@ import mdt.persistence.asset.AssetVariableException;
 
 
 /**
- * JDBC AssetVariable 검토 의견에 대한 수정을 가짜 JDBC 객체로 검증한다.
+ * JDBC AssetVariable의 다음 동작을 가짜 JDBC 객체로 검증한다.
  * <ul>
  *   <li>UPDATE 범위 검증과 갱신 건수 검사</li>
  *   <li>로그·예외 메시지의 비밀번호 마스킹</li>

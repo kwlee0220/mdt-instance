@@ -98,7 +98,7 @@ public class RobotStateVariableTest {
 		assertThrows(IllegalArgumentException.class, () -> new RobotStateVariable(config("ftp://127.0.0.1:1")));
 	}
 
-	// 검토 1: requireOkQuality를 읽고 쓴다.
+	// requireOkQuality를 읽고 쓴다.
 	@Test
 	public void requireOkQualityIsLoadedAppliedAndSerialized() throws Exception {
 		response = eePose("STALE", 0.7);
@@ -114,7 +114,7 @@ public class RobotStateVariableTest {
 					() -> config(server.url("/").toString(), Map.of("requireOkQuality", "yes")));
 	}
 
-	// 검토 2: 일부 mapping이 실패하면 캐시를 바꾸지 않는다.
+	// 일부 mapping이 실패하면 캐시를 바꾸지 않는다.
 	@Test
 	public void failedMappingLeavesCacheUnchanged() throws Exception {
 		RobotStateVariable variable = variable();
@@ -126,7 +126,7 @@ public class RobotStateVariableTest {
 		assertEquals("x must not keep the value of the failed read", "0", component(read, "x"));
 	}
 
-	// 검토 3: 숫자 Property에 숫자가 아닌 값이 오면 0으로 바꾸지 않고 실패한다.
+	// 숫자 Property에 숫자가 아닌 값이 오면 0으로 바꾸지 않고 실패한다.
 	@Test
 	public void nonNumericValueForNumericPropertyFails() throws Exception {
 		RobotStateVariable variable = variable();
@@ -139,7 +139,7 @@ public class RobotStateVariableTest {
 		assertEquals("0.4", component((SubmodelElementCollection)variable.read(), "x"));
 	}
 
-	// 검토 4: mapping 값은 문자열 JSON Pointer여야 한다.
+	// mapping 값은 문자열 JSON Pointer여야 한다.
 	@Test
 	public void invalidMappingsAreRejectedWhenLoading() throws Exception {
 		String url = server.url("/").toString();
@@ -149,7 +149,7 @@ public class RobotStateVariableTest {
 				Map.of("Position.x", "pose/position/x"))));
 		assertThrows(JacksonDeserializationException.class, () -> config(url, Map.of("mappings",
 				List.of(Map.of("subPath", "Position.x", "pointer", 3)))));
-		// 이전 버전의 배열 형식과 빈 포인터(변수 값 전체)는 계속 받는다.
+		// 호환용 배열 형식과 빈 포인터(변수 값 전체)도 받는다.
 		assertEquals(1, config(url, Map.of("mappings", List.of(Map.of("subPath", "Position.x",
 				"pointer", "/pose/position/x")))).getMappings().size());
 		assertEquals("", config(url, Map.of("mappings", Map.of("", ""))).getMappings().get(0).pointer());
@@ -157,7 +157,7 @@ public class RobotStateVariableTest {
 					() -> new RobotStateVariableConfig.SubPathToJsonPointer("Position.x", "pose/x"));
 	}
 
-	// 검토 5: 공개 생성자로 만든 설정은 전역 설정의 default 항목을 쓴다.
+	// 공개 생성자로 만든 설정은 전역 설정의 default 항목을 쓴다.
 	@Test
 	public void publicConstructorUsesDefaultConnectionName() {
 		RobotStateVariableConfig config = new RobotStateVariableConfig(ElementLocations.parseStringExpr("param:EEPose"),
@@ -166,7 +166,7 @@ public class RobotStateVariableTest {
 		assertFalse(config.isRequireOkQuality());
 	}
 
-	// 재검토 1: 컬렉션 단위 매핑도 내부 Property의 값을 검사한다.
+	// 컬렉션 단위 매핑도 내부 Property의 값을 검사한다.
 	@Test
 	public void collectionMappingIsCheckedRecursively() throws Exception {
 		RobotStateVariable variable = variable(config(server.url("/").toString(),
@@ -183,7 +183,7 @@ public class RobotStateVariableTest {
 		assertEquals("0.1", component((SubmodelElementCollection)variable.read(), "z"));
 	}
 
-	// 재검토 2: 실수는 유한해야 한다. JSON의 1e400은 Jackson에서 Infinity가 된다.
+	// 실수는 유한해야 한다. JSON의 1e400은 Jackson에서 Infinity가 된다.
 	@Test
 	public void infiniteDoubleIsRejected() throws Exception {
 		RobotStateVariable variable = variable(config(server.url("/").toString()), DataTypeDefXsd.DOUBLE);
@@ -194,7 +194,7 @@ public class RobotStateVariableTest {
 		assertEquals("0.5", component((SubmodelElementCollection)variable.read(), "x"));
 	}
 
-	// 재검토 4: DECIMAL은 double 범위를 넘는 정수도 받고, Infinity가 된 실수만 거부한다.
+	// DECIMAL은 double 범위를 넘는 정수도 받고, Infinity가 된 실수만 거부한다.
 	@Test
 	public void decimalAcceptsHugeIntegersButNotInfinity() throws Exception {
 		RobotStateVariable variable = variable(config(server.url("/").toString()), DataTypeDefXsd.DECIMAL);
@@ -222,7 +222,7 @@ public class RobotStateVariableTest {
 		}
 	}
 
-	// (b)안: STRICT도 불리언 문자열 "true"/"false"는 받는다(2026-11-01 이전에는 거부).
+	// STRICT도 불리언 문자열 "true"/"false"는 받는다.
 	@Test
 	public void booleanPropertiesAcceptBooleanText() throws Exception {
 		RobotStateVariable variable = variable(config(server.url("/").toString()), DataTypeDefXsd.BOOLEAN);
@@ -232,7 +232,7 @@ public class RobotStateVariableTest {
 		assertThrows(AssetVariableException.class, variable::read);
 	}
 
-	// 재검토 3: '~' 뒤에는 0 또는 1만 올 수 있다(RFC 6901).
+	// '~' 뒤에는 0 또는 1만 올 수 있다(RFC 6901).
 	@Test
 	public void invalidPointerEscapesAreRejectedWhenLoading() throws Exception {
 		String url = server.url("/").toString();

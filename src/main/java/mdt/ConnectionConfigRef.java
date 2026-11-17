@@ -24,7 +24,7 @@ import mdt.model.MDTModelSerDe;
  * "jdbcConfig": "factory"                                  // 전역 설정 jdbcs.factory
  * "jdbcConfig": { "jdbcUrl": "jdbc:postgresql://..." }     // 인라인 연결 설정
  * }</pre>
- * 필드를 생략하면 전역 설정의 기본 이름({@code default})을 사용한다. 이전 형식과의 호환을 위해
+ * 필드를 생략하면 전역 설정의 기본 이름({@code default})을 사용한다. 호환을 위해
  * 전역 설정 이름 전용 필드(예: {@code jdbcConfigName})도 받지만, 두 필드를 함께 사용할 수는 없다.
  *
  * @param <T>	연결 설정 타입.
@@ -121,7 +121,7 @@ public record ConnectionConfigRef<T>(@Nullable String name, @Nullable T inline) 
 	 * @param <T>			연결 설정 타입.
 	 * @param jnode			AssetVariable 설정 JSON 노드.
 	 * @param field			연결 설정 필드 이름 (문자열 또는 객체).
-	 * @param legacyNameField	이전 형식의 전역 설정 이름 전용 필드 이름.
+	 * @param legacyNameField	전역 설정 이름만 받는 호환용 필드 이름.
 	 * @param configClass	연결 설정 클래스.
 	 * @return	참조 객체. 두 필드가 모두 없으면 {@link #DEFAULT_NAME}을 가리킨다.
 	 * @throws IOException	두 필드를 함께 사용했거나 필드 값의 형식이 잘못된 경우.

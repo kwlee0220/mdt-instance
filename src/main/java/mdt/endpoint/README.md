@@ -4,18 +4,15 @@
 MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 관리하며,
 외부 동반 프로세스를 실행한다.
 
-이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 한다. 2026년 10월 28일의 작업 트리를 기준으로
-설정 로더, 엔드포인트 구현, 관련 `mdt-client`·`utils` 코드를 함께 검토했다.
-개정 내용은 다음과 같다.
+이 문서는 인스턴스 개발자와 연동 담당자를 대상으로 하며, 설정 로더, 엔드포인트 구현, 관련 `mdt-client`·`utils`
+코드를 함께 다룬다. 다루는 기능은 다음과 같다.
 
 - MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
   시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
 - Companion(5절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
-- Audit: 기본 로더에 등록 경로가 없어 쓰이지 않던 `mdt.endpoint.audit`(주기적 JDBC 기록) 패키지를 삭제하고 관련 절을 뺐다
-- ROS2: `serviceEndpoints.ros2`(rosbridge `joint_states` 수신) 엔드포인트를 삭제하고 관련 절을 뺐다. 이를 쓰던 예전 모델(`panda_org`)도
-  함께 정리했으며, 로봇 관절 상태는 RobotTwin 자산 변수로 받는다([mdt.persistence.asset](../persistence/asset/README.md))
-- RobotTwin: 조회 루프가 꺼져 있어 아무 일도 하지 않던 `serviceEndpoints.robotTwin` 엔드포인트를 삭제하고 관련 절을 뺐다.
-  로봇 상태는 RobotTwin 자산 변수(`mdt:asset:robot-twin:state`)로 읽는다
+
+로봇 관절·상태는 엔드포인트가 아니라 RobotTwin 자산 변수(`mdt:asset:robot-twin:state`)로 읽는다
+([mdt.persistence.asset](../persistence/asset/README.md)).
 
 설정 예제는 기존 인스턴스 설정에 합치는 **부분 설정**이며, 전체 실행 파일을 대체하지 않는다.
 
@@ -243,7 +240,7 @@ MQTT 자산 변수의 `mqttBrokerConfig`와 같은 규칙이다.
 | 객체 | `"mqttBrokerConfig": { "brokerUrl": "tcp://192.168.0.10:1883" }` | 인스턴스 설정에 직접 기술 |
 | 생략 | — | 전역 설정 `mqttBrokers.default` |
 
-숫자나 배열처럼 문자열도 객체도 아닌 값은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다. MQTT 자산 변수와 달리 이전 형식인 `mqttBrokerConfigName`은 지원하지 않으므로, 전역 설정 이름도 `mqttBrokerConfig`에 문자열로 적는다. `mqttBrokerConfigName`을 적으면 다른 모르는 필드처럼 무시되어 `default` broker에 연결되므로 주의한다(2026-11-02 이전에는 설정 오류로 거부했다).
+숫자나 배열처럼 문자열도 객체도 아닌 값은 설정을 읽는 단계에서 `invalid 'mqttBrokerConfig' value` 오류로 거부된다. MQTT 자산 변수와 달리 호환용 필드인 `mqttBrokerConfigName`은 지원하지 않으므로, 전역 설정 이름도 `mqttBrokerConfig`에 문자열로 적는다. `mqttBrokerConfigName`을 적으면 다른 모르는 필드처럼 무시되어 `default` broker에 연결되므로 주의한다.
 
 broker 설정 항목은 다음과 같다. 현재 사용자명·비밀번호·인증서 항목은 없고, 모르는 항목(예: 오타인 `connectTimeout`)은 무시하되 설정을 읽을 때 경고를 남긴다.
 
@@ -831,5 +828,5 @@ utils의 [외부 명령 실행 가이드](../../../../../../../common/utils/src/
 실제 Manager에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
 MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 종료와 연결된 상태의 잘못된 토픽 거부를 확인했다
 (`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
-Companion은 단위 테스트와 함께, 2026년 10월 28일 Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
+Companion은 단위 테스트와 함께, Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
 시작·로그 분리·종료 후 프로세스 정리를 확인했다.

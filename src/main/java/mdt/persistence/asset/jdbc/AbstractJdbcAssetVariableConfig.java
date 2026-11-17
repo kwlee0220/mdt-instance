@@ -38,7 +38,7 @@ import mdt.persistence.asset.AssetVariableConfig;
  *   <li>element 위치({@link ElementLocation}) — 연결될 SubmodelElement의 위치.</li>
  *   <li>JDBC 접속 설정({@code jdbcConfig}) — 전역 설정({@code jdbcs})의 항목 이름(문자열)이나
  *       인라인 {@link JdbcConfiguration}(객체) 중 하나. 생략하면 {@code default}이다.
- *       이전 형식의 {@code jdbcConfigName}도 받지만 {@code jdbcConfig}와 함께 사용할 수는 없다
+ *       호환용 필드 {@code jdbcConfigName}도 받지만 {@code jdbcConfig}와 함께 사용할 수는 없다
  *       ({@link ConnectionConfigRef}).</li>
  *   <li>유효 기간 — 읽은 값의 캐시 TTL. 미설정 시 {@link Duration#ZERO}(캐시하지 않음).</li>
  * </ul>
@@ -52,7 +52,7 @@ import mdt.persistence.asset.AssetVariableConfig;
  */
 public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableConfig {
 	private static final Logger s_logger = LoggerFactory.getLogger(AbstractJdbcAssetVariableConfig.class);
-	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";	// 이전 형식
+	private static final String FIELD_JDBC_CONFIG_NAME = "jdbcConfigName";	// 호환용 필드
 	private static final String FIELD_JDBC_CONFIG = "jdbcConfig";
 	/** 모든 JDBC AssetVariable 설정이 공통으로 받는 필드. */
 	private static final String FIELD_QUERY_TIMEOUT = "queryTimeout";

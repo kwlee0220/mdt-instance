@@ -293,8 +293,6 @@ public class RobotStateVariable extends AbstractAssetVariable<RobotStateVariable
 	 * 실수는 유한한 값, 불리언은 JSON 불리언이나 {@code "true"}/{@code "false"} 문자열이다. 숫자 문자열({@code "42"})과
 	 * 정수 타입의 {@code 3.0}은 받지 않는다. 이 단계에서 걸러야 이후의 {@code DataTypes} 변환(숫자 문자열 등을 받는
 	 * {@code TEXT_TOLERANT})까지 가지 않는다. 검사하지 않는 valueType은 그대로 변환한다.
-	 * <p>
-	 * 2026-11-01 이전에는 같은 규칙을 이 메소드가 직접 구현했고, 불리언 문자열({@code "true"})은 받지 않았다.
 	 *
 	 * @param where     오류 메시지에 쓸 idShort 경로.
 	 * @param type      valueType.

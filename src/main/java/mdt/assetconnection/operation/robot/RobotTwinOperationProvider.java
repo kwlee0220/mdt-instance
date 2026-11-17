@@ -53,7 +53,7 @@ public abstract class RobotTwinOperationProvider extends AbstractJavaOperationPr
 	private static final Logger s_logger = LoggerFactory.getLogger(RobotTwinOperationProvider.class);
 
 	private static final String ARG_ROBOT_TWIN_CONFIG = "robotTwinConfig";
-	private static final String ARG_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";	// 이전 형식
+	private static final String ARG_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";	// 호환용 필드
 	private static final Duration OPERATION_POLL_INTERVAL = Duration.ofSeconds(1);
 	// 로봇 트윈 설정의 연산별 기본 시간 상한(default_timeout_sec)과 같은 값.
 	private static final Duration TWIN_DEFAULT_TIME_LIMIT = Duration.ofSeconds(60);
@@ -67,7 +67,7 @@ public abstract class RobotTwinOperationProvider extends AbstractJavaOperationPr
 		super(serviceContext, operationRef, config);
 
 		// 'robotTwinConfig' 인자는 전역 설정(robotTwins)의 항목 이름(문자열)이거나 접속 정보 객체이다.
-		// 생략하면 전역 설정의 default 항목을 사용한다. 이전 형식의 'robotTwinConfigName'도 받는다.
+		// 생략하면 전역 설정의 default 항목을 사용한다. 호환용 필드 'robotTwinConfigName'도 받는다.
 		try {
 			JsonNode argsNode = MDTModelSerDe.MAPPER.valueToTree(m_args);
 			ConnectionConfigRef<RobotTwinConfig> ref

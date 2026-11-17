@@ -17,9 +17,9 @@ import utils.stream.FStream;
  * {@link MultiColumnCollectionListAssetVariable}의 설정.
  * <p>
  * {@code columns}의 각 항목은 행의 컬럼과 원소 내부의 하위 경로(subPath)를 짝짓는다({@link ColumnToSubPath}).
- * 이전 이름인 {@code memberColumns}도 받으며, 직렬화할 때는 읽어 들인 이름을 유지한다.
+ * 호환용 이름인 {@code memberColumns}도 받으며, 직렬화할 때는 읽어 들인 이름을 유지한다.
  * 조회 질의는 {@code SELECT <컬럼들> FROM <table> ...}로 구성되며, 읽을 행은 {@code where}·{@code orderBy}·
- * {@code limit}(모두 선택) 또는 이전 방식의 {@code whereClause}로 고른다({@link RowSelection}). 이 변수는 읽기 전용이다.
+ * {@code limit}(모두 선택) 또는 호환용 필드 {@code whereClause}로 고른다({@link RowSelection}). 이 변수는 읽기 전용이다.
  * 직렬화 식별자는 {@value #SERIALIZATION_TYPE}이다.
  *
  * @author Kang-Woo Lee (ETRI)
@@ -28,7 +28,7 @@ public class MultiColumnCollectionListAssetVariableConfig extends AbstractJdbcAs
 	public static final String SERIALIZATION_TYPE = "mdt:asset:jdbc:multi-column-list";
 	private static final String FIELD_TABLE = "table";
 	private static final String FIELD_COLUMNS = "columns";
-	private static final String FIELD_MEMBER_COLUMNS = "memberColumns";	// 이전 이름
+	private static final String FIELD_MEMBER_COLUMNS = "memberColumns";	// 호환용 이름
 	private static final Set<String> FIELDS;
 	static {
 		Set<String> fields = new HashSet<>(RowSelection.FIELDS);

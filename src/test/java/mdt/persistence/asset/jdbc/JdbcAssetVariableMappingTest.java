@@ -365,7 +365,7 @@ public class JdbcAssetVariableMappingTest {
 		assertTrue(json.has("columns"));
 		assertFalse(json.has("memberColumns"));
 
-		// 이전 이름도 받으며 그 이름으로 직렬화한다.
+		// 호환용 이름 memberColumns도 받으며 그 이름으로 직렬화한다.
 		fields.put("memberColumns", fields.remove("columns"));
 		MultiColumnCollectionListAssetVariableConfig old
 								= MultiColumnCollectionListAssetVariableConfig.deserializeFields(JSON.valueToTree(fields));

@@ -42,7 +42,7 @@ import mdt.robot.client.operation.MoveGripperToNamedTarget;
  *   <li>{@code effort} → {@code Effort} (선택). 현재 로봇 트윈은 보내지 않으므로 갱신되지 않는다.</li>
  * </ul>
  * 현재 서버는 target과 goal을 모두 반환한다. target이 없으면 goal을 사용하며,
- * 이전 버전의 출력 이름(position, reached_goal)도 Provider에서 인식한다.
+ * 호환 출력 이름(position, reached_goal)도 Provider에서 인식한다.
  * 클라이언트 판정은 at_goal만 사용하므로, AAS 출력 변환은 호환 이름을 포함한 원격 출력을 사용한다.
  * 선택한 stalled·at_goal(reached_goal)이 Boolean이 아니면 필드 이름과 값을 WARN으로 남기고 false로 반영한다.
  * ReachedGoal=true는 그리퍼 노드의 목표 달성 보고이며, 원하는 물체의 실제 파지 성공을 보장하지 않는다.
@@ -124,7 +124,7 @@ public class MoveGripperToTargetProvider extends RobotTwinOperationProvider {
 	 *
 	 * @param outputs	연산 출력.
 	 * @param name		출력 이름.
-	 * @param altName	대체 출력 이름 (이전 버전 로봇 트윈의 이름 등). 없으면 {@code null}.
+	 * @param altName	대체 출력 이름 (호환 이름 등). 없으면 {@code null}.
 	 * @return	출력 값.
 	 * @throws IOException	두 이름 모두 값이 없는 경우.
 	 */
@@ -144,7 +144,7 @@ public class MoveGripperToTargetProvider extends RobotTwinOperationProvider {
 	 *
 	 * @param outputs	연산 출력.
 	 * @param name		출력 이름.
-	 * @param altName	대체 출력 이름 (이전 버전 로봇 트윈의 이름 등). 없으면 {@code null}.
+	 * @param altName	대체 출력 이름 (호환 이름 등). 없으면 {@code null}.
 	 * @return	출력 값. 두 이름 모두 값이 없으면 {@code null}.
 	 */
 	private static JsonNode getOutput(Map<String,JsonNode> outputs, String name, String altName) {

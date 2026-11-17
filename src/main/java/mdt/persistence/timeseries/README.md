@@ -2,7 +2,7 @@
 
 `mdt.persistence.timeseries`는 JDBC 테이블의 시계열 데이터를 AAS TimeSeries Submodel과 레코드 조회 연산으로 제공한다. 기본 AAS 모델에서 레코드 스키마를 읽고, DB에서 전체 구간 요약이나 최근 레코드를 조회하여 응답을 구성한다.
 
-이 문서는 MDT 인스턴스 개발자와 시계열 연동 담당자를 대상으로 설정, 모델 구조, 세그먼트 생성, 범위 조회, 확장 및 문제 진단을 설명한다. 대상은 `mdt-instance`의 실제 패키지인 `mdt.persistence.timeseries`이며, 연결되는 `mdt-client`의 `mdt.model.timeseries`와 `mdt.model.sm.ref.timeseries`도 필요한 범위에서 다룬다. 동작 기준은 2026년 10월 30일의 프로젝트 소스다.
+이 문서는 MDT 인스턴스 개발자와 시계열 연동 담당자를 대상으로 설정, 모델 구조, 세그먼트 생성, 범위 조회, 확장 및 문제 진단을 설명한다. 대상은 `mdt-instance`의 실제 패키지인 `mdt.persistence.timeseries`이며, 연결되는 `mdt-client`의 `mdt.model.timeseries`와 `mdt.model.sm.ref.timeseries`도 필요한 범위에서 다룬다.
 
 ## 역할과 전체 구조
 
@@ -144,7 +144,7 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 }
 ```
 
-세그먼트와 조회 Operation 모두 `JdbcConfiguration.parse()`로 `endpoint`를 해석한다(조회 Operation은 `JdbcProcessor.builder(JdbcConfiguration.parse(endpoint))`; 2026-11-03 이전 이름은 `parseString`·`builderFromFullJdbcUrl`). `?` 뒤의 `user`, `password`, `maxPoolSize`만 떼어 내고, 나머지 질의 파라미터(`sslmode`, `useSSL` 같은 드라이버 옵션)는 JDBC URL에 그대로 남겨 드라이버에 전달한다. 세 값은 `%XX` escape만 디코딩하므로 비밀번호의 `+`는 그대로 쓰인다(`+` 자체를 넣으려면 그대로 쓰고, `&`·`=`·`%`는 `%26`·`%3D`·`%25`로 쓴다). 2026-11-02 이전에는 드라이버 옵션을 버리고 `+`를 공백으로 바꿨다. `user`와 `password`는 선택 항목이다. 없으면 드라이버에 넘기지 않으므로 인증이 없는 DB나 드라이버 고유의 방식(예: H2의 `;USER=..`)으로 자격 증명을 줄 수 있다(2026-11-02 이전에는 필수였고 없으면 `IllegalArgumentException`).
+세그먼트와 조회 Operation 모두 `JdbcConfiguration.parse()`로 `endpoint`를 해석한다(조회 Operation은 `JdbcProcessor.builder(JdbcConfiguration.parse(endpoint))`). `?` 뒤의 `user`, `password`, `maxPoolSize`만 떼어 내고, 나머지 질의 파라미터(`sslmode`, `useSSL` 같은 드라이버 옵션)는 JDBC URL에 그대로 남겨 드라이버에 전달한다. 세 값은 `%XX` escape만 디코딩하므로 비밀번호의 `+`는 그대로 쓰인다(`+` 자체를 넣으려면 그대로 쓰고, `&`·`=`·`%`는 `%26`·`%3D`·`%25`로 쓴다). `user`와 `password`는 선택 항목이다. 없으면 드라이버에 넘기지 않으므로 인증이 없는 DB나 드라이버 고유의 방식(예: H2의 `;USER=..`)으로 자격 증명을 줄 수 있다.
 
 `maxPoolSize`는 연결 풀의 최대 크기로 쓰인다(생략하면 3). 다만 풀은 접속 정보(URL·사용자·비밀번호·드라이버)가 같으면 공유되므로, asset JDBC 변수 등이 같은 접속 정보로 풀을 먼저 만들었다면 그 풀의 크기가 그대로 쓰이고 이 값은 무시된다. 설정 방식도 asset JDBC 변수의 `jdbcConfig`(전역 `jdbcs` 이름 또는 인라인 설정)와 다르다.
 

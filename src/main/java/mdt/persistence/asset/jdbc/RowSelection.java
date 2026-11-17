@@ -22,7 +22,7 @@ import utils.json.JacksonUtils;
  *   <li>{@code where}, {@code orderBy}, {@code limit} — 각각 {@code WHERE}의 조건식, {@code ORDER BY}의 정렬식,
  *       {@code LIMIT}의 행 수이며 모두 선택 항목이다. 키워드({@code WHERE}, {@code ORDER BY})는 쓰지 않는다.
  *       {@code UPDATE} 질의에는 {@code where}만 쓰인다.</li>
- *   <li>{@code whereClause} — SQL 끝에 그대로 덧붙는 문자열(이전 방식). {@code WHERE}, {@code ORDER BY}, {@code LIMIT}
+ *   <li>{@code whereClause} — SQL 끝에 그대로 덧붙는 문자열(호환용). {@code WHERE}, {@code ORDER BY}, {@code LIMIT}
  *       등의 키워드를 포함해 쓰며, 조회와 {@code UPDATE} 질의 모두에 그대로 붙는다.</li>
  * </ul>
  * 직렬화할 때는 읽어 들인 방식을 유지한다.
@@ -39,7 +39,7 @@ final class RowSelection {
 	private static final Pattern SQL_COMMENT = Pattern.compile("/\\*.*?\\*/|--[^\\n]*", Pattern.DOTALL);
 	private static final Pattern WHERE_KEYWORD = Pattern.compile("\\bwhere\\b", Pattern.CASE_INSENSITIVE);
 
-	private final String m_whereClause;		// 이전 방식. 쓰지 않으면 빈 문자열.
+	private final String m_whereClause;		// 호환용. 쓰지 않으면 빈 문자열.
 	private final @Nullable String m_where;
 	private final @Nullable String m_orderBy;
 	private final @Nullable Integer m_limit;

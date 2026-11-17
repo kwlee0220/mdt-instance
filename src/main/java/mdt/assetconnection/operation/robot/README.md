@@ -2,7 +2,7 @@
 
 `mdt.assetconnection.operation.robot` 패키지는 AAS Operation의 입력을 로봇 트윈 클라이언트 호출로 변환하고, 실행 결과를 AAS 출력 변수에 반영한다. 로봇 이동, 그리퍼 제어, 파지·놓기 작업, scene 초기화와 관측을 워크플로에서 사용할 때 이 패키지를 이용한다.
 
-이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. 설명 기준은 2026년 10월 31일의 구현이다. AAS 호출 등록과 다른 종류의 Provider는 [mdt.assetconnection](../../README.md)을 참고한다. 로봇 연산의 설명은 이 문서에 모두 있다(예전에 assetconnection 가이드에 따로 있던 `Pick`·`AlignHeldObject` 설명도 합쳤다).
+이 문서는 MDT 인스턴스와 워크플로 개발자를 대상으로 클래스의 역할, 연산별 동작, 입력·출력 형식과 기본값을 설명한다. AAS 호출 등록과 다른 종류의 Provider는 [mdt.assetconnection](../../README.md)을 참고한다. `Pick`·`AlignHeldObject`를 포함한 로봇 연산의 설명은 이 문서에 모두 있다.
 
 표의 기본값은 **Provider에서 입력을 생략했을 때 적용하는 값**이다. AAS 모델이나 워크플로가 값을 명시하면 그 값이 우선한다. “서버 설정”은 Provider가 해당 값을 요청에 넣지 않는다는 뜻이며, 특정 배포의 기본값을 클라이언트가 보장한다는 뜻은 아니다.
 
@@ -160,7 +160,7 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 }
 ```
 
-위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 이전 형식의 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([mdt.persistence.asset](../../../persistence/asset/README.md#연결-설정-지정)).
+위 URL은 형식 예시이며 실제 주소와 포트는 배포에 맞춰 지정한다. 호환용 필드 `robotTwinConfigName`(전역 설정 이름)도 받지만, `robotTwinConfig`와 함께 넣으면 Provider 생성이 실패한다. 이 방식은 자산 변수의 연결 설정 지정과 같다([mdt.persistence.asset](../../../persistence/asset/README.md#연결-설정-지정)).
 
 ### 3.2 Pose와 관절 목표
 
@@ -373,7 +373,7 @@ flowchart TD
 
 원격 출력 이름은 `target` → `goal`, `width` → `position`, `at_goal` → `reached_goal` 순으로 찾는다. 앞 이름이 없거나 null이면 뒤 이름을 사용한다. `stalled`는 대체 이름이 없다. 필수 원격 값인 목표 이름·stall·도달 보고를 얻지 못하면 `IOException`이다. Boolean이 아닌 stall·도달 값은 WARN 후 false로 반영한다.
 
-이 호환 변환 때문에 Provider의 `ReachedGoal`은 클라이언트의 `check.goalReached()`을 그대로 복사한 값이 아니다. 예전 이름의 출력을 받는 경우에도 AAS 호환을 유지한다. 펑션베이에서 개구 폭을 얻지 못하면 `Position`이 갱신되지 않을 수 있다.
+이 호환 변환 때문에 Provider의 `ReachedGoal`은 클라이언트의 `check.goalReached()`을 그대로 복사한 값이 아니다. 대체 이름(`target`, `width`, `at_goal`)의 출력을 받는 경우에도 AAS 호환을 유지한다. 펑션베이에서 개구 폭을 얻지 못하면 `Position`이 갱신되지 않을 수 있다.
 
 원격 `FAILED`·`CANCELLED`는 출력 갱신 전에 예외로 전달한다. 원격 `COMPLETED`에 `at_goal=false`가 담겨 오면 `ReachedGoal=false`로 정상 반환한다. `ReachedGoal=true`도 특정 물체를 실제로 잡았거나 놓았다는 보장은 아니다.
 

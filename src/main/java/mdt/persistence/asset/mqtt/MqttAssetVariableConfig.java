@@ -36,7 +36,7 @@ import mdt.persistence.asset.AssetVariableConfig;
  * }
  * }</pre>
  * {@code mqttBrokerConfig}는 전역 설정 파일의 {@code mqttBrokers} 항목 이름(문자열)이거나
- * broker 설정 객체이다. 생략하면 {@code "default"}이다. 이전 형식의 {@code mqttBrokerConfigName}도
+ * broker 설정 객체이다. 생략하면 {@code "default"}이다. 호환용 필드 {@code mqttBrokerConfigName}도
  * 받지만, {@code mqttBrokerConfig}와 함께 사용할 수는 없다({@link ConnectionConfigRef}).
  *
  * @author Kang-Woo Lee (ETRI)
@@ -44,7 +44,7 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class MqttAssetVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:mqtt";
 
-	private static final String FIELD_BROKER_CONFIG_NAME = "mqttBrokerConfigName";	// 이전 형식
+	private static final String FIELD_BROKER_CONFIG_NAME = "mqttBrokerConfigName";	// 호환용 필드
 	private static final String FIELD_BROKER_CONFIG = "mqttBrokerConfig";
 	private static final String FIELD_TOPIC = "topic";
 	private static final String FIELD_QOS = "qos";

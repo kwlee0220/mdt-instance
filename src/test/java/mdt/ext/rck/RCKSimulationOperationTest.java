@@ -273,7 +273,7 @@ public class RCKSimulationOperationTest {
 
 	@Test(timeout = 15_000)
 	public void omitted_optional_output_is_skipped() throws Exception {
-		// 모델에 SimulationVideoUrl 출력 변수가 없어도 나머지 출력을 기록하고 성공한다(이전에는 NPE로 실패했다).
+		// 모델에 SimulationVideoUrl 출력 변수가 없어도 나머지 출력을 기록하고 성공한다.
 		String url = startServer(new FakeRckServer(false, false)
 									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo()));
 		Map<String,SubmodelElement> outputs = outputs();

@@ -99,7 +99,7 @@ public class AssertVariableBasedPersistenceTest {
 		verify(m_base).save(submodel);
 	}
 
-	// 검토 #5: 쓰기 전용 AssetVariable이 연결된 Collection의 하위 요소만 갱신하는 경우,
+	// 쓰기 전용 AssetVariable이 연결된 Collection의 하위 요소만 갱신하는 경우,
 	// base persistence의 현재 값에 갱신 부분을 반영한 전체 값을 외부에 기록한다.
 	@Test
 	public void testPartialUpdateOfWriteOnlyVariable() throws Exception {

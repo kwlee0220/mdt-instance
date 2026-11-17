@@ -49,7 +49,7 @@ import mdt.persistence.asset.AssetVariableConfig;
  * }
  * }</pre>
  * {@code robotTwinConfig}는 전역 설정({@code robotTwins} 그룹)의 항목 이름(문자열)이거나 접속 정보 객체이다.
- * 생략하면 전역 설정의 {@code default} 항목을 사용한다. 이전 형식의 {@code robotTwinConfigName}도 받지만
+ * 생략하면 전역 설정의 {@code default} 항목을 사용한다. 호환용 필드 {@code robotTwinConfigName}도 받지만
  * {@code robotTwinConfig}와 함께 사용할 수는 없다({@link ConnectionConfigRef}).
  * {@code requireOkQuality}는 boolean이며 생략하면 {@code false}다.
  * Mapping의 값은 문자열 JSON Pointer여야 하며, 설정을 읽을 때 문법을 검사한다.
@@ -59,7 +59,7 @@ import mdt.persistence.asset.AssetVariableConfig;
 public class RobotStateVariableConfig extends AbstractAssetVariableConfig implements AssetVariableConfig {
 	public static final String SERIALIZATION_TYPE = "mdt:asset:robot-twin:state";
 
-	private static final String FIELD_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";	// 이전 형식
+	private static final String FIELD_ROBOT_TWIN_CONFIG_NAME = "robotTwinConfigName";	// 호환용 필드
 	private static final String FIELD_ROBOT_TWIN_CONFIG = "robotTwinConfig";
 	private static final String FIELD_VARIABLE = "variable";
 	private static final String FIELD_MAPPINGS = "mappings";
@@ -232,8 +232,7 @@ public class RobotStateVariableConfig extends AbstractAssetVariableConfig implem
 			}
 		}
 		else if ( mappingsNode.isArray() ) {
-			// 이전 버전의 serializeFields()가 [{"subPath": ..., "pointer": ...}, ...] 형식으로 저장한
-			// 설정도 읽을 수 있도록 배열 형식을 함께 받는다.
+			// 호환을 위해 [{"subPath": ..., "pointer": ...}, ...] 배열 형식도 함께 받는다.
 			config.m_mappings = new ArrayList<>();
 			for ( JsonNode mappingNode: mappingsNode ) {
 				String subPath = JacksonUtils.getStringField(mappingNode, "subPath");

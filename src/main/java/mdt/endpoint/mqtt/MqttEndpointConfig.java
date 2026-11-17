@@ -71,8 +71,8 @@ public class MqttEndpointConfig extends EndpointConfig<MqttEndpoint> {
 	 * }</pre>
 	 * {@code mqttBrokerConfig}를 생략하면 전역 설정의 {@code default}를 사용한다. MQTT 자산 변수
 	 * ({@code mdt:asset:mqtt})의 같은 이름 필드와 같은 규칙이다({@link ConnectionConfigRef}). 단, 자산 변수와 달리
-	 * 이전 형식인 {@code mqttBrokerConfigName}은 지원하지 않는다. 목록에 없는 필드처럼 무시되므로, 적혀 있으면
-	 * {@code default} broker를 쓰게 된다(2026-11-02 이전에는 설정을 읽는 단계에서 거부했다).
+	 * 호환용 필드인 {@code mqttBrokerConfigName}은 지원하지 않는다. 목록에 없는 필드처럼 무시되므로, 적혀 있으면
+	 * {@code default} broker를 쓰게 된다.
 	 * {@code subscribers}는 반드시 하나 이상 있어야 하며, 없거나 비어 있으면 설정을 읽는 단계에서 거부한다.
 	 */
 	@JsonIncludeProperties({ "mqttBrokerConfig", "subscribers" })

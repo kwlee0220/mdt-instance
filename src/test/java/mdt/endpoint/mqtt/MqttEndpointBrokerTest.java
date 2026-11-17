@@ -87,7 +87,7 @@ public class MqttEndpointBrokerTest {
 			}
 			Thread.sleep(500);		// 콜백 쓰레드가 자리를 기다리고 Paho 대기열이 차도록 둔다.
 
-			// 반영이 멈춘 채로 종료한다. 예전에는 구독 해제가 공유 잠금 안에서 응답을 기다려 교착되었다.
+			// 반영이 멈춘 채로 종료한다. 구독 해제가 공유 잠금 안에서 응답을 기다리면 교착되므로 그렇지 않음을 확인한다.
 			AtomicReference<MqttEndpoint.StopResult> result = new AtomicReference<>();
 			Thread stopper = new Thread(() -> result.set(endpoint.stop(Duration.ofSeconds(1))), "review-stop");
 			long startNanos = System.nanoTime();

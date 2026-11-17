@@ -5,7 +5,7 @@ Java 클래스, 외부 프로그램, Python 스크립트, 원격 HTTP 연산을 
 실행 결과를 AAS 연산 변수(`OperationVariable`)에 반영한다.
 
 이 문서는 MDT 인스턴스를 설정하거나 새로운 연산을 구현하는 개발자를 대상으로 한다.
-2026년 10월 31일의 소스를 기준으로 설정 방법, 입출력 형식, 실행 결과의 해석과 확장 방법을 설명한다.
+설정 방법, 입출력 형식, 실행 결과의 해석과 확장 방법을 설명한다.
 빌드 대상은 Java 21이며, FA³ST starter 1.3.0을 사용한다.
 
 ## 1. 읽기 안내와 구현 방식 선택
@@ -528,7 +528,7 @@ sequenceDiagram
 }
 ```
 
-출력 값은 `ElementValues.parseJsonNode(node, proto)`(2026-11-01 이전 이름 `parseGeneralJsonNode`)로 읽으므로 `@type`이 있는 ElementValue JSON과
+출력 값은 `ElementValues.parseJsonNode(node, proto)`로 읽으므로 `@type`이 있는 ElementValue JSON과
 일반 값 JSON을 모두 지원한다. 일반 값이면 기존 출력 요소의 타입을 사용한다.
 등록된 출력 중 응답에 없는 것은 변경하지 않고, 등록되지 않은 추가 결과는 반환 배열에 추가하지 않는다.
 변경하지 않은 출력에는 원형의 초기값이 남을 수 있으므로 “누락 출력은 null”이라고 가정하지 않는다.
