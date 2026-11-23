@@ -174,63 +174,29 @@ public class RCKSimulationOperationTest {
 		server.assertStopBeforeClose();
 	}
 
-	private static OperationVariable[] toVars(Map<String,SubmodelElement> vars) {
-		return vars.values().stream()
-					.map(sme -> new DefaultOperationVariable.Builder().value(sme).build())
-					.toArray(OperationVariable[]::new);
-	}
-
-	@Test(timeout = 15_000)
-	public void invoke_async_returns_at_once_and_reports_outputs_on_completion() throws Exception {
-		// 비동기 호출은 시뮬레이션을 시작만 하고 반환한다. 끝나면 출력 변수를 채워 성공 콜백을 부른다.
-		FakeRckServer server = new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo());
-		server.m_startDelayMillis = 500;
-		String url = startServer(server);
-		Map<String,SubmodelElement> outputs = outputs();
-		CompletableFuture<OperationVariable[]> success = new CompletableFuture<>();
-
-		long started = System.nanoTime();
-		operation(config(url, Map.of())).invokeAsync(toVars(inputs("layout")), new OperationVariable[0],
-													toVars(outputs), (out, inout) -> success.complete(out),
-													success::completeExceptionally);
-		long elapsedMillis = (System.nanoTime() - started) / 1_000_000;
-
-		assertTrue("invokeAsync must not wait for the simulation: " + elapsedMillis + "ms", elapsedMillis < 400);
-		success.get(5, TimeUnit.SECONDS);
-		assertEquals("http://video/v.mp4", value(outputs, "SimulationVideoUrl"));
-	}
-
-	@Test(timeout = 15_000)
-	public void invoke_async_reports_max_duration_as_timeout_failure() throws Exception {
-		FakeRckServer server = new FakeRckServer(false, false);
-		server.m_ignoreLayout = true;
-		String url = startServer(server);
-		CompletableFuture<Throwable> failure = new CompletableFuture<>();
-
-		operation(config(url, Map.of("maxDuration", "500ms")))
-			.invokeAsync(toVars(inputs("layout")), new OperationVariable[0], toVars(outputs()),
-						(out, inout) -> failure.complete(null), failure::complete);
-
-		Throwable cause = failure.get(5, TimeUnit.SECONDS);
-		assertTrue("" + cause, cause instanceof ExecutionException && cause.getCause() instanceof TimeoutException);
-		server.assertStopBeforeClose();
-	}
-
 	@Test(timeout = 15_000)
 	public void call_while_running_is_rejected_and_accepted_after_finish() throws Exception {
 		// 실행 중인 시뮬레이션이 있으면 새 호출은 시작하지 않고 거부한다. 끝나면 다음 호출을 받는다.
 		FakeRckServer first = new FakeRckServer(false, false);
 		first.m_ignoreLayout = true;
 		String url = startServer(first);
-		RCKSimulationOperation op = operation(config(url, Map.of("maxDuration", "500ms")));
+		RCKSimulationOperation op = operation(config(url, Map.of("maxDuration", "1500ms")));
 		CompletableFuture<Throwable> failure = new CompletableFuture<>();
 
-		op.invokeAsync(toVars(inputs("layout")), new OperationVariable[0], toVars(outputs()),
-						(out, inout) -> failure.complete(null), failure::complete);
+		Thread caller = new Thread(() -> {
+			try {
+				op.invokeSync(inputs("layout"), Map.of(), outputs());
+				failure.complete(null);
+			}
+			catch ( Throwable e ) {
+				failure.complete(e);
+			}
+		});
+		caller.start();
+		Thread.sleep(300);
 		assertThrows(IllegalStateException.class, () -> op.invokeSync(inputs("layout"), Map.of(), outputs()));
 
-		assertTrue("" + failure.get(5, TimeUnit.SECONDS), failure.get() instanceof ExecutionException);
+		assertTrue("" + failure.get(5, TimeUnit.SECONDS), failure.get() instanceof TimeoutException);
 		m_server.enqueue(new MockResponse().withWebSocketUpgrade(
 							new FakeRckServer(false, false).thenSend(RCKSimulationTest.STATUS,
 																	RCKSimulationTest.videoInfo())));
@@ -256,21 +222,6 @@ public class RCKSimulationOperationTest {
 		assertNull(RCKSimulationOperation.toOperationSubmodel(null, () -> null));
 	}
 
-	@Test
-	public void callback_failures_follow_the_default_operation_provider_rules() {
-		// 원인을 꺼낸 뒤 시간 초과·취소·실행 실패 등만 ExecutionException으로 감싸고, 나머지는 그대로 넘긴다.
-		java.io.IOException io = new java.io.IOException("down");
-		assertEquals(io, RCKSimulationOperation.toCallbackFailure(new ExecutionException(io)));
-
-		TimeoutException timeout = new TimeoutException("late");
-		Throwable wrapped = RCKSimulationOperation.toCallbackFailure(new ExecutionException(timeout));
-		assertTrue("" + wrapped, wrapped instanceof ExecutionException && wrapped.getCause() == timeout);
-
-		Throwable cancelled = RCKSimulationOperation.toCallbackFailure(
-															new java.util.concurrent.CancellationException());
-		assertTrue("" + cancelled, cancelled instanceof ExecutionException);
-	}
-
 	@Test(timeout = 15_000)
 	public void omitted_optional_output_is_skipped() throws Exception {
 		// 모델에 SimulationVideoUrl 출력 변수가 없어도 나머지 출력을 기록하고 성공한다.
@@ -282,42 +233,6 @@ public class RCKSimulationOperationTest {
 		operation(config(url, Map.of())).invokeSync(inputs("layout"), Map.of(), outputs);
 
 		assertEquals("100", value(outputs, "Progress"));
-	}
-
-	@Test(timeout = 15_000)
-	public void a_throwing_success_callback_does_not_trigger_the_failure_callback() throws Exception {
-		String url = startServer(new FakeRckServer(false, false)
-									.thenSend(RCKSimulationTest.STATUS, RCKSimulationTest.videoInfo()));
-		java.util.concurrent.atomic.AtomicInteger successes = new java.util.concurrent.atomic.AtomicInteger();
-		java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
-		CompletableFuture<Void> called = new CompletableFuture<>();
-
-		operation(config(url, Map.of())).invokeAsync(toVars(inputs("layout")), new OperationVariable[0],
-				toVars(outputs()),
-				(out, inout) -> { successes.incrementAndGet(); called.complete(null); throw new IllegalStateException("boom"); },
-				error -> failures.incrementAndGet());
-
-		called.get(5, TimeUnit.SECONDS);
-		Thread.sleep(300);
-		assertEquals(1, successes.get());
-		assertEquals(0, failures.get());
-	}
-
-	@Test(timeout = 15_000)
-	public void a_throwing_failure_callback_is_called_once() throws Exception {
-		FakeRckServer server = new FakeRckServer(false, false);
-		server.m_ignoreLayout = true;
-		String url = startServer(server);
-		java.util.concurrent.atomic.AtomicInteger failures = new java.util.concurrent.atomic.AtomicInteger();
-		CompletableFuture<Void> called = new CompletableFuture<>();
-
-		operation(config(url, Map.of("maxDuration", "300ms"))).invokeAsync(toVars(inputs("layout")),
-				new OperationVariable[0], toVars(outputs()), (out, inout) -> { },
-				error -> { failures.incrementAndGet(); called.complete(null); throw new IllegalStateException("boom"); });
-
-		called.get(5, TimeUnit.SECONDS);
-		Thread.sleep(300);
-		assertEquals(1, failures.get());
 	}
 
 	@Test

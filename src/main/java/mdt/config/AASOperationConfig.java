@@ -1,15 +1,12 @@
 package mdt.config;
 
-import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import de.fraunhofer.iosb.ilt.faaast.service.model.SubmodelElementIdentifier;
 
-import utils.UnitUtils;
 import utils.func.Nullables;
 
 import mdt.ElementLocation;
@@ -23,7 +20,7 @@ import mdt.persistence.MDTModelLookup;
  */
 public sealed class AASOperationConfig
 		permits AASOperationConfig.ProgramConfig, AASOperationConfig.JavaConfig,
-				AASOperationConfig.HttpConfig, AASOperationConfig.ScriptConfig {
+				AASOperationConfig.HttpConfig {
 	AASOperationConfig() { }
 	
 	public SubmodelElementIdentifier getOperationIdentifier(String opRefStr) {
@@ -62,33 +59,6 @@ public sealed class AASOperationConfig
 		
 		public void setArguments(Map<String, JsonNode> arguments) {
 			m_arguments = arguments;
-		}
-	}
-
-	public static final class ScriptConfig extends AASOperationConfig {
-		@JsonProperty("scriptFile") private String m_scriptFile;
-		@JsonProperty("timeout") private Duration m_timeout;
-		
-		public String getScriptFile() {
-			return m_scriptFile;
-		}
-		
-		public void setScriptFile(String scriptFile) {
-			m_scriptFile = scriptFile;
-		}
-		
-		public Duration getTimeout() {
-			return m_timeout;
-		}
-
-		@JsonProperty("timeout")
-		public String getTimeoutAsString() {
-			return m_timeout.toString();
-		}
-		
-		@JsonProperty("timeout")
-		public void setTimeoutString(String timeout) {
-			m_timeout = UnitUtils.parseDuration(timeout);
 		}
 	}
 

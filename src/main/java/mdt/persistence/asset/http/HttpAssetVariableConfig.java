@@ -15,7 +15,7 @@ import com.fasterxml.jackson.core.JsonPointer;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Preconditions;
-import utils.UnitUtils;
+import utils.Durations;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
 
@@ -198,7 +198,7 @@ public class HttpAssetVariableConfig extends AbstractAssetVariableConfig impleme
 		}
 
 		String timeoutStr = JacksonUtils.getStringFieldOrNull(jnode, FIELD_TIMEOUT);
-		config.m_timeout = (timeoutStr != null) ? UnitUtils.parseDuration(timeoutStr) : null;
+		config.m_timeout = (timeoutStr != null) ? Durations.parse(timeoutStr) : null;
 
 		String valuePointer = JacksonUtils.getStringFieldOrNull(jnode, FIELD_VALUE_POINTER);
 		config.m_valuePointer = (valuePointer != null) ? checkJsonPointer(valuePointer, FIELD_VALUE_POINTER) : "";

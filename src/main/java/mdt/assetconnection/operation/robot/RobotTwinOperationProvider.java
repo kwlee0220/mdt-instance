@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
@@ -30,6 +31,7 @@ import mdt.MDTGlobalConfigurations;
 import mdt.RobotTwinConfig;
 import mdt.assetconnection.operation.AbstractJavaOperationProvider;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
+import mdt.assetconnection.operation.OperationProvider;
 import mdt.model.MDTModelSerDe;
 import mdt.robot.client.OperationFailedException;
 import mdt.robot.client.OperationResult;
@@ -91,12 +93,18 @@ public abstract class RobotTwinOperationProvider extends AbstractJavaOperationPr
 	}
 
 	/**
-	 * 단일·조합 연산을 동기로 실행하고 실행 래퍼 대신 실제 원인 예외를 전달한다.
-	 * 인터럽트와 취소는 그대로 전파하며, 반환된 결과의 도달·원격 실패 판정은 각 Provider가 맡는다.
+	 * 단일·조합 연산을 실행하고 끝날 때까지 기다린다. 실행 래퍼 대신 실제 원인 예외를 전달하며, 반환된 결과의
+	 * 도달·원격 실패 판정은 각 Provider가 맡는다.
+	 * <p>
+	 * 연산은 {@link OperationProvider#runCancellingOnInterrupt}로 별도 스레드에서 실행한다. 기다리는 스레드가
+	 * 인터럽트되면 AAS 연산 취소로 보고 연산을 {@code cancel(true)}로 취소한다. 로봇 클라이언트 연산은 이때 원격
+	 * 세션에 취소(DELETE)를 보낸다(실행 스레드 인터럽트만으로는 보내지 않는다). 그 뒤 연산이 끝나기를 기다렸다가
+	 * {@link InterruptedException}을 던진다. 기다리는 중에 다시 인터럽트되면 더 기다리지 않는다. 연산 자신의 취소는
+	 * {@link CancellationException}으로 전파한다.
 	 */
 	protected static <T> T runOperation(AbstractThreadedExecution<T> operation) throws Exception {
 		try {
-			return operation.run();
+			return OperationProvider.runCancellingOnInterrupt(operation);
 		}
 		catch ( ExecutionException e ) {
 			if ( e.getCause() instanceof Exception cause ) { throw cause; }

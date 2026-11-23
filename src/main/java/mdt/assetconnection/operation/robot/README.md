@@ -54,7 +54,7 @@ flowchart TD
     E -.-> N[이 호출의 출력은 반환되지 않음]
 ```
 
-`AbstractJavaOperationProvider`는 `OperationVariable[]`을 각 요소의 `idShort`로 인덱싱한 Map으로 변환한다. 구체 Provider는 `invokeSync()`에서 입력을 읽고 클라이언트 연산을 실행한다. 현재 11개 Provider 모두 입출력 변수(`inoutputVariables`)를 결과 저장 용도로 사용하지 않는다. `MoveLinearProvider`만 지원하지 않는 이전 입력을 거부하려고 입출력 변수 이름을 검사한다.
+`AbstractJavaOperationProvider`는 `OperationVariable[]`을 각 요소의 `idShort`로 인덱싱한 Map으로 변환한다. 구체 Provider는 `invokeSync()`에서 입력을 읽고 클라이언트 연산을 실행한다. 현재 11개 Provider 모두 입출력 변수(`inoutputVariables`)를 결과 저장 용도로 사용하지 않는다. `MoveLinearProvider`만 지원하지 않는 입력(`Frame`·`MaxStep`·`JumpThreshold`)을 거부하려고 입출력 변수 이름도 검사한다.
 
 AAS 비동기 호출은 Provider의 실행을 비동기로 감싼다. 이것과 로봇 트윈 서버의 동기·비동기 연산 구분은 별개다. 클라이언트는 서버의 연산 카탈로그에 따라 즉시 결과를 받거나 세션을 폴링한다. `GetSceneObjects`와 `WaitUntilObjectStill`은 상태 변수 조회이므로 원격 연산 세션을 만들지 않는다.
 
@@ -78,7 +78,7 @@ Property의 `valueType`도 계약의 일부다. 예를 들어 `VelocityScaling`�
 | 메서드 | 역할 |
 |---|---|
 | `createRobotTwinClient()` | 연결 설정을 이용해 Provider별 클라이언트 하나 생성 |
-| `runOperation()` | 클라이언트 연산의 `run()` 실행. `ExecutionException`에 감싸진 원인 예외를 꺼내 전달 |
+| `runOperation()` | 클라이언트 연산을 별도 스레드에서 실행하고 끝날 때까지 대기. `ExecutionException`에 감싸진 원인 예외를 꺼내 전달. 대기 중 인터럽트되면 연산을 `cancel(true)`로 취소하고 끝나기를 기다린 뒤 `InterruptedException` 전달 |
 | `readPose()` | AAS 자세를 변환하기 전에 위치·쿼터니언의 모든 성분이 유한한 숫자인지 검사 |
 | `secondsToDuration()`, `settleDuration()` | 초를 밀리초로 반올림하고 음수·비유한 값·변환 범위 초과를 거부 |
 | `getClientTimeout()` | 이동 연산의 서버 상한에 30초를 더해 결과 대기 시간 계산 |
@@ -126,7 +126,9 @@ AAS 호출이 정상 완료되어도 로봇이 목표에 도달했다는 뜻은 
 
 `SettleTimeout`, 관측의 `Timeout`·`QuietPeriod`는 가장 가까운 밀리초로 반올림한다. 0.5ms는 1ms, 0.5ms 미만은 0이 된다. `SettleTimeout=0`은 정착 확인 생략이며, 양수가 필요한 관측 시간 입력은 반올림 결과가 0이어도 거부된다. 클라이언트가 처리할 수 없는 큰 기간도 거부된다.
 
-결과 대기 시간 초과나 로컬 인터럽트가 원격 동작의 중단을 보장하지 않는다. 현재 Provider는 클라이언트 연산을 동기 실행하며 별도의 취소 API를 제공하지 않는다. 특히 Grasp·Place는 전체 작업의 서버 자원을 예약하지 않으므로 호출자가 다른 명령과의 경합을 조정해야 한다.
+Provider를 실행하는 스레드의 인터럽트는 연산 취소 요청으로 처리한다(AAS 비동기 연산 취소가 이 경로를 쓴다). `runOperation()`은 클라이언트 연산을 `cancel(true)`로 취소한다. 그러면 진행 중인 비동기 서버 연산의 세션에 취소(DELETE)가 가고, 조합 연산(Grasp·Place 등)은 다음 단계를 실행하지 않는다. 동기 서버 연산(그리퍼 이동 등)의 HTTP 호출은 중단할 수 없어 끝날 때까지 기다린다. 이 대기 중에 다시 인터럽트되면 더 기다리지 않는다. 그래서 진행 중이던 단계가 목표 확인으로 끝난 뒤 중단될 수 있으며, 이때 출력의 실패 단계는 비고 사유에 "… 완료 후 … 진입 전 중단"이 기록된다.
+
+결과 대기 시간 초과는 원격 동작을 취소하지 않으며, 취소도 실제 로봇의 정지 완료를 보장하지 않는다. 특히 Grasp·Place는 전체 작업의 서버 자원을 예약하지 않으므로 호출자가 다른 명령과의 경합을 조정해야 한다.
 
 ## 3 설정과 공통 데이터 구조
 

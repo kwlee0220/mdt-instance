@@ -12,7 +12,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -34,8 +33,7 @@ import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
 
-import utils.Throwables;
-import utils.UnitUtils;
+import utils.Durations;
 import utils.func.FOption;
 import utils.func.Result;
 import utils.json.JacksonUtils;
@@ -50,7 +48,6 @@ import mdt.model.sm.ref.DefaultSubmodelReference;
 import mdt.model.sm.ref.MDTSubmodelReference;
 import mdt.model.sm.value.ElementValues;
 import mdt.model.sm.value.PropertyValue;
-import mdt.task.TaskException;
 
 
 /**
@@ -61,9 +58,9 @@ import mdt.task.TaskException;
  * 상황을 반영한다. 갱신기는 오퍼레이션 인스턴스당 하나이며, 결과를 알리기 전에 진행 상황 반영이 끝나기를 최대
  * {@value #OUTPUT_FLUSH_TIMEOUT_SECONDS}초 기다린다.
  * <p>
- * 비동기 호출({@link #invokeAsync})은 시뮬레이션을 시작만 하고 바로 반환한다. 끝을 기다리며 스레드를 붙잡지 않고,
- * 시뮬레이션이 끝나면 그 결과로 성공 또는 실패 콜백을 한 번 부른다. 동기 호출({@link #invokeSync})은 끝날 때까지
- * 기다리며, 기다리다 인터럽트되면 시뮬레이션을 취소한다.
+ * 호출({@link #invokeSync})은 시뮬레이션이 끝날 때까지 기다리며, 기다리다 인터럽트되면 시뮬레이션을 취소한다.
+ * AAS 비동기 호출({@code invoke-async})도 {@code MDTOperationProvider}가 이 메소드를 전용 스레드에서 실행하므로,
+ * 실행 취소(스레드 인터럽트)가 시뮬레이션 취소로 이어진다.
  * <p>
  * 한 오퍼레이션은 시뮬레이션을 한 번에 하나만 실행한다. 진행 상황을 같은 출력 인자에 쓰고 시뮬레이터에 같은
  * {@code clientId}로 등록하기 때문이다. 실행 중에 들어온 호출은 시작하지 않고 {@link IllegalStateException}을 던진다.
@@ -92,7 +89,7 @@ import mdt.task.TaskException;
  *   <li>{@code productionPath} (선택, 기본 {@code Utilizations.Conveyor_6.Production}) - 진행 보고에서 생산량을 읽을 필드 경로.
  *       {@code '.'}으로 구분한다.</li>
  * </ul>
- * 시간 값은 {@link UnitUtils#parseDuration(String)} 형식(예: {@code "90s"}, {@code "2m"})이다.
+ * 시간 값은 {@link Durations#parse(String)} 형식(예: {@code "90s"}, {@code "2m"})이다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -156,47 +153,6 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 		}
 	}
 
-	/**
-	 * 시뮬레이션을 시작하고 바로 반환한다. 시뮬레이션이 끝나면 출력 변수를 기록하고 {@code callbackSuccess}를,
-	 * 실패·취소·시간 초과로 끝나거나 출력 기록에 실패하면 {@code callbackFailure}를 정확히 한 번 부른다. 콜백이 던진
-	 * 예외는 로그만 남긴다. 입력 변수나 출력 변수가 잘못되었거나 이미 실행 중이면 시작하지 않고 예외를 던진다.
-	 */
-	@Override
-	public void invokeAsync(OperationVariable[] inputVars, OperationVariable[] inoutputVars,
-							OperationVariable[] outputVars,
-							BiConsumer<OperationVariable[], OperationVariable[]> callbackSuccess,
-							Consumer<Throwable> callbackFailure) throws Exception {
-		OperationOutputBindings outputs = bindOutputs(toVarMap(outputVars));
-		startSimulation(toVarMap(inputVars), outcome -> {
-			// 결과 판정과 출력 기록만 예외 처리 대상이다. 콜백은 그 결과에 따라 한 번만 부른다.
-			Throwable failure;
-			try {
-				Exception simFailure = outcome.failure();
-				if ( simFailure == null ) {
-					outputs.write(outcome.simulation().getSimulationResult());
-					failure = null;
-				}
-				else {
-					failure = toCallbackFailure(simFailure);
-				}
-			}
-			catch ( Throwable e ) {
-				failure = e;
-			}
-
-			Throwable reported = failure;
-			awaitOutputFlush().whenComplete((ignored, error) -> {
-				if ( reported == null ) {
-					invokeCallback("success", () -> callbackSuccess.accept(outputVars, inoutputVars));
-				}
-				else {
-					s_logger.error("Failed to invoke AASOperation: {}", ""+reported);
-					invokeCallback("failure", () -> callbackFailure.accept(reported));
-				}
-			});
-		});
-	}
-
 	@Override
 	protected void invokeSync(Map<String, SubmodelElement> inputVarList,
 								Map<String, SubmodelElement> inoutputVarList,
@@ -249,14 +205,6 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 								});
 	}
 
-	private static void invokeCallback(String kind, Runnable callback) {
-		try {
-			callback.run();
-		}
-		catch ( Throwable e ) {
-			s_logger.error("operation {} callback failed: {}", kind, ""+e, e);
-		}
-	}
 
 	/**
 	 * 시뮬레이션을 만들어 시작한다. 시뮬레이션이 어떤 경로로 끝나든 {@code onFinished}가 차트 lock 밖에서 한 번 불린다.
@@ -352,22 +300,6 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			}
 		}
 		return sim;
-	}
-
-	/**
-	 * 실패 콜백에 넘길 예외를 만든다. 기본 {@code OperationProvider.invokeAsync}와 같은 규칙을 따른다: 원인을 꺼낸 뒤,
-	 * 시간 초과·작업 실패·취소·실행 실패·인터럽트 예외만 {@link ExecutionException}으로 감싸고 나머지는 그대로 넘긴다.
-	 */
-	static Throwable toCallbackFailure(Throwable failure) {
-		Throwable cause = Throwables.unwrapThrowable(failure);
-		if ( cause instanceof TimeoutException
-			|| cause instanceof TaskException
-			|| cause instanceof CancellationException
-			|| cause instanceof ExecutionException
-			|| cause instanceof InterruptedException ) {
-			return new ExecutionException(cause);
-		}
-		return cause;
 	}
 
 	/**
@@ -535,7 +467,7 @@ public class RCKSimulationOperation extends AbstractJavaOperationProvider {
 			return defaultValue;
 		}
 		try {
-			Duration dur = UnitUtils.parseDuration(str);
+			Duration dur = Durations.parse(str);
 			if ( !dur.isPositive() ) {
 				throw new IllegalArgumentException("not positive");
 			}

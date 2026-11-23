@@ -268,7 +268,10 @@ public class GraspProviderTest {
 			assertTrue(String.valueOf(failure.get()), failure.get() instanceof InterruptedException);
 			assertEquals("false", value("GoalsReached"));
 			assertEquals("true", value("GraspAttempted"));
-			assertEquals("GRASP", value("FailedStage"));
+			// 인터럽트는 연산 취소로 전달된다. 동기 그리퍼 호출은 끝까지 기다리므로 마지막 단계인 GRASP도 목표
+			// 확인으로 끝나지만, 연산은 취소로 끝나 목표 도달로 보고하지 않는다.
+			assertEquals("", value("FailedStage"));
+			assertTrue(value("FailureReason"), value("FailureReason").contains("모든 단계 목표 확인 후 중단"));
 			assertEquals(4, server.requests.stream().filter(r -> r.startsWith("POST ")).count());
 		}
 		finally { release.countDown(); worker.interrupt(); worker.join(3000); }

@@ -7,13 +7,14 @@ The instance's FA³ST `Persistence`, built as a **stack of layers**: each layer 
 `MDTInstanceMain.loadPersistenceConfig()` builds the config chain inside-out, so the runtime order (outermost first) is:
 
 ```
-persistenceStacks[0] … [n-1]      only {"@type":"concurrent"} → ConcurrentPersistence (index 0 is outermost)
-  → TimeSeriesPersistenceStack    only if config.timeSeriesSubmodels is non-empty
-    → AssertVariableBasedPersistence   only if config.assetVariables is non-empty
-      → PersistenceInMemory       FA³ST, loaded from model.json
+OperationHandleCaptureLayer       always
+  → persistenceStacks[0] … [n-1]      only {"@type":"concurrent"} → ConcurrentPersistence (index 0 is outermost)
+    → TimeSeriesPersistenceStack    only if config.timeSeriesSubmodels is non-empty
+      → AssertVariableBasedPersistence   only if config.assetVariables is non-empty
+        → PersistenceInMemory       FA³ST, loaded from model.json
 ```
 
-- **`PersistenceStack<C>`** — abstract base. Every `Persistence` method delegates to `getBasePersistence()`; subclasses override only what they intercept. `init()` creates the base **reflectively from the base config's class name** (`name.substring(0, name.lastIndexOf('C'))`, i.e. `FooConfig` → `Foo` in the same package), then calls its `init`. `start()`/`stop()` cascade to the base.
+- **`PersistenceStack<C>`** — abstract base. Every `Persistence` method except `deleteAll()` delegates to `getBasePersistence()`; subclasses override only what they intercept and must implement `deleteAll()` themselves. `init()` creates the base **reflectively from the base config's class name** (`name.substring(0, name.lastIndexOf('C'))`, i.e. `FooConfig` → `Foo` in the same package), then calls its `init`. `start()`/`stop()` cascade to the base.
 - **`PersistenceStackConfig<P>`** — holds the base config (`basePersistence`). Its setter forces `initialModelFile = model.json` (CWD-relative) when the base is a `PersistenceInMemoryConfig`; the normal path builds the chain in code and sets the real model file, so this only matters for JSON-deserialized configs.
 - **`MDTPersistenceStackConfig`** — the `@type` union for `persistenceStacks` entries. Only `concurrent` is registered; the `timeseries`/`asset`/`mqtt` subtypes are commented out because those layers are configured through their own `config.json` fields, not through `persistenceStacks`.
 - **Finding a layer**: never cast the top-level persistence — which layer is outermost depends on config. Use `PersistenceStack.findInStack(top, Type.class)` (walks base links; `FOption.empty()` if absent). The time-series operation providers do this.
@@ -22,7 +23,8 @@ persistenceStacks[0] … [n-1]      only {"@type":"concurrent"} → ConcurrentPe
 ## Root classes
 
 - **`MDTModelLookup`** — JVM singleton built once from the **initial** `model.json` (`getInstanceOrCreate` — first call wins; `getInstance()` throws ISE before that). Indexes Submodels by idShort and id, finds the Data Submodel (may be absent → `getDataSubmodel()` returns `null`, `isDataSubmodel()` false), and maps each parameter member path (`DataInfo.{Equipment|Operation}.{…}ParameterValues[i]`) to its `ParameterID`. It is **not** updated when the model changes at runtime; asset variables and element locations resolved at start keep their original paths/prototypes.
-- **`ConcurrentPersistence`** — serializes access with one `utils.thread.Guard`, but **only** for: `getSubmodelElement`/`update` whose path is exactly a parameter member path, `getSubmodel`/`save`/`deleteSubmodel` of the Data Submodel, and every `insert`. Everything else (including sub-paths below a parameter member such as `…ParameterValues[0].ParameterValue`) passes through unlocked. Deleting a parameter element throws `UnsupportedOperationException`.
+- **`ConcurrentPersistence`** — serializes almost every call with one `utils.thread.Guard`: everything it overrides except `getAssetAdministrationShell`/`getSubmodelRefs` (element and Submodel get/update/save/delete, `insert`, `find*`, `getOperationResult`, `save(handle, result)`, `deleteAll`). So all requests reaching the inner layers — including asset-variable I/O and time-series queries — run one at a time. Deleting a parameter element throws `UnsupportedOperationException` (`MDTModelLookup.getParameterId` is used only for that check).
+- **`OperationHandleCaptureLayer`** — always the outermost layer, added in code (not configurable). On `save(handle, result)` with `RUNNING` it stores the handle in a `ThreadLocal`, then delegates; nothing else is intercepted. `MDTOperationProvider.invokeAsync` takes it with `takeCapturedHandle()` (read-and-clear). This relies on FA³ST's async handler saving `RUNNING` and calling the provider on the same request thread; `OperationHandleCaptureLayerTest` runs the real FA³ST handler to pin that order. It must stay outermost so FA³ST's save always passes through it.
 - **`MDTPersistenceException`** — `MDTException` subtype; currently unused (asset code throws `AssetVariableException`, the stack layers throw FA³ST's `PersistenceException`).
 
 ## Subpackages
@@ -33,7 +35,7 @@ persistenceStacks[0] … [n-1]      only {"@type":"concurrent"} → ConcurrentPe
   - `read()` must return a copy the caller may mutate; `update()` must not keep or mutate its argument. Shared caches (`m_prototype`) are guarded and copied.
   - `isReadable`/`isUpdatable` describe the external link only; a read-only variable does not make the AAS element read-only.
   - Implementations are found reflectively: `XxxConfig` → `Xxx` in the same package with an accessible `Xxx(XxxConfig)` constructor. `@type` → config class is an explicit `switch` in `AssetVariableConfigs.parseJsonNode()` — add new types there.
-  - `close()` may run before `initialize()` finished and more than once. MQTT variables return their shared `MqttServicePool` lease there; OPC UA variables currently do not close their connection.
+  - `close()` may run before `initialize()` finished and more than once. MQTT variables return their shared `MqttServicePool` lease there; OPC UA variables stop their own `AutoReconnectingOpcUaClient` (cancels reconnection and disconnects).
 - **`timeseries/`** — `TimeSeriesPersistenceStack` serves TimeSeries Submodels from JDBC tables: `Metadata` from the base model, `Segments.FullRange` (count/min/max summary) and optional `Segments.Tail` built per request; `ReadRecords`/`ReadRecordsByRange` operation providers read records through `JdbcRecordsReader`. It is read-only for registered Submodels (`insert`/`update`/deletes throw `UnsupportedOperationException`; `save`/`deleteAll` still reach the base). Start fails unless config entries and time-series Submodels match by idShort; operations look configs up by Submodel **id**.
 
 ## Extending
@@ -43,11 +45,13 @@ persistenceStacks[0] … [n-1]      only {"@type":"concurrent"} → ConcurrentPe
 
 ## Tests
 
-`src/test/java/mdt/persistence/asset/` (JUnit 4, Mockito): `AssertVariableBasedPersistenceTest`, `ConnectionConfigRefTest`, the JDBC tests (`JdbcAssetVariable{Mapping,Review,Consistency}Test`, `JdbcColumnBindingTest`), `MqttAssetVariableTest`, `RobotStateVariableTest`. There are no tests for the root classes or `timeseries/`. Run with `gradle :test --tests 'mdt.persistence.*'` (the leading `:` keeps the filter off the included builds).
+`src/test/java/mdt/persistence/OperationHandleCaptureLayerTest.java` (JUnit 4, Mockito) covers the capture layer, including the FA³ST call-order check.
+
+`src/test/java/mdt/persistence/asset/` (JUnit 4, Mockito): `AssertVariableBasedPersistenceTest`, `ConnectionConfigRefTest`, the JDBC tests (`JdbcAssetVariable{Mapping,Review,Consistency}Test`, `JdbcColumnBindingTest`), `MqttAssetVariableTest`, `RobotStateVariableTest`. There are no tests for the other root classes or `timeseries/`. Run with `gradle :test --tests 'mdt.persistence.*'` (the leading `:` keeps the filter off the included builds).
 
 ## Gotchas
 
 - Layer order is fixed by `loadPersistenceConfig()`: `persistenceStacks` can only add layers **outside** the time-series and asset layers.
-- `ConcurrentPersistence` does not protect asset-variable I/O or time-series queries in general — only the paths listed above.
+- `ConcurrentPersistence` serializes whole requests through the inner layers (asset I/O and time-series queries included), so while it is configured a slow external source blocks every other request.
 - `MDTModelLookup` is a static singleton: tests that need a different model must account for the first-call-wins initialization.
 - `AssertVariableBasedPersistence` / `AssertVariableBasedPersistenceConfig` are misspelled in code (see the project [CLAUDE.md](../../../../../CLAUDE.md)); keep the names unless renaming deliberately across repos.

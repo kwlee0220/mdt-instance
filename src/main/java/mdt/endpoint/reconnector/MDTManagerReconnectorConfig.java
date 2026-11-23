@@ -2,6 +2,8 @@ package mdt.endpoint.reconnector;
 
 import java.time.Duration;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
@@ -10,10 +12,14 @@ import com.google.common.base.Preconditions;
 
 import de.fraunhofer.iosb.ilt.faaast.service.endpoint.EndpointConfig;
 
-import utils.UnitUtils;
+import utils.Durations;
 
 
 /**
+ * {@link MDTManagerReconnector}의 FA³ST endpoint 설정.
+ * <p>
+ * {@code operationControlEndpoint}는 AAS 비동기 연산 취소 엔드포인트의 주소(예: {@code https://host:19081})다.
+ * 값이 있으면 등록 요청에 함께 보낸다. 취소 엔드포인트를 열지 않으면 {@code null}이다.
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -23,6 +29,7 @@ public class MDTManagerReconnectorConfig extends EndpointConfig<MDTManagerReconn
 	private String m_mdtUrl;
 	private String m_repositoryEndpoint;
 	private Duration m_heartbeatInterval;
+	@Nullable private String m_operationControlEndpoint;
 	private boolean m_enabled = true; 
 	
 	@JsonCreator
@@ -30,6 +37,7 @@ public class MDTManagerReconnectorConfig extends EndpointConfig<MDTManagerReconn
 									@JsonProperty("mdtUrl") String mdtUrl,
 									@JsonProperty("repositoryEndpoint") String repositoryEndpoint,
 									@JsonProperty("heartbeatInterval") String heartbeatInterval,
+									@JsonProperty("operationControlEndpoint") @Nullable String operationControlEndpoint,
 									@JsonProperty("enabled") boolean enabled) {
 		Preconditions.checkArgument(instanceId != null, "instanceId is not set");
 		Preconditions.checkArgument(mdtUrl != null, "mdtUrl is not set");
@@ -39,7 +47,8 @@ public class MDTManagerReconnectorConfig extends EndpointConfig<MDTManagerReconn
 		this.m_instanceId = instanceId;
 		this.m_mdtUrl = mdtUrl;
 		this.m_repositoryEndpoint = repositoryEndpoint;
-		this.m_heartbeatInterval = UnitUtils.parseDuration(heartbeatInterval);
+		this.m_heartbeatInterval = Durations.parse(heartbeatInterval);
+		this.m_operationControlEndpoint = operationControlEndpoint;
 		this.m_enabled = enabled;
 	}
 	
@@ -62,6 +71,15 @@ public class MDTManagerReconnectorConfig extends EndpointConfig<MDTManagerReconn
 	@JsonProperty("heartbeatInterval")
 	public String getHeartbeatIntervalAsString() {
 		return m_heartbeatInterval.toString();
+	}
+	
+	/**
+	 * AAS 비동기 연산 취소 엔드포인트의 주소를 반환한다.
+	 *
+	 * @return	주소. 취소 엔드포인트를 열지 않으면 {@code null}.
+	 */
+	public @Nullable String getOperationControlEndpoint() {
+		return m_operationControlEndpoint;
 	}
 	
 	public boolean isEnabled() {

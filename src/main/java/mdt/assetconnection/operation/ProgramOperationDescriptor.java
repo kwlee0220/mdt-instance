@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 
-import utils.UnitUtils;
+import utils.Durations;
 import utils.func.Nullables;
 import utils.stream.FStream;
 
@@ -121,7 +121,7 @@ public final class ProgramOperationDescriptor {
 
 	@JsonProperty("timeout")
 	public void setTimeoutString(String durStr) {
-		m_timeout = UnitUtils.parseDuration(durStr);
+		m_timeout = Nullables.map(durStr, Durations::parse);
 	}
 	public void setTimeout(Duration to) {
 		m_timeout = to;

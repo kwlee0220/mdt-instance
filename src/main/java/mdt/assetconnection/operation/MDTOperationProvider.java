@@ -2,15 +2,23 @@ package mdt.assetconnection.operation;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import org.eclipse.digitaltwin.aas4j.v3.dataformat.core.DeserializationException;
 import org.eclipse.digitaltwin.aas4j.v3.dataformat.core.SerializationException;
+import org.eclipse.digitaltwin.aas4j.v3.model.ExecutionState;
+import org.eclipse.digitaltwin.aas4j.v3.model.MessageTypeEnum;
+import org.eclipse.digitaltwin.aas4j.v3.model.OperationResult;
 import org.eclipse.digitaltwin.aas4j.v3.model.OperationVariable;
 import org.eclipse.digitaltwin.aas4j.v3.model.Reference;
+import org.eclipse.digitaltwin.aas4j.v3.model.impl.DefaultOperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +29,8 @@ import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetConnectionExce
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetOperationProvider;
 import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AssetProviderConfig;
 import de.fraunhofer.iosb.ilt.faaast.service.model.IdShortPath;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.Message;
+import de.fraunhofer.iosb.ilt.faaast.service.model.api.operation.OperationHandle;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.PersistenceException;
 import de.fraunhofer.iosb.ilt.faaast.service.model.exception.ResourceNotFoundException;
 import de.fraunhofer.iosb.ilt.faaast.service.util.ReferenceHelper;
@@ -30,7 +40,9 @@ import utils.Preconditions;
 import utils.Throwables;
 import utils.stream.FStream;
 
+import mdt.config.MDTService;
 import mdt.model.MDTModelSerDe;
+import mdt.persistence.OperationHandleCaptureLayer;
 
 
 /**
@@ -49,6 +61,15 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 	 */
 	static final int MAX_FAILURE_MESSAGE_LENGTH = 4096;
 	
+	/** 취소된 연산 결과의 메시지. */
+	static final String CANCELLED_MESSAGE = "operation cancelled by request";
+	/** 취소된 실행의 결과({@code CANCELED}) 저장을 시도하는 횟수. */
+	static final int CANCELLED_SAVE_ATTEMPTS = 3;
+	private static final Duration CANCELLED_SAVE_RETRY_DELAY = Duration.ofMillis(100);
+	
+	/** 서비스의 실행 목록을 얻지 못할 때(FA³ST 서비스 밖에서 쓰는 경우) 연산을 실행할 executor. */
+	private static final Executor FALLBACK_EXECUTOR = ForkJoinPool.commonPool();
+	
 	private final ServiceContext m_serviceContext;
 	private final Reference m_opRef;
 	private final List<OperationVariable> m_outputVariables;
@@ -60,7 +81,6 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 								MDTOperationProviderConfig config) throws AssetConnectionException {
 		Preconditions.checkArgument(config.getJava() != null
 									|| config.getProgram() != null
-									|| config.getScript() != null
 									|| config.getHttp() != null,
 									"No operation provider is specified");
 		
@@ -86,9 +106,6 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 	    	}
 	    	else if ( m_config.getProgram() != null ) {
 				m_opProvider = new ProgramOperationProvider(serviceContext, m_opRef, m_config.getProgram());
-	    	}
-	    	else if ( m_config.getScript() != null ) {
-	    		m_opProvider = new ScriptOperationProvider(serviceContext, m_opRef, m_config.getScript());
 	    	}
 	    	else if ( m_config.getHttp() != null ) {
 	    		m_opProvider = new HttpOperationProvider(serviceContext, m_opRef, m_config.getHttp());
@@ -132,23 +149,106 @@ public class MDTOperationProvider implements AssetOperationProvider<MDTOperation
 		}
     }
 
+	/**
+	 * 연산을 비동기로 실행한다.
+	 * <p>
+	 * 연산 provider의 {@link OperationProvider#invokeSync}를 실행 목록({@link OperationExecutionRegistry})의 전용
+	 * 스레드에서 실행하여, 실행 스레드를 인터럽트하는 방식으로 취소할 수 있게 한다.
+	 * <p>
+	 * FA³ST가 이 호출 직전에 같은 스레드에서 저장한 실행 ID를 {@link OperationHandleCaptureLayer}에서 꺼내 실행을
+	 * 그 ID로 등록한다. 실행 ID를 얻지 못하면 실행은 그대로 진행하되 취소할 수 없다.
+	 * <p>
+	 * 취소된 실행은 FA³ST 콜백을 부르지 않고 {@code CANCELED} 결과를 persistence에 직접 저장한다.
+	 */
     @Override
     public void invokeAsync(OperationVariable[] inputVars,
 							OperationVariable[] inoutputVars,
 							BiConsumer<OperationVariable[], OperationVariable[]> callbackSuccess,
 							Consumer<Throwable> callbackFailure)
             throws AssetConnectionException {
+		OperationHandle handle = OperationHandleCaptureLayer.takeCapturedHandle();
+		String handleId = (handle != null) ? handle.getHandleId() : null;
+		String opName = IdShortPath.fromReference(m_opRef).toString();
+		OperationExecutionRegistry registry = (m_serviceContext instanceof MDTService svc)
+											? svc.getOperationExecutionRegistry() : null;
+		boolean registered = false;
 		try {
 			OperationVariable[] outputVars = FStream.from(m_outputVariables)
 													.mapOrThrow(this::duplicateOperationVariable)
 													.toArray(OperationVariable.class);
-			Consumer<Throwable> limitedFailure = error -> callbackFailure.accept(limitMessageLength(error));
-			m_opProvider.invokeAsync(inputVars, inoutputVars, outputVars, callbackSuccess, limitedFailure);
+			OperationExecution exec = new OperationExecution(handleId, opName,
+					() -> m_opProvider.invokeSync(inputVars, inoutputVars, outputVars),
+					() -> callbackSuccess.accept(outputVars, inoutputVars),
+					error -> {
+						Throwable cause = OperationProvider.toCallbackFailure(error);
+						s_logger.error("Failed to invoke AASOperation: op-ref={}, cause={}", opName, ""+cause);
+						callbackFailure.accept(limitMessageLength(cause));
+					},
+					() -> saveCancelled(handle, inoutputVars, opName));
+
+			if ( registry != null && handleId != null ) {
+				registry.register(exec);
+				registered = true;
+			}
+			else {
+				s_logger.warn("operation handle was not captured; the execution cannot be cancelled: op-ref={}",
+								opName);
+			}
+			exec.start((registry != null) ? registry.getExecutor() : FALLBACK_EXECUTOR);
 		}
 		catch ( Exception e ) {
-			s_logger.error("Failed to start operation: op-ref={}", IdShortPath.fromReference(m_opRef), e);
+			if ( registered ) {
+				registry.unregister(handleId);
+			}
+			s_logger.error("Failed to start operation: op-ref={}", opName, e);
 			Throwables.throwIfInstanceOf(e, AssetConnectionException.class);
 			throw new AssetConnectionException(e);
+		}
+    }
+
+    /**
+     * 취소된 실행의 결과({@code CANCELED})를 서비스의 최상위 persistence에 저장한다.
+     * <p>
+     * 저장이 실패하면 {@link #CANCELLED_SAVE_ATTEMPTS}번까지 다시 시도한다. 끝내 실패하면 예외를 던지며,
+     * {@link OperationExecution}이 그 원인을 기록한다. 취소 엔드포인트는 이를 응답에 드러내고, 다시 취소 요청을
+     * 받으면 저장을 다시 시도한다.
+     *
+     * @throws PersistenceException	모든 시도가 실패한 경우.
+     * @throws InterruptedException	다시 시도하기 전에 기다리는 중 인터럽트된 경우.
+     */
+    private void saveCancelled(OperationHandle handle, OperationVariable[] inoutputVars, String opName)
+		throws PersistenceException, InterruptedException {
+		s_logger.info("operation cancelled: op-ref={}, handle={}",
+						opName, (handle != null) ? handle.getHandleId() : null);
+		if ( handle == null || !(m_serviceContext instanceof MDTService svc) ) {
+			return;
+		}
+
+		OperationResult result = new DefaultOperationResult.Builder()
+										.executionState(ExecutionState.CANCELED)
+										.success(false)
+										.inoutputArguments(Arrays.asList(inoutputVars))
+										.outputArguments(List.of())
+										.messages(Message.builder()
+														.messageType(MessageTypeEnum.INFO)
+														.text(CANCELLED_MESSAGE)
+														.build())
+										.build();
+		for ( int attempt = 1;; ++attempt ) {
+			try {
+				svc.getPersistence().save(handle, result);
+				return;
+			}
+			catch ( PersistenceException e ) {
+				if ( attempt >= CANCELLED_SAVE_ATTEMPTS ) {
+					s_logger.error("Failed to save the cancelled operation result: op-ref={}, handle={}, attempts={}",
+									opName, handle.getHandleId(), attempt, e);
+					throw e;
+				}
+				s_logger.warn("Failed to save the cancelled operation result, retrying: op-ref={}, handle={}, "
+								+ "attempt={}, cause={}", opName, handle.getHandleId(), attempt, ""+e);
+				Thread.sleep(CANCELLED_SAVE_RETRY_DELAY.toMillis() * attempt);
+			}
 		}
     }
     

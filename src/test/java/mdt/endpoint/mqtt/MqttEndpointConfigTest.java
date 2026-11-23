@@ -178,7 +178,7 @@ public class MqttEndpointConfigTest {
 					+ "{ \"topic\": \"a\", \"element\": \"State:A\" }, "
 					+ "{ \"topic\": \"b\", \"element\": \"State:B\", \"maxInFlightMessages\": 50, \"overflowPolicy\": \"DROP\" } ] }");
 		List<MqttElementSubscriber> subs = conf.getSubscribers();
-		assertEquals(1000, subs.get(0).getMaxInFlightMessages());
+		assertEquals(MqttElementSubscriber.DEFAULT_MAX_IN_FLIGHT_MESSAGES, subs.get(0).getMaxInFlightMessages());
 		assertEquals(OverflowPolicy.WAIT, subs.get(0).getOverflowPolicy());
 		assertEquals(50, subs.get(1).getMaxInFlightMessages());
 		assertEquals(OverflowPolicy.DROP, subs.get(1).getOverflowPolicy());

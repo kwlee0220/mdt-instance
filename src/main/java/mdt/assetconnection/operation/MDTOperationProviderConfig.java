@@ -16,7 +16,6 @@ import de.fraunhofer.iosb.ilt.faaast.service.assetconnection.AbstractAssetOperat
 public class MDTOperationProviderConfig extends AbstractAssetOperationProviderConfig {
 	private @Nullable JavaOperationProviderConfig m_java;
 	private @Nullable ProgramOperationProviderConfig m_program;
-	private @Nullable ScriptOperationProviderConfig m_script;
 	private @Nullable HttpOperationProviderConfig m_http;
 	
 	public MDTOperationProviderConfig() { }
@@ -35,14 +34,6 @@ public class MDTOperationProviderConfig extends AbstractAssetOperationProviderCo
 	
 	public void setProgram(ProgramOperationProviderConfig program) {
 		this.m_program = program;
-	}
-	
-	public ScriptOperationProviderConfig getScript() {
-		return m_script;
-	}
-	
-	public void setScript(ScriptOperationProviderConfig script) {
-		this.m_script = script;
 	}
 	
 	public HttpOperationProviderConfig getHttp() {

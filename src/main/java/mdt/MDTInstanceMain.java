@@ -69,7 +69,6 @@ import mdt.assetconnection.operation.HttpOperationProviderConfig;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
 import mdt.assetconnection.operation.MDTOperationProviderConfig;
 import mdt.assetconnection.operation.ProgramOperationProviderConfig;
-import mdt.assetconnection.operation.ScriptOperationProviderConfig;
 import mdt.config.MDTInstanceConfig;
 import mdt.config.MDTService;
 import mdt.config.MDTServiceConfig;
@@ -81,6 +80,8 @@ import mdt.model.MDTModelSerDe;
 import mdt.persistence.ConcurrentPersistenceConfig;
 import mdt.persistence.MDTModelLookup;
 import mdt.persistence.MDTPersistenceStackConfig;
+import mdt.persistence.OperationHandleCaptureLayerConfig;
+import mdt.endpoint.opcontrol.OperationControlEndpointConfig;
 import mdt.persistence.asset.AssertVariableBasedPersistenceConfig;
 import mdt.persistence.timeseries.TimeSeriesPersistenceStackConfig;
 
@@ -132,6 +133,10 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 	@Option(names={"--type", "-t"}, paramLabel="type", defaultValue = "jar",
 				description="attach type: ${COMPLETION-CANDIDATES}")
 	private InstanceType m_type;
+	/** JAR 모드에서 취소 엔드포인트 주소를 mdt-manager에 알리는 줄의 접두어. 시작 표지({@code [***MARKER***]})를 포함하면 안 된다. */
+	static final String OPERATION_CONTROL_MARKER = "[***OPCONTROL***]";
+	// 취소 엔드포인트 주소. 취소 엔드포인트를 열지 않으면 null.
+	private String m_opControlEndpoint;
 	
 	@Option(names={"--port", "-p"}, paramLabel="number", description="port number for MDTInstance")
 	private Integer m_port;
@@ -420,6 +425,10 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 		
 //		Map<String,String> parts = extractHostAndPort(mdtInstanceConfig.getInstanceEndpoint());
 		if ( m_type == InstanceType.JAR ) {
+			// mdt-manager는 시작 표지를 찾은 뒤 앞서 출력된 취소 엔드포인트 줄을 읽는다. 표지 줄보다 먼저 출력해야 한다.
+			if ( m_opControlEndpoint != null ) {
+				System.out.println(OPERATION_CONTROL_MARKER + " MDTInstance operation control: " + m_opControlEndpoint);
+			}
 			System.out.println("[***MARKER***] MDTInstance started: " + mdtInstanceConfig.getInstanceEndpoint());
 		}
 	}
@@ -494,6 +503,18 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 															.build();
 		configs.add(httpEpConfig);
 		
+		// AAS 비동기 연산 취소 엔드포인트. 설정이 있을 때만 열고, 그 주소를 MDT Manager 등록에 함께 보낸다.
+		String opControlEndpoint = null;
+		OperationControlEndpointConfig.MDTConfig opControlConf = (instConf.getServiceEndpoints() != null)
+										? instConf.getServiceEndpoints().getOperationControl() : null;
+		if ( opControlConf != null ) {
+			OperationControlEndpointConfig c = OperationControlEndpointConfig.from(opControlConf, certConfig);
+			configs.add(c);
+			opControlEndpoint = toOperationControlEndpoint(instConf.getInstanceEndpoint(), opControlConf.getPort());
+			m_opControlEndpoint = opControlEndpoint;
+			getLogger().info("Register OperationControl endpoint: {}, address={}", c, opControlEndpoint);
+		}
+		
 		if ( m_type == InstanceType.EXTERNAL ) { 
 			String heartbeatInterval = Nullables.orElse(instConf.getHeartbeatInterval(),
 															DEFAULT_HEARTBEAT_INTERVAL);
@@ -502,7 +523,7 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 			MDTManagerReconnectorConfig reconnectConfig
 								= new MDTManagerReconnectorConfig(instConf.getId(), instConf.getMdtUrl(),
 																	instConf.getInstanceEndpoint(), heartbeatInterval,
-																	true);
+																	opControlEndpoint, true);
 			configs.add(reconnectConfig);
 		}
 		else if ( m_type == InstanceType.JAR ) {
@@ -569,8 +590,9 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 				throw new IllegalArgumentException("Unknown persistence stack config: " + stackConfig);
 			}
 		}
-		
-		return topConfig;
+
+		// 비동기 연산의 실행 ID를 가로채는 계층은 FA³ST의 저장 호출이 반드시 지나도록 항상 가장 바깥에 둔다.
+		return new OperationHandleCaptureLayerConfig(topConfig);
 	}
 	
 	@SuppressWarnings("rawtypes")
@@ -592,15 +614,6 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
 								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
 								opProviderConfig.setJava(new JavaOperationProviderConfig(conf.getClassName(),
 																						conf.getArguments()));
-								opProviders.put(opRef, opProviderConfig);
-							});
-
-			KeyValueFStream.from(instConf.getOperations().getScripts())
-							.forEach((opType, conf) -> {
-								Reference opRef = conf.getOperationIdentifier(opType).toReference();
-								MDTOperationProviderConfig opProviderConfig = new MDTOperationProviderConfig();
-								opProviderConfig.setScript(new ScriptOperationProviderConfig(conf.getScriptFile(),
-																							conf.getTimeoutAsString()));
 								opProviders.put(opRef, opProviderConfig);
 							});
 
@@ -666,6 +679,20 @@ public class MDTInstanceMain extends HomeDirPicocliCommand {
                 : System.getenv(envPathWithAlternativeSeparator(key));
     }
     
+	/**
+	 * 취소 엔드포인트의 주소를 만든다. scheme과 호스트는 인스턴스 endpoint를 따르고 포트만 바꾼다.
+	 *
+	 * @param instanceEndpoint	인스턴스 endpoint (예: {@code https://host:19051/api/v3.0}).
+	 * @param port				취소 엔드포인트 포트.
+	 * @return	취소 엔드포인트 주소 (예: {@code https://host:19081}).
+	 */
+	static String toOperationControlEndpoint(String instanceEndpoint, int port) {
+		URI uri = URI.create(instanceEndpoint);
+		Preconditions.checkArgument(uri.getScheme() != null && uri.getHost() != null,
+									"invalid instanceEndpoint: %s", instanceEndpoint);
+		return String.format("%s://%s:%d", uri.getScheme(), uri.getHost(), port);
+	}
+	
 	private static Map<String, String> extractHostAndPort(String url) {
 		Map<String, String> result = Maps.newHashMap();
 

@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import utils.UnitUtils;
+import utils.Durations;
 
 import mdt.ext.rck.RCKSimulationResult.Termination;
 
@@ -38,7 +38,7 @@ public class RCKSimulationSampleInjection {
 	public static final void main(String... args) throws Exception {
 		String layoutName = (args.length > 0) ? args[0] : DEFAULT_LAYOUT;
 		long maxWaitMinutes = (args.length > 1) ? Long.parseLong(args[1]) : DEFAULT_MAX_WAIT_MINUTES;
-		Duration responseTimeout = UnitUtils.parseDuration(DEFAULT_RESPONSE_TIMEOUT);
+		Duration responseTimeout = Durations.parse(DEFAULT_RESPONSE_TIMEOUT);
 
 		// 실행마다 새 simulation 객체를 만든다.
 		RCKSimulation simulation = RCKSimulation.builder()

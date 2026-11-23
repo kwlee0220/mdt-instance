@@ -10,6 +10,7 @@ MQTT 메시지를 AAS 요소 값에 반영하고, MDT Manager와의 연결을 �
 - MQTT(4절): broker 인라인 설정, 구독별 옵션(`delivery`, `qos`, `format`, `maxInFlightMessages`, `overflowPolicy`),
   시작할 때의 구독 검증, 작업 쓰레드에서의 반영, 공유 연결의 교착 방지, 실패 로그 빈도 제한, 종료 순서
 - Companion(5절): 여러 프로그램 등록, 필수 프로그램 지정, 환경 변수 병합, 실패 로그, 종료 시 프로세스 정리
+- 연산 취소(6절): AAS 비동기 연산 호출을 실행 ID로 취소하는 HTTP(S) 경로, 응답 규약, Manager에 주소 알리기
 
 로봇 관절·상태는 엔드포인트가 아니라 RobotTwin 자산 변수(`mdt:asset:robot-twin:state`)로 읽는다
 ([mdt.persistence.asset](../persistence/asset/README.md)).
@@ -28,6 +29,7 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 | `reconnector` / `MDTManagerReconnector` | 외부 인스턴스의 주기적 등록·연결 유지 | `EXTERNAL` 유형에 자동 등록 |
 | `mqtt` / `MqttEndpoint` | MQTT 메시지 → AAS 요소 값 갱신 | `serviceEndpoints.mqtt` |
 | `companion` / `ProgramCompanion` | 외부 프로그램 시작·재시작·종료, 실패 로그 | `serviceEndpoints.companion`, `serviceEndpoints.companions` |
+| `opcontrol` / `OperationControlEndpoint` | AAS 비동기 연산 호출의 취소 요청 수신 | `serviceEndpoints.operationControl` |
 
 연산 호출은 [mdt.assetconnection](../assetconnection/README.md), 저장 계층의 값 접근은
 [mdt.persistence.asset](../persistence/asset/README.md)에서 다룬다.
@@ -39,6 +41,7 @@ AAS HTTP API는 `MDTInstanceMain`이 별도로 등록하는 FA³ST `HttpEndpoint
 flowchart TD
     C[MDTInstanceConfig] --> L[MDTInstanceMain.loadEndpointConfigs]
     L --> H[FA³ST HTTP Endpoint]
+    L --> O[operationControl 설정 시: 연산 취소 엔드포인트]
     L --> M[JAR: HealthMonitor / EXTERNAL: Reconnector]
     L --> E[serviceEndpoints의 선택 엔드포인트]
     E --> I[init: 설정과 ServiceContext 연결]
@@ -52,7 +55,8 @@ flowchart TD
 
 `loadEndpointConfigs()`는 `mdtUrl`과 `instanceEndpoint`를 요구한다.
 HTTP 엔드포인트의 포트는 `instanceEndpoint`에서 추출하며, 인증서 설정도 함께 구성한다.
-이후 인스턴스 유형에 맞는 Manager 엔드포인트와 선택 엔드포인트를 설정 목록에 추가한다.
+이후 `serviceEndpoints.operationControl`이 있으면 연산 취소 엔드포인트를, 이어서 인스턴스 유형에 맞는 Manager 엔드포인트와
+나머지 선택 엔드포인트(MQTT, companion)를 설정 목록에 추가한다.
 
 | 메서드 | 공통 역할 | 구현별 유의점 |
 | --- | --- | --- |
@@ -177,6 +181,16 @@ https://localhost:19001
 본문은 endpoint 문자열 자체다. 패키지에 `ConnectRequestBody` DTO가 있지만 현재 전송 경로에서는
 사용하지 않는다. URL의 instance ID는 문자열로 직접 결합되며 별도 경로 인코딩은 수행하지 않는다.
 
+취소 엔드포인트(6절)를 열면 그 주소를 쿼리 파라미터 `operationControlEndpoint`로 함께 보낸다. 본문은 그대로이므로
+이 파라미터를 모르는 Manager에도 똑같이 등록된다.
+
+```http
+POST /instance-manager/registry/robot-01?operationControlEndpoint=https%3A%2F%2Flocalhost%3A19081
+Content-Type: text/plain
+
+https://localhost:19001
+```
+
 일반 통신 실패는 다음 주기에 재시도한다. 역직렬화·unwrap된 원인이 `MDTInstanceManagerException`이면
 `System.exit(-1)`을 호출하는 분기가 있다. 다만 이 분기는 `isInfoEnabled()` 조건 안에 있으므로
 현재는 INFO 로깅 활성 여부에 따라 종료 동작도 달라진다.
@@ -277,7 +291,7 @@ broker 설정 항목은 다음과 같다. 현재 사용자명·비밀번호·인
 | `delivery` | `all` | `all`: 받은 메시지를 모두 순서대로 반영. `latest`: 반영이 밀리면 최신 값만 반영(4.5절) |
 | `qos` | `1` | broker 구독 QoS(0, 1, 2) |
 | `format` | `json` | `json`: AAS value-only JSON. `text`: payload 전체를 Property 값으로 사용(4.3절) |
-| `maxInFlightMessages` | `1000` | `delivery: all`에서 **처리 중인 메시지와 대기 중인 메시지를 합한** 수의 상한. `latest`에는 적용되지 않는다 |
+| `maxInFlightMessages` | `2000` | `delivery: all`에서 **처리 중인 메시지와 대기 중인 메시지를 합한** 수의 상한. `latest`에는 적용되지 않는다 |
 | `overflowPolicy` | `wait` | 상한에 이르렀을 때 `wait`(자리가 날 때까지 기다림) 또는 `drop`(새 메시지를 버림) |
 
 `subscribers`에는 구독을 하나 이상 적어야 한다. 구독이 없는 MQTT 엔드포인트는 아무 일도 하지 않으므로, `mqtt` 항목을 적고 `subscribers`를 빠뜨리거나(철자 오류 포함) 비워 두면 설정 실수로 보고 거부한다. 문자열 옵션은 대소문자를 구분하지 않는다.
@@ -506,7 +520,7 @@ flowchart LR
 | `ServiceShutdownHook` | `utils.async.command` | JVM이 종료될 때 서비스를 멈추고 정리를 기다리는 hook |
 
 동반 프로그램 하나에 `ProgramCompanion` 하나가 만들어진다. 따라서 여러 프로그램을 등록하면 각각 따로 시작·재시작·중지되고,
-한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·Manager·MQTT
+한 프로그램의 실패가 다른 프로그램에 영향을 주지 않는다. 엔드포인트 목록에서 companion은 HTTP·연산 취소·Manager·MQTT
 엔드포인트 다음에 놓이며, 단일 `companion`이 먼저, 이어서 `companions`가 설정 파일에 적힌 순서대로 시작된다.
 
 ### 5.2 설정 방법
@@ -809,7 +823,87 @@ CPU와 `application.log`를 소모하는 것을 막기 위한 장치다.
 [ServiceShutdownHook](../../../../../../../common/utils/src/main/java/utils/async/command/ServiceShutdownHook.java),
 utils의 [외부 명령 실행 가이드](../../../../../../../common/utils/src/main/java/utils/async/command/README.md).
 
-## 6. 확장과 검증 지점
+## 6. AAS 연산 취소 엔드포인트
+
+AAS API와 FA³ST에는 실행 중인 연산을 취소하는 경로가 없다. `OperationControlEndpoint`는 비동기 연산 호출
+(`invoke-async`)로 시작한 실행을 실행 ID로 취소하는 경로를 별도 포트로 연다. 실행 ID와 실행의 연결, 취소된 실행의
+상태 저장은 [mdt.assetconnection](../assetconnection/README.md) 4.1절에서 다룬다.
+
+### 6.1 설정
+
+```json
+{
+  "serviceEndpoints": {
+    "operationControl": { "port": 19081, "cancelWait": "2s", "retainTimeout": "30s" }
+  }
+}
+```
+
+| 항목 | 기본값 | 의미 |
+| --- | --- | --- |
+| `port` | (필수) | 취소 요청을 받을 포트(1~65535). 이 포트로 만든 주소를 Manager에 알리므로 미리 정한 포트여야 한다 |
+| `cancelWait` | `2s` | 취소 요청 후 실행이 끝나기를 기다리는 시간. mdtpy의 취소 요청 시간 제한(3초)보다 짧아야 한다 |
+| `retainTimeout` | `30s` | 끝난 실행을 실행 목록에 남겨 두는 시간. 마지막으로 끝난 시각(`CANCELED` 저장 재시도의 종료 포함)부터 세며, 저장 재시도 중에는 지우지 않는다 |
+
+항목이 없으면 엔드포인트를 열지 않는다. 이때도 실행 ID 가로채기와 실행 목록은 동작하지만, 밖에서 취소할 방법은 없다.
+
+- **HTTPS**: FA³ST HTTP 엔드포인트와 같은 인스턴스 키스토어로 HTTPS를 연다. 구현은 JDK 내장 HTTP 서버다.
+- **인증**: 하지 않는다. FA³ST HTTP 엔드포인트와 같은 수준이다. 실행 ID는 추측하기 어려운 UUID다.
+- **주소**: scheme과 호스트는 `instanceEndpoint`를 따르고 포트만 `port`로 바꾼다
+  (예: `https://localhost:19001/api/v3.0` → `https://localhost:19081`).
+- **Manager에 알리기**: Manager는 이 주소를 인스턴스 정보(`InstanceDescriptor.operationControlEndpoint`)로 돌려준다.
+  - EXTERNAL 인스턴스는 등록 요청에 이 주소를 함께 보낸다(3.2절).
+  - JAR 인스턴스는 시작 표지보다 먼저 `[***OPCONTROL***] MDTInstance operation control: <주소>`를 표준 출력에 찍고,
+    Manager가 시작 표지를 찾은 뒤 이 줄을 읽는다.
+  - docker 인스턴스는 지원하지 않는다.
+  - `port`는 인스턴스마다 겹치지 않게 정해야 한다. JAR 인스턴스를 docker-compose의 Manager 컨테이너 안에서 띄우면
+    이 포트도 컨테이너 밖으로 공개해야 한다.
+
+### 6.2 경로와 응답
+
+`{handle}`은 FA³ST `operation-status/{handle}`과 같은 base64url 인코딩의 실행 ID다.
+`invoke-async` 응답의 `Location` 헤더 끝부분을 그대로 쓰면 된다.
+
+| 메소드 | 경로 | 동작 |
+| --- | --- | --- |
+| `DELETE` | `/operation-executions/{handle}` | 취소 요청 |
+| `GET` | `/operation-executions/{handle}` | 실행 상태 조회(진단용). `{"handle", "operation", "state"}` |
+
+`DELETE` 응답은 `utils.rpc.restful`의 취소 규약과 같다. 그래서 `RESTfulAsyncRpcClient.cancel()`과 같은 규칙으로
+해석할 수 있다.
+
+| 상황 | 상태 코드 | 본문 |
+| --- | --- | --- |
+| 취소 후 `cancelWait` 안에 실행이 끝남 | `200` | `{"status":"CANCELLED","session_endpoint":"/operation-executions/<handle>",...}` |
+| 취소를 받았지만 아직 멈추는 중(다시 보내도 같다) | `202` | `{"status":"RUNNING",...}` |
+| 이미 `CANCELLED`로 끝남(보존 시간 안) | `200` | `{"status":"CANCELLED",...}` |
+| 이미 `COMPLETED`·`FAILED`로 끝남(보존 시간 안) | `409` | `{"code":"java.lang.IllegalStateException","message":"operation already finished: <상태>"}` |
+| 취소로 끝났지만 FA³ST에 `CANCELED`를 저장하지 못함 | `500` | 오류 본문. 같은 요청을 다시 보내면 저장을 다시 시도하고, 성공하면 `200` |
+| 등록되지 않았거나 보존 시간이 지남 | `404` | `{"code":"mdt.model.ResourceNotFoundException",...}` |
+| `{handle}`이 올바른 base64url이 아님 | `400` | 오류 본문 |
+| 그 밖의 메소드 | `405` | `Allow: DELETE, GET` |
+
+- 첫 요청이든 반복 요청이든 하나의 `cancelWait` 안에서 실행 종료와 `CANCELED` 저장을 기다린다. 그 안에 끝나지 않으면
+  `202`다. 저장이 끝나기 전에는 `200`으로 답하지 않는다. 실패했던 저장의 재시도는 별도 스레드에서 돌고, 요청은 남은 시간만
+  기다린다. 진행 중인 재시도가 있으면 새로 시작하지 않는다.
+- `GET` 응답의 `cancelSaveState`(`RUNNING`/`SUCCEEDED`/`FAILED`)와 `cancelSaveFailure`로 저장 상태를 볼 수 있다. 저장 중에도
+  바로 답한다.
+- `200`이면 FA³ST의 `operation-status`는 이미 `Canceled`다.
+- `202`이면 실행이 끝나는 즉시 `Canceled`가 저장된다. 그때까지 `operation-status`는 `Running`이다.
+- 실행이 실제로 멈추는지는 그 연산의 제공자가 실행 스레드 인터럽트에 어떻게 반응하는지에 달려 있다
+  ([mdt.assetconnection](../assetconnection/README.md) 4.1절).
+
+### 6.3 생명주기
+
+- `init()`에서 `MDTService`의 실행 목록을 얻고, 보존 시간을 `retainTimeout`으로 맞춘다.
+- `start()`가 포트를 연다. 포트를 열지 못하면 `EndpointException`으로 실패하여 인스턴스 시작도 실패한다.
+- `stop()`은 포트를 닫는다. 실행 중인 연산의 취소는 `MDTService.stop()`이 맡는다.
+
+근거: [OperationControlEndpoint](opcontrol/OperationControlEndpoint.java),
+[OperationControlEndpointConfig](opcontrol/OperationControlEndpointConfig.java),
+[MDTInstanceMain](../MDTInstanceMain.java).
+
+## 7. 확장과 검증 지점
 
 새 엔드포인트를 추가하려면 FA³ST `Endpoint<C>`와 `EndpointConfig`를 구현하고,
 인스턴스 JSON DTO를 `ServiceEndpointConfigs`에 추가한 뒤 `MDTInstanceMain.loadEndpointConfigs()`에서
@@ -823,6 +917,7 @@ utils의 [외부 명령 실행 가이드](../../../../../../../common/utils/src/
 | Manager | 첫 호출 시점, 일시 장애 시 JVM 종료, registry 등록·해제 요청, INFO 수준 변경 영향 |
 | MQTT | 시작 로그의 `subscriptions=n/m`과 구독 제외 로그, 값 형식·대상 타입 불일치 시 실패 로그와 빈도 제한, `delivery`·`overflowPolicy`별 반영(밀릴 때와 상한에 이를 때), 대기 중 `stop()`이 제한 시간 안에 끝나는지, broker 재연결 후 재구독 |
 | Companion | 변수 치환 결과(`Register Companion endpoint` 로그), 자식 환경 변수, 정책별 재시작과 `restartLimit`, `required` 시작 실패 시 인스턴스 종료, 실패 ERROR 로그, 프로그램별 `application.log` 분리, 인스턴스 종료 후 자식 PID 소멸 |
+| 연산 취소 | `Register OperationControl endpoint` 로그의 주소, 포트 개방과 HTTPS, 취소 후 `operation-status`가 `Canceled`인지, Manager 등록 요청의 쿼리 파라미터 |
 
 이 문서는 소스와 호출 경로의 정적 검토를 바탕으로 작성했다.
 실제 Manager에 대한 연결 시험 결과를 검증 완료로 제시하는 문서는 아니다.
@@ -830,3 +925,4 @@ MQTT는 단위 테스트와 함께, 로컬 Mosquitto broker로 포화 상태의 
 (`MqttEndpointBrokerTest`, 환경 변수 `MDT_TEST_MQTT_BROKER`가 있을 때만 실행).
 Companion은 단위 테스트와 함께, Welder 모델의 두 프로그램을 `companions`로 등록해 Manager가 띄운 인스턴스에서
 시작·로그 분리·종료 후 프로세스 정리를 확인했다.
+연산 취소 엔드포인트는 단위 테스트(`OperationControlEndpointTest`)로 응답 규약, 보존 시간, 포트 닫기, HTTPS를 확인했다.

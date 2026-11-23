@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import de.fraunhofer.iosb.ilt.faaast.service.ServiceContext;
 import de.fraunhofer.iosb.ilt.faaast.service.exception.ConfigurationInitializationException;
 
-import utils.UnitUtils;
+import utils.Durations;
 
 import mdt.assetconnection.operation.AbstractJavaOperationProvider;
 import mdt.assetconnection.operation.JavaOperationProviderConfig;
@@ -44,7 +44,7 @@ import mdt.model.sm.value.PropertyValue;
  *   <li>{@code clientId} / {@code processName} / {@code rckServerUrl} (필수) - 시뮬레이터 등록 ID, 공정명,
  *       WebSocket 서버 URL.</li>
  *   <li>{@code responseTimeout} (선택, 기본 2분) - 시뮬레이터 응답 대기 시간
- *       ({@link RCKSimulation.Builder#responseTimeout}). 시간 값은 {@link UnitUtils#parseDuration(String)} 형식이다.</li>
+ *       ({@link RCKSimulation.Builder#responseTimeout}). 시간 값은 {@link Durations#parse(String)} 형식이다.</li>
  * </ul>
  *
  * @author Kang-Woo Lee (ETRI)
@@ -130,7 +130,7 @@ public class LoadEquipmentPropertiesList extends AbstractJavaOperationProvider {
 			return RCKSimulation.DEFAULT_RESPONSE_TIMEOUT;
 		}
 		try {
-			Duration timeout = UnitUtils.parseDuration(str);
+			Duration timeout = Durations.parse(str);
 			if ( !timeout.isPositive() ) {
 				throw new IllegalArgumentException("not positive");
 			}

@@ -16,7 +16,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.AbstractService;
 
 import utils.LoggerSettable;
-import utils.UnitUtils;
+import utils.Durations;
 import utils.thread.Guard;
 import utils.func.Nullables;
 
@@ -54,7 +54,7 @@ public class AutoReconnectingOpcUaClient extends AbstractService
 	}
 
 	public AutoReconnectingOpcUaClient(String serverEndpoint, String reconnectInterval) {
-		this(serverEndpoint, UnitUtils.parseDuration(reconnectInterval));
+		this(serverEndpoint, Nullables.<String, Duration>map(reconnectInterval, Durations::parse));
 	}
 
 	/**

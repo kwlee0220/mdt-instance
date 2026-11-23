@@ -43,7 +43,7 @@
 | `config` | 인스턴스 설정 DTO(`MDTInstanceConfig`)와 FA³ST 서비스 확장(`MDTService`) |
 | `persistence` | 영속성 스택, 자산 변수(`asset`), 시계열(`timeseries`) |
 | `assetconnection` | AAS Operation 호출을 Java·Program·Script·HTTP 구현으로 연결 |
-| `endpoint` | Manager 상태 확인·재등록, MQTT 수신, 동반 프로그램 |
+| `endpoint` | Manager 상태 확인·재등록, MQTT 수신, 동반 프로그램, AAS 비동기 연산 취소 |
 | `ksx9101` | KS X 9101 제조 데이터 JPA 매핑 |
 | `ext` | 특정 과제용 연산 구현(RCK 프레스 시뮬레이션 등) |
 
@@ -54,11 +54,13 @@
 1. `config.json`을 읽고 변수를 치환해 인스턴스 id, 접속 endpoint, 포트, Manager URL을 정한다.
 2. 전역 설정 파일과 키 저장소를 정한다.
 3. `model.json`을 읽어 Submodel idShort 색인(`MDTModelLookup`)을 만든다.
-4. 영속성 스택, 엔드포인트, 연산 제공자를 담은 FA³ST `ServiceConfig`를 만들어 현재 디렉터리의 `config_faaast.json`에 기록한다.
+4. 영속성 스택(가장 바깥에는 항상 `OperationHandleCaptureLayer`를 둔다), 엔드포인트, 연산 제공자를 담은 FA³ST `ServiceConfig`를 만들어 현재 디렉터리의 `config_faaast.json`에 기록한다.
 5. FA³ST 서비스를 시작한다. `--type jar`이면 표준 출력에 `[***MARKER***] MDTInstance started: <endpoint>`를 찍는다.
+   `serviceEndpoints.operationControl`을 설정했으면 그보다 먼저 `[***OPCONTROL***] MDTInstance operation control: <주소>`를 찍는다.
 
 명령행 옵션, 환경 변수, 값이 정해지는 순서는 [프로젝트 README의 5장과 6장](../../../../README.md#5-실행)에 정리되어 있다.
-`[***MARKER***]` 문구는 mdt-manager가 시작 성공을 판단하는 기준이므로 바꾸면 안 된다.
+`[***MARKER***]` 문구는 mdt-manager가 시작 성공을 판단하는 기준이므로 바꾸면 안 된다. `[***OPCONTROL***]` 줄은 Manager가 시작 표지를
+찾은 뒤 읽으므로 표지보다 먼저 찍어야 하고, `[***MARKER***]`를 포함하면 안 된다.
 
 ## 3. 요소 위치 표현
 
@@ -217,7 +219,7 @@ try ( MqttServicePool.Lease lease = MqttServicePool.acquire(brokerConfig) ) {
 | --- | --- |
 | [프로젝트 README](../../../../README.md) | 실행 방법, 명령행 옵션, 인스턴스 설정 파일, 전역 설정 파일 |
 | [mdt.persistence.asset](persistence/asset/README.md) | 자산 변수의 `element` 위치와 연결 설정 |
-| [mdt.endpoint](endpoint/README.md) | MQTT 구독 대상 위치, Manager 연결 |
+| [mdt.endpoint](endpoint/README.md) | MQTT 구독 대상 위치, Manager 연결, AAS 비동기 연산 취소 엔드포인트 |
 | [mdt.assetconnection](assetconnection/README.md) | 연산 제공자와 실행 계약 |
 | [mdt.persistence.timeseries](persistence/timeseries/README.md) | 시계열 Submodel |
 | [mdt.ext.rck](ext/rck/README.md) | RCK 프레스 시뮬레이터 연동 |

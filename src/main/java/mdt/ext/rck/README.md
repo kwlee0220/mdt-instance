@@ -89,7 +89,7 @@ flowchart LR
 | `maxDuration` | 아니요 | `1h` | 시뮬레이션 전체 실행 제한 시간 |
 | `productionPath` | 아니요 | `Utilizations.Conveyor_6.Production` | 진행 보고에서 생산량을 읽을 필드 경로(`.`으로 구분) |
 
-필수 문자열은 공백만으로 지정할 수 없다. 시간 설정은 `90s`, `2m`처럼 `UnitUtils.parseDuration()`이 해석하는 문자열이며 양수여야 한다. 형식이 잘못되면 제공자 초기화가 실패한다. `productionPath`에 빈 항목(`a..b`)이 있어도 실패한다. 레이아웃이 바뀌어 생산량 위치가 달라지면 이 인자로 맞춘다(직접 실행할 때는 빌더의 `progressFormat(...)`).
+필수 문자열은 공백만으로 지정할 수 없다. 시간 설정은 `90s`, `2m`처럼 `Durations.parse()`이 해석하는 문자열이며 양수여야 한다. 형식이 잘못되면 제공자 초기화가 실패한다. `productionPath`에 빈 항목(`a..b`)이 있어도 실패한다. 레이아웃이 바뀌어 생산량 위치가 달라지면 이 인자로 맞춘다(직접 실행할 때는 빌더의 `progressFormat(...)`).
 
 #### 2.1.2. 입출력 변수 정의
 
@@ -378,7 +378,7 @@ stop 전송 실패는 `FAILED`가 될 수 있다. 취소도 stop 전송 완료�
 | 전체 실행 시간 | 메시지가 계속 와도 적용되는 전체 제한 | 오퍼레이션 `maxDuration` |
 | 호출자 대기 시간 | 호출자가 완료를 기다리는 시간. 초과만으로 자동 취소되지 않음 | `waitForFinished(timeout, unit)` |
 
-오퍼레이션은 `maxDuration`이 지나면 취소하고 시간 초과로 보고한다. 동기 호출의 대기가 인터럽트되면 취소한다. 직접 실행에서는 이러한 전체 제한 처리를 호출자가 구현해야 한다.
+오퍼레이션은 `maxDuration`이 지나면 취소하고 시간 초과로 보고한다. 호출(동기·비동기)을 실행하는 스레드가 기다리는 중 인터럽트되면(AAS 연산 취소 포함) 시뮬레이션을 취소하고 중지 명령을 보낸다. 직접 실행에서는 이러한 전체 제한 처리를 호출자가 구현해야 한다.
 
 ## 6. 통신 흐름과 문제 해결
 
@@ -431,7 +431,7 @@ stateDiagram-v2
 - [RCKSimulationOperation.java](RCKSimulationOperation.java): 설정·입출력·시간 제한·콜백 처리
 - [LoadEquipmentPropertiesList.java](LoadEquipmentPropertiesList.java): 설비 속성 목록 오퍼레이션
 - [수동 실행 예제](../../../../../test/java/mdt/ext/rck/RCKSimulationManualRun.java): 실제 서버에 접속하는 개발용 프로그램. 실행 전 코드의 서버·공정·레이아웃 값을 변경한다.
-- 자동 테스트: `src/test/java/mdt/ext/rck`의 상태 전이, 진행 상황 파싱, 오퍼레이션, 출력 갱신 테스트
+- 자동 테스트: `src/test/java/mdt/ext/rck`의 상태 전이, 진행 상황 파싱, 설비 속성 목록 파싱·덮어쓰기, 오퍼레이션(`RCKSimulationOperation`, `LoadEquipmentPropertiesList`), 출력 갱신 테스트
 
 `mdt-instance` 프로젝트 루트에서 관련 자동 테스트를 실행한다.
 

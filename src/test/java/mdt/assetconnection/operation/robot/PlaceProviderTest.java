@@ -297,8 +297,10 @@ public class PlaceProviderTest {
 			assertEquals(1, server.requests.stream().filter(r -> r.equals("POST " + BASE + "/operations/move_gripper_to_target")).count());
 			assertEquals("false", value("GoalsReached"));
 			assertEquals("true", value("ReleaseAttempted"));
-			assertEquals("RELEASE", value("FailedStage"));
-			assertTrue(value("FailureReason").contains("RELEASE"));
+			// 인터럽트는 연산 취소로 전달된다. 동기 그리퍼 호출은 끝까지 기다리므로 RELEASE는 목표 확인으로 끝나고,
+			// 취소 때문에 후퇴(RETREAT)를 실행하지 않는다.
+			assertEquals("", value("FailedStage"));
+			assertTrue(value("FailureReason"), value("FailureReason").contains("RELEASE 완료 후 RETREAT 진입 전 중단"));
 		}
 		finally { release.countDown(); worker.interrupt(); worker.join(3000); }
 	}

@@ -44,8 +44,6 @@ class ProgramOperationProvider implements OperationProvider {
 	private final ProgramOperationProviderConfig m_config;
 	private final File m_opDescFile;
 	
-	private CommandExecution m_cmdExec;
-	
 	ProgramOperationProvider(ServiceContext serviceContext, Reference operationRef,
 								ProgramOperationProviderConfig config) throws IOException {
 		m_svcContext = (MDTService)serviceContext;
@@ -98,21 +96,21 @@ class ProgramOperationProvider implements OperationProvider {
 		builder.stderr(Output.toStdout());
 		builder.stdout(Output.file(new File(workingDir, "output.log")));
 		
-		m_cmdExec = builder.build();
+		CommandExecution cmdExec = builder.build();
 		try {
-			m_cmdExec.run();
+			cmdExec.run();
 			s_logger.info("ProgramOperationProvider terminates");
 			
 			FStream.from(outVarList)
 					.tagKey(opv -> opv.getValue().getIdShort())
-					.match(m_cmdExec.getVariableMap())
+					.match(cmdExec.getVariableMap())
 					.forEachOrThrow(match -> {
 						Tuple<OperationVariable,CommandVariable> t = match.value();
 						handleOutputVariable(t._1, t._2);
 					});
 		}
 		finally {
-			m_cmdExec.close();
+			cmdExec.close();
 		}
 	}
 	

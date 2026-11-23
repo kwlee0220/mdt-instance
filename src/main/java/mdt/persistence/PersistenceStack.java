@@ -101,12 +101,11 @@ public abstract class PersistenceStack<C extends PersistenceStackConfig<?>>
 	 * @return	찾은 persistence. 스택에 해당 타입이 없으면 {@link FOption#empty()}.
 	 */
 	public static <T> FOption<T> findInStack(Persistence<?> top, Class<T> type) {
-		Persistence<?> current = top;
-		while ( current != null ) {
+		for (Persistence<?> current = top; current != null;
+			current = (current instanceof PersistenceStack<?> stack) ? stack.getBasePersistence() : null) {
 			if ( type.isInstance(current) ) {
 				return FOption.of(type.cast(current));
 			}
-			current = (current instanceof PersistenceStack<?> stack) ? stack.getBasePersistence() : null;
 		}
 		return FOption.empty();
 	}

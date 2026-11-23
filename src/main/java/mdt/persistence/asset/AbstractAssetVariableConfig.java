@@ -9,7 +9,7 @@ import com.google.common.base.Preconditions;
 
 import org.jetbrains.annotations.Nullable;
 
-import utils.UnitUtils;
+import utils.Durations;
 import utils.json.JacksonUtils;
 import utils.func.Nullables;
 
@@ -63,7 +63,7 @@ public abstract class AbstractAssetVariableConfig implements AssetVariableConfig
 		m_elementLoc = ElementLocations.parseStringExpr(elmLocExpr);
 		
 		m_validPeriod = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"),
-										UnitUtils::parseDuration);
+										Durations::parse);
 	}
 	
 	@Override

@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-import utils.UnitUtils;
+import utils.Durations;
 import utils.func.Nullables;
 import utils.func.Funcs;
 
@@ -134,7 +134,7 @@ public class TimeSeriesSubmodelConfig {
 			}
 			
 			m_length = length;
-			m_duration = UnitUtils.parseDuration(duration);
+			m_duration = Nullables.map(duration, Durations::parse);
 		}
 		
 		public Integer getLength() {

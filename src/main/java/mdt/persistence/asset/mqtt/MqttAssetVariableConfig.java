@@ -8,7 +8,7 @@ import org.eclipse.paho.client.mqttv3.MqttTopic;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import utils.UnitUtils;
+import utils.Durations;
 import utils.json.JacksonUtils;
 
 import mdt.ConnectionConfigRef;
@@ -242,7 +242,7 @@ public class MqttAssetVariableConfig extends AbstractAssetVariableConfig impleme
 		if ( timeoutStr != null ) {
 			Duration timeout;
 			try {
-				timeout = UnitUtils.parseDuration(timeoutStr);
+				timeout = Durations.parse(timeoutStr);
 			}
 			catch ( Exception e ) {
 				throw new IOException(String.format("invalid '%s' value: %s, cause=%s",

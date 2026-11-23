@@ -31,9 +31,15 @@ import mdt.model.sm.value.ElementValues;
  * HTTP 연산 서버({@code mdt-operation-http}의 {@code OperationController})에 등록된 연산을
  * {@link RESTfulAsyncRpcClient}로 호출하는 {@link OperationProvider}.
  * <p>
- * 설정의 {@code endpoint}는 연산 서버의 기본 URL(예: {@code http://localhost:12987})이고,
- * {@code opId}는 서버의 operations 디렉터리 하위 연산 디렉터리 이름이다. 연산은
- * {@code POST {endpoint}/api/v1/operations/{opId}}로 시작되며 이후 세션 상태를 폴링하여 완료를 기다린다.
+ * 설정({@link HttpOperationProviderConfig})의 {@code baseUrl}은 연산 서버의 기본 URL(예: {@code http://localhost:12987})이고,
+ * {@code endpoint}는 연산 경로(예: {@code /api/v1/operations/<연산 디렉터리 이름>})다. 연산은
+ * {@code POST {baseUrl}{endpoint}}로 시작되며, 이후 응답의 세션 경로를 {@code pollInterval}(기본 3초)마다 조회하여 완료를
+ * 기다린다. {@code timeout}이 지나면 실패로 끝나지만 원격 세션은 취소하지 않는다.
+ * <p>
+ * 입력 인자와 출력 인자 원형을 SubmodelElement JSON으로 보낸다. 입출력 인자는 지원하지 않는다.
+ * <p>
+ * 기다리는 중 인터럽트되면(AAS 연산 취소) 연산 서버의 세션에 취소({@code DELETE})를 보내고, 세션이 끝나기를
+ * 기다린 뒤 {@link InterruptedException}을 던진다({@link OperationProvider#runCancellingOnInterrupt}).
  *
  * @author Kang-Woo Lee (ETRI)
  */
@@ -77,7 +83,8 @@ class HttpOperationProvider implements OperationProvider {
 													.setJsonMapper(MDTModelSerDe.getJsonMapper())
 													.build();
 		
-		Map<String,JsonNode> outputs = client.run();
+		// AAS 연산 취소(실행 스레드 인터럽트)가 연산 서버의 세션 취소(DELETE)로 이어지도록 별도 스레드에서 실행한다.
+		Map<String,JsonNode> outputs = OperationProvider.runCancellingOnInterrupt(client);
 		if ( s_logger.isInfoEnabled() ) {
 			s_logger.info("HttpOperation terminates: outputs={}", outputs.keySet());
 		}

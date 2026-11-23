@@ -16,7 +16,8 @@
 
 ```mermaid
 flowchart TD
-    Request["FA³ST 조회·갱신 요청"] --> Outer["추가 PersistenceStack 설정 시"]
+    Request["FA³ST 조회·갱신 요청"] --> Capture["OperationHandleCaptureLayer (항상)"]
+    Capture --> Outer["추가 PersistenceStack 설정 시"]
     Outer --> TS["TimeSeriesPersistenceStack 설정 시"]
     TS --> Asset["AssertVariableBasedPersistence"]
     Asset -->|"기본 모델 조회·저장"| Base["PersistenceInMemory"]
@@ -28,7 +29,7 @@ flowchart TD
     Variable --> RT["RobotTwin 상태 API"]
 ```
 
-추가 스택과 시계열 계층은 설정했을 때만 존재한다. 기본 AAS 모델에는 요소의 구조·타입과 저장된 값이 들어 있고, 자산 변수는 자신에게 연결된 요소의 외부 연동을 맡는다. 외부 값이 필요 없는 요청은 하위 영속성 구현이 처리한다.
+가장 바깥의 `OperationHandleCaptureLayer`(비동기 연산의 실행 ID 가로채기)는 항상 있고, 추가 스택과 시계열 계층은 설정했을 때만 존재한다. 기본 AAS 모델에는 요소의 구조·타입과 저장된 값이 들어 있고, 자산 변수는 자신에게 연결된 요소의 외부 연동을 맡는다. 외부 값이 필요 없는 요청은 하위 영속성 구현이 처리한다.
 
 | 용어 | 이 문서에서의 의미 |
 | --- | --- |
@@ -95,7 +96,7 @@ flowchart TD
 
 `initialize()`가 실패하면 생성된 해당 변수의 `close()`를 호출한다. 변수 생성이나 초기화 도중 실패하면 앞서 생성한 변수들도 닫는다. 생성자 자체가 실패한 경우에는 객체를 얻지 못하므로 해당 객체의 `close()`를 호출할 수 없다. 생성자에서 자원을 확보하는 구현은 이 경우를 직접 처리해야 한다.
 
-정상 종료에서는 등록된 모든 변수의 `close()`를 호출한 다음 하위 영속성 구현을 중지한다. `close()`에서 예외가 발생하면 경고를 남기고 다른 변수의 정리를 계속한다. 현재 MQTT 변수는 이 경로에서 공유 연결 사용권을 반납한다. OPC UA 변수는 기본 `close()`를 그대로 쓰므로 스택 종료와 OPC UA 연결 종료가 연결되어 있지 않다.
+정상 종료에서는 등록된 모든 변수의 `close()`를 호출한 다음 하위 영속성 구현을 중지한다. `close()`에서 예외가 발생하면 경고를 남기고 다른 변수의 정리를 계속한다. MQTT 변수는 이 경로에서 공유 연결 사용권을 반납한다. OPC UA 변수는 `close()`에서 변수마다 만든 `AutoReconnectingOpcUaClient`를 멈춰 재연결 작업을 취소하고 연결을 끊는다.
 
 관련 코드: [AbstractAssetVariable.java](AbstractAssetVariable.java), [MDTModelLookup.java](../MDTModelLookup.java).
 
@@ -612,24 +613,17 @@ Property는 선언된 AAS 타입에 맞춰 변환한다. 다만 RobotTwin 변수
 
 발행과 전달 확인 대기 모두 공유 연결(`MqttService`)의 잠금 밖에서 수행한다. 따라서 같은 연결을 쓰는 다른 변수의 발행이나 엔드포인트의 메시지 수신을 잠금으로 막지 않는다. 다만 바깥 영속성 계층이 요청 전체에 잠금을 걸었다면 같은 잠금이 필요한 요청은 기다려야 한다. 그 범위는 다음 절을 참고한다.
 
-Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 된다. 영속성 계층이 기본 모델에 저장된 전체 요소를 복사하고 요청 부분을 바꾼 뒤 전체 값을 발행한다. 이때 서로 다른 하위 요소의 갱신이 동시에 진행되면, 각 요청이 만든 전체 값에 다른 요청의 변경이 빠질 수 있다. 예를 들어 온도와 압력을 따로 갱신하면 각 메시지에 이전 압력이나 이전 온도가 포함될 수 있다.
+Collection 등 복합 요소에 연결한 경우 하위 요소만 갱신해도 된다. 영속성 계층이 기본 모델에 저장된 전체 요소를 복사하고 요청 부분을 바꾼 뒤 전체 값을 발행한다. `ConcurrentPersistence`가 없을 때 서로 다른 하위 요소의 갱신이 동시에 진행되면, 각 요청이 만든 전체 값에 다른 요청의 변경이 빠질 수 있다. 예를 들어 온도와 압력을 따로 갱신하면 각 메시지에 이전 압력이나 이전 온도가 포함될 수 있다.
 
 관련 코드: [MqttAssetVariable.java](mqtt/MqttAssetVariable.java), [MqttServicePool.java](../../MqttServicePool.java).
 
 ### 동시 요청과 잠금 범위
 
-`ConcurrentPersistence`를 바깥 계층에 추가하더라도 모든 AAS 요청이 순서대로 실행되지는 않는다. 현재 구현의 잠금 범위는 다음과 같다.
+`ConcurrentPersistence`를 바깥 계층에 추가하면 `getAssetAdministrationShell`과 `getSubmodelRefs`를 뺀 모든 요청(요소·Submodel 조회·갱신·저장·삭제, 삽입, 목록 검색, 연산 결과 조회·저장)을 하나의 잠금으로 차례로 실행한다. 파라미터 요소의 삭제는 `UnsupportedOperationException`으로 거부한다(`MDTModelLookup.getParameterId()`는 이 확인에만 쓴다).
 
-| 요청 | 잠금을 사용하는 조건 |
-| --- | --- |
-| 요소 조회·갱신 | 요청 식별자가 `MDTModelLookup.getParameterId()`에 등록된 파라미터 경로와 정확히 일치할 때 |
-| Submodel 조회·저장·삭제 | Data Submodel일 때 |
-| 요소 삽입 | 항상 |
-| Submodel 및 요소 목록 검색 | 잠금 없이 하위 계층에 전달 |
+따라서 AAS 요청으로 들어오는 MQTT 부분 갱신은 읽기·병합·외부 발행·기본 모델 저장 전체가 한 요청씩 실행되어 서로의 변경을 빠뜨리지 않는다. 대신 느린 외부 조회·쓰기가 다른 모든 요청을 기다리게 한다. `ConcurrentPersistence`를 쓰지 않으면 이런 보호가 없으므로, 전체 값의 일관성이 필요하면 호출 측에서 해당 요소의 갱신 순서를 보장해야 한다.
 
-등록된 파라미터 경로는 파라미터 Collection 자체의 경로다. 그 아래 `ParameterValue` 경로나 일반 경로인 `Telemetry:Measurements.Temperature`까지 자동으로 보호하지는 않는다. 따라서 **`ConcurrentPersistence`를 추가하는 것만으로 모든 MQTT 부분 갱신의 충돌을 막을 수는 없다.** 전체 값의 일관성이 필요하면 호출 측에서 해당 요소의 갱신 순서를 보장하거나, 읽기·병합·외부 발행·기본 모델 저장 전체를 보호하도록 별도로 구현해야 한다.
-
-JDBC의 변수별 `Guard`와 `ConcurrentPersistence`의 요청 잠금은 각각 보호하는 대상이 다르다. MQTT 변수의 발행에는 잠금이 없다(`MqttService`의 잠금은 구독 목록과 broker 구독·해제만 보호한다). 한 곳에 잠금이 있다는 이유로 전체 저장 과정까지 하나의 작업으로 실행된다고 해석해서는 안 된다.
+JDBC의 변수별 `Guard`와 `ConcurrentPersistence`의 요청 잠금은 각각 보호하는 대상이 다르다. MQTT 변수의 발행 자체에는 잠금이 없다(`MqttService`의 잠금은 구독 목록과 broker 구독·해제만 보호한다). 요청 전체가 하나의 작업으로 실행되는 것은 `ConcurrentPersistence`를 설정했을 때뿐이다.
 
 관련 코드: [ConcurrentPersistence.java](../ConcurrentPersistence.java), [MDTModelLookup.java](../MDTModelLookup.java).
 
@@ -712,7 +706,7 @@ GET {robotTwinBaseUrl}/api/v1/robot_twins/{twinId}/variables/{variable}
 
 이 중 이 변수가 쓰는 것은 `quality`와 `value`이고, `reason`은 품질 경고 로그에만 들어간다. 품질은 `OK`인지만 보며, `age_ms`로 값의 나이를 따로 판단하지 않는다.
 
-매핑은 예제의 객체 형식 외에 기존 `{ "subPath": "...", "pointer": "..." }` 항목을 나열한 배열 형식도 지원한다. 다시 JSON으로 저장할 때는 객체 형식을 사용한다.
+매핑은 예제의 객체 형식 외에 `{ "subPath": "...", "pointer": "..." }` 항목을 나열한 배열 형식도 지원한다. 다시 JSON으로 저장할 때는 객체 형식을 사용한다.
 
 ### 설정 검사
 
@@ -787,7 +781,7 @@ JDBC 구현을 추가한다면 `AbstractJdbcAssetVariable`과 `AbstractJdbcAsset
 | MQTT 부분 갱신 메시지에 다른 필드의 이전 값이 들어 있음 | 기본 모델 전체 값을 복사해 발행하는 방식과 동시 요청 여부. [잠금 범위](#동시-요청과-잠금-범위) 확인 |
 | OPC UA 값을 읽지 못함 | 전역 `opcuas.default`, namespace 2, 문자열·숫자 NodeId 구분, 반환 타입 |
 | RobotTwin 값이 그대로이거나 읽기에 실패함 | 응답의 `quality`, `requireOkQuality`, `value` 유무, 매핑한 JSON 값의 종류와 숫자 범위 |
-| 연결 설정을 찾지 못하거나 설정 로딩 실패 | 전역 그룹과 항목 이름, 새 필드와 이전 `...ConfigName` 필드의 중복 사용 여부 |
+| 연결 설정을 찾지 못하거나 설정 로딩 실패 | 전역 그룹과 항목 이름, 연결 설정 필드와 호환용 `...ConfigName` 필드를 함께 썼는지 |
 | JDBC 갱신 후 모델과 DB 값이 다름 | 외부 쓰기와 기본 모델의 처리 순서, 여러 SQL의 부분 성공, 다른 프로세스의 갱신 |
 | 모델 구조 변경 후 경로 탐색 실패 | 시작 시 등록한 경로와 내부 버퍼의 구조가 현재 모델에 맞는지 확인 |
 

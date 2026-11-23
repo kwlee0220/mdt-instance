@@ -129,7 +129,7 @@ TelemetryLog
 | --- | --- |
 | `id` | 기본 모델의 Submodel 전역 ID. 연산 제공자가 설정을 찾을 때 사용 |
 | `idShort` | 기본 모델과 시작 시 매칭할 Submodel idShort |
-| `endpoint` | `?user=…&password=…`를 반드시 포함하는 전체 JDBC URL |
+| `endpoint` | JDBC URL. `?user=…&password=…&maxPoolSize=…`를 붙일 수 있다(모두 선택) |
 | `tableName` | 조회 대상 테이블명 |
 | `parameterColumns` | Metadata 필드 이름과 DB 컬럼 매핑 목록 |
 | `tail` | 생략 또는 null이면 Tail 미생성 |
@@ -152,20 +152,21 @@ Tail 설정이 `{}`이면 기본 길이는 100이다. `length`와 `duration`이 
 
 ### 초기화와 스택 구성
 
-`MDTInstanceMain.loadPersistenceConfig()`는 아래 순서로 기본 스택을 구성한다. 각 선택 계층은 해당 설정이 있을 때만 추가된다.
+`MDTInstanceMain.loadPersistenceConfig()`는 아래 순서로 기본 스택을 구성한다. 가장 바깥의 `OperationHandleCaptureLayer`는 항상 있고, 각 선택 계층은 해당 설정이 있을 때만 추가된다.
 
 ```text
-추가 persistenceStacks 설정
-    → TimeSeriesPersistenceStack
-        → AssertVariableBasedPersistence
-            → PersistenceInMemory
+OperationHandleCaptureLayer (항상)
+    → 추가 persistenceStacks 설정
+        → TimeSeriesPersistenceStack
+            → AssertVariableBasedPersistence
+                → PersistenceInMemory
 ```
 
 `TimeSeriesPersistenceStack.start()`는 하위 계층을 먼저 시작하고 `MDTModelLookup`의 초기 모델 목록과 설정을 연결한다. 시계열 semanticId를 가진 모델을 설정의 `idShort`로 매칭하고, 요청 시 사용할 맵은 실제 Submodel `id`를 키로 구성한다.
 
 시계열 모델에 대응하는 설정이 없거나, 설정에 대응하는 시계열 모델이 없으면 `PersistenceException`으로 시작에 실패한다. 이 매칭은 시계열 스택이 설치된 경우에 수행된다. `timeSeriesSubmodels`가 비어 있으면 시작 코드가 이 스택 자체를 추가하지 않는다.
 
-Operation 제공자는 `PersistenceStack.findInStack()`으로 시계열 계층을 찾으므로 `ConcurrentPersistence` 등이 바깥에 있어도 동작하도록 구성되어 있다. 연산용 설정은 `start()`에서 만드는 맵 대신 설정 목록의 `id`로 찾는다. `idShort`가 맞아 Submodel 조회가 가능하더라도 `id`가 틀리면 Operation 초기화는 실패할 수 있다.
+Operation 제공자는 `PersistenceStack.findInStack()`으로 시계열 계층을 찾으므로 `OperationHandleCaptureLayer`나 `ConcurrentPersistence`가 바깥에 있어도 동작하도록 구성되어 있다. 연산용 설정은 `start()`에서 만드는 맵 대신 설정 목록의 `id`로 찾는다. `idShort`가 맞아 Submodel 조회가 가능하더라도 `id`가 틀리면 Operation 초기화는 실패할 수 있다.
 
 관련 코드: [TimeSeriesPersistenceStack.java](TimeSeriesPersistenceStack.java), [MDTInstanceMain.java](../../MDTInstanceMain.java).
 
@@ -375,7 +376,7 @@ Count의 count 조회와 실제 SELECT, LATEST의 MAX 조회와 실제 SELECT는
 
 ### 시각과 자원 관리
 
-범위 비교용 SQL 시각 리터럴은 `Instants.toUtcString()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 `DataTypes.DATE_TIME`이 JVM 기본 시간대의 지역 시각(오프셋 없음, 밀리초까지)으로 변환하므로 `Z`나 오프셋이 붙지 않는다.
+범위 비교용 SQL 시각 리터럴은 `Instants.formatUtc()`으로 생성한다. DB의 저장 방식과 세션 시간대가 이 비교와 일치해야 한다. 입력 예제처럼 `Z` 또는 오프셋이 있는 시각을 사용하면 의도한 절대 시각을 명확히 표현할 수 있다. AAS 값 출력은 `DataTypes.DATE_TIME`이 JVM 기본 시간대의 지역 시각(오프셋 없음, 밀리초까지)으로 변환하므로 `Z`나 오프셋이 붙지 않는다.
 
 다른 경로는 시각을 다르게 다룬다. Tail·FullRange·`JdbcRangeInternalSegment`는 `java.sql.Timestamp`를 바인딩하거나 읽으므로, 시간대 없는 컬럼(`timestamp without time zone`)에서는 JVM 기본 시간대의 영향을 받는다. 조회 Operation의 UTC 리터럴 비교와 결과가 어긋나지 않게 하려면 JVM과 DB 세션의 시간대를 UTC로 맞추는 것이 안전하다.
 
@@ -433,7 +434,7 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | Operation 초기화 시 설정을 찾지 못함 | `timeSeriesSubmodels[].id`와 Operation의 Submodel ID |
 | `Cannot find the column mapped to the record field` | Metadata 필드 이름과 parameter 이름의 정확한 일치 |
 | Tail에서 필드 값이 뒤바뀜 | parameterColumns와 Metadata의 필드 순서 |
-| 세그먼트 조회·Operation 초기화 시 `IllegalArgumentException` | `endpoint`에 `user`·`password`가 있는지 |
+| 세그먼트 조회·Operation 초기화 시 `IllegalArgumentException` | `endpoint` 질의 파라미터의 잘못된 `%` escape나 정수가 아닌 `maxPoolSize` |
 | `Segments.Tail`이 없음 | tail 생략 여부. 빈 객체는 기본 100개를 의미 |
 | 데이터가 있는데 현재 시각 기준 조회가 비어 있음 | 데이터의 최신 시각, NOW와 LATEST 기준, DB 시간대 |
 | 빈 테이블에서 `last=10m` 실패 | LATEST 범위 계산에 필요한 마지막 timestamp 부재 |
@@ -442,4 +443,4 @@ JDBC 조회기와 달리 이 구현에 빈 컬럼 목록을 전달하면 각 레
 | 목록 조회가 느리거나 실패 | 각 시계열 모델의 집계·Tail 조회 및 오류 전파 |
 | Tail 요약에서 나눗셈 오류 | 복수 레코드의 전체 시간 차이가 밀리초 기준 0인지 확인 |
 
-설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. Operation 제공자 초기화 실패는 `ConfigurationInitializationException`으로 보고된다. 다만 `endpoint`에 사용자·비밀번호가 없을 때의 `IllegalArgumentException`은 변환 없이 그대로 전달되므로, 오류 메시지와 실제 조회 경로를 함께 확인한다.
+설정 매칭은 `PersistenceException`, 잘못된 Operation 입력은 주로 `IllegalArgumentException`, 레코드 SQL 조회는 `IOException`, 세그먼트 생성은 `ModelGenerationException` 계열로 실패한다. Operation 제공자 초기화 실패는 `ConfigurationInitializationException`으로 보고된다. 다만 `endpoint` 해석 오류(잘못된 `%` escape, 정수가 아닌 `maxPoolSize`)의 `IllegalArgumentException`은 변환 없이 그대로 전달되므로, 오류 메시지와 실제 조회 경로를 함께 확인한다.

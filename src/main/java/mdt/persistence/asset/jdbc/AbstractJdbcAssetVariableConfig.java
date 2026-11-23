@@ -17,7 +17,7 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import utils.Preconditions;
-import utils.UnitUtils;
+import utils.Durations;
 import utils.jdbc.JdbcConfiguration;
 import utils.json.JacksonDeserializationException;
 import utils.json.JacksonUtils;
@@ -166,9 +166,9 @@ public abstract class AbstractJdbcAssetVariableConfig implements AssetVariableCo
 		
 		m_jdbcConfigRef = ConnectionConfigRef.load(jnode, FIELD_JDBC_CONFIG, FIELD_JDBC_CONFIG_NAME,
 													JdbcConfiguration.class);
-		m_validPeriod = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), UnitUtils::parseDuration);
+		m_validPeriod = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, "validPeriod"), Durations::parse);
 		m_queryTimeout = Nullables.map(JacksonUtils.getStringFieldOrNull(jnode, FIELD_QUERY_TIMEOUT),
-										UnitUtils::parseDuration);
+										Durations::parse);
 		if ( m_queryTimeout != null && (m_queryTimeout.isNegative() || m_queryTimeout.isZero()) ) {
 			throw new JacksonDeserializationException(String.format("'%s' must be positive: %s",
 																	FIELD_QUERY_TIMEOUT, m_queryTimeout));

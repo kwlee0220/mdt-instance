@@ -4,6 +4,7 @@ import java.util.Map;
 
 import mdt.endpoint.companion.CompanionConfig;
 import mdt.endpoint.mqtt.MqttEndpointConfig;
+import mdt.endpoint.opcontrol.OperationControlEndpointConfig;
 
 
 /**
@@ -14,6 +15,7 @@ public class ServiceEndpointConfigs {
 	private MqttEndpointConfig.MDTConfig m_mqtt;
 	private CompanionConfig m_companion;
 	private Map<String,CompanionConfig> m_companions = Map.of();
+	private OperationControlEndpointConfig.MDTConfig m_operationControl;
 	
 	public MqttEndpointConfig.MDTConfig getMqtt() {
 		return m_mqtt;
@@ -39,5 +41,17 @@ public class ServiceEndpointConfigs {
 	}
 	public void setCompanions(Map<String,CompanionConfig> companions) {
 		m_companions = (companions != null) ? companions : Map.of();
+	}
+	
+	/**
+	 * AAS 비동기 연산의 취소 엔드포인트 설정({@code operationControl})을 반환한다.
+	 * 
+	 * @return	취소 엔드포인트 설정. 없으면 {@code null}이고 취소 엔드포인트를 열지 않는다.
+	 */
+	public OperationControlEndpointConfig.MDTConfig getOperationControl() {
+		return m_operationControl;
+	}
+	public void setOperationControl(OperationControlEndpointConfig.MDTConfig operationControl) {
+		m_operationControl = operationControl;
 	}
 }

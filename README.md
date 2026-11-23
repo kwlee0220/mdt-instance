@@ -3,7 +3,7 @@
 `mdt-instance`는 MDT(Manufacturing Digital Twin) 플랫폼에서 디지털 트윈 하나를 실제로 구동하는 서버다.
 AAS(Asset Administration Shell) 모델을 메모리에 올려 AAS REST API v3.0으로 제공하고,
 설비 데이터베이스·MQTT·OPC UA·로봇 트윈 같은 외부 자산을 모델 요소와 연결한다.
-AAS Operation을 호출하면 Java 클래스, 외부 프로그램, Python 스크립트, 원격 HTTP 서비스 중
+AAS Operation을 호출하면 Java 클래스, 외부 프로그램, 원격 HTTP 서비스 중
 설정된 구현이 실행된다.
 
 서버 골격은 Fraunhofer IOSB의 [FA³ST Service](https://github.com/FraunhoferIOSB/FAAAST-Service) 1.3.0을 사용하고,
@@ -68,7 +68,7 @@ flowchart LR
     AC --> PRG
     AC --> RT
     EP <--> MQ
-    EP <--> RT
+    MGR -- 연산 취소 --> EP
 ```
 
 | 구성 요소 | 하는 일 |
@@ -76,7 +76,7 @@ flowchart LR
 | AAS REST API | FA³ST의 HTTP 엔드포인트. HTTPS로만 열리며 인증서(PKCS12 키 저장소)가 필요하다. |
 | 영속성 스택 | 초기 모델(`model.json`)을 메모리에 보관하고, 설정된 요소는 외부 데이터소스와 값을 주고받는다. |
 | 연산 제공자 | AAS Operation 호출을 Java·프로그램·스크립트·HTTP 구현으로 연결한다. |
-| 부가 엔드포인트 | Manager 연결 유지, MQTT 메시지 수신, 동반 프로그램 실행처럼 서비스와 함께 시작·종료되는 작업을 맡는다. |
+| 부가 엔드포인트 | Manager 연결 유지, MQTT 메시지 수신, 동반 프로그램 실행, 비동기 연산 취소처럼 서비스와 함께 시작·종료되는 작업을 맡는다. |
 
 ## 2. 주요 기능
 
@@ -90,6 +90,7 @@ flowchart LR
 | 로봇 이동·그리퍼·장면 관측 연산 | `operations.javas` | `mdt.assetconnection.operation.robot` | [mdt.assetconnection.operation.robot](src/main/java/mdt/assetconnection/operation/robot/README.md) |
 | MQTT 메시지로 요소 값 갱신 | `serviceEndpoints.mqtt` | `mdt.endpoint.mqtt` | [mdt.endpoint §4](src/main/java/mdt/endpoint/README.md) |
 | 인스턴스와 함께 외부 프로그램 실행·재시작 | `serviceEndpoints.companion` | `mdt.endpoint.companion` | [mdt.endpoint §5](src/main/java/mdt/endpoint/README.md) |
+| 비동기 연산(`invoke-async`) 취소 | `serviceEndpoints.operationControl` | `mdt.endpoint.opcontrol` | [mdt.endpoint §6](src/main/java/mdt/endpoint/README.md), [취소 가이드](docs/operation-cancel-guide.md) |
 | 동시 요청 직렬화 | `persistenceStacks` | `mdt.persistence` | [7장](#7-영속성-스택) |
 | Manager 상태 확인·재등록 | 실행 방식에 따라 자동 등록 | `mdt.endpoint`, `mdt.endpoint.reconnector` | [mdt.endpoint §3](src/main/java/mdt/endpoint/README.md) |
 
@@ -101,7 +102,7 @@ src/main/java/mdt/
 ├── MDTGlobalConfigurations   전역 설정 파일(mdt_global_config.json) 조회
 ├── ElementLocation(s) …      "Submodel:경로", "param:ID" 같은 요소 위치 표현 해석
 ├── config/                   인스턴스 설정 DTO(MDTInstanceConfig 등)와 MDTService
-├── persistence/              영속성 스택 공통 구조, 동시성 계층(ConcurrentPersistence)
+├── persistence/              영속성 스택 공통 구조, 동시성 계층(ConcurrentPersistence), 실행 ID 가로채기 계층(OperationHandleCaptureLayer)
 │   ├── asset/                외부 데이터소스 연동(jdbc, http, mqtt, opcua, robot)
 │   └── timeseries/           JDBC 기반 시계열 Submodel
 ├── assetconnection/          FA³ST AssetConnection 구현
@@ -110,7 +111,8 @@ src/main/java/mdt/
 ├── endpoint/                 Manager 상태 확인과 부가 엔드포인트
 │   ├── reconnector/          EXTERNAL 인스턴스의 Manager 재등록
 │   ├── mqtt/                 MQTT 메시지 수신
-│   └── companion/            동반 프로그램 실행
+│   ├── companion/            동반 프로그램 실행
+│   └── opcontrol/            AAS 비동기 연산 취소 엔드포인트(OperationControlEndpoint)
 ├── ksx9101/                  KS X 9101 제조 데이터 JPA 매핑
 └── ext/                      특정 과제용 연산 구현(RCK 프레스 시뮬레이션 등)
 ```
@@ -162,7 +164,7 @@ JAR 버전은 환경 변수 `MDT_BUILD_VERSION`에서 가져온다. 값이 없�
 | 실행 주체 | MDT Manager가 자식 프로세스로 실행 | 사용자 또는 Docker 등 외부 실행기 |
 | Manager와의 관계 | Manager의 `/health`를 주기적으로 호출하고(기본 10초), 한 번이라도 실패하면 인스턴스가 스스로 종료한다 | 시작할 때와 이후 주기마다(기본 60초) 자신의 endpoint를 Manager에 등록한다. 종료할 때 등록을 해제한다 |
 | 관련 설정 | `managerCheckInterval` | `heartbeatInterval` |
-| 시작 완료 알림 | 표준 출력에 `[***MARKER***] MDTInstance started: <endpoint>`를 출력하고, Manager는 이 줄을 보고 시작 완료를 판단한다 | 없음 |
+| 시작 완료 알림 | 표준 출력에 `[***MARKER***] MDTInstance started: <endpoint>`를 출력하고, Manager는 이 줄을 보고 시작 완료를 판단한다. `serviceEndpoints.operationControl`을 설정하면 그보다 먼저 `[***OPCONTROL***] MDTInstance operation control: <주소>`를 출력한다 | 없음. 취소 엔드포인트 주소는 등록 요청의 쿼리 파라미터 `operationControlEndpoint`로 보낸다 |
 
 `jar` 방식에서는 Manager가 잠시 응답하지 않아도 인스턴스가 바로 종료되므로, Manager와 인스턴스를 같은 장비에서
 운영하는 경우에 적합하다. 자세한 동작은 [mdt.endpoint §3](src/main/java/mdt/endpoint/README.md)을 참고한다.
@@ -267,7 +269,7 @@ flowchart TD
     G --> H[config_faaast.json 저장]
     H --> I[FA³ST 서비스 시작]
     I --> J{실행 방식}
-    J -- jar --> K["[***MARKER***] 출력"]
+    J -- jar --> K["([***OPCONTROL***] 출력 →) [***MARKER***] 출력"]
     J -- external --> L[Manager에 등록 시작]
 ```
 
@@ -286,7 +288,7 @@ flowchart TD
 | `keyStoreFile`, `keyStorePassword`, `keyPassword` | 경로, 문자열 | 인증서 키 저장소. 두 암호 중 하나만 적으면 다른 하나도 같은 값을 쓴다 |
 | `heartbeatInterval` | 기간 (예: `60s`) | `external` 방식의 Manager 재등록 주기 |
 | `managerCheckInterval` | 기간 (예: `10s`) | `jar` 방식의 Manager 상태 확인 주기 |
-| `serviceEndpoints` | 객체 | 부가 엔드포인트: `mqtt`, `companion`, `companions` |
+| `serviceEndpoints` | 객체 | 부가 엔드포인트: `mqtt`, `companion`, `companions`, `operationControl` |
 | `assetVariables` | 배열 | 외부 데이터소스와 연결할 요소 목록 |
 | `timeSeriesSubmodels` | 배열 | 시계열 Submodel 목록 |
 | `persistenceStacks` | 배열 | 추가 영속성 계층 (현재는 `{"@type": "concurrent"}`만 지원) |
@@ -300,7 +302,7 @@ flowchart TD
 | --- | --- |
 | 인스턴스 ID | `--id` → `MDT_INSTANCE_ID` → `id` |
 | endpoint | `--instanceEndpoint` → `MDT_INSTANCE_ENDPOINT` → `instanceEndpoint` → `https://${MDT_HOST}:<port>/api/v3.0` |
-| 포트 | `--port` → `port` → endpoint URL의 포트 |
+| 포트 | endpoint가 없으면 `--port` → `port`(이 값으로 endpoint를 만든다). endpoint가 있으면 `port` → endpoint URL의 포트(`--port`는 쓰지 않는다). HTTPS 서버는 항상 endpoint URL의 포트로 연다 |
 | Manager URL | `MDT_URL` (필수, 설정 파일 값은 덮어쓴다) |
 | 전역 설정 파일 | `--globalConfig` → `globalConfigFile` → `<home>/mdt_global_config.json` → `MDT_GLOBAL_CONFIG_FILE` → 사용 안 함 |
 | 키 저장소 | `--keyStore` → `MDT_KEY_STORE_FILE` → `keyStoreFile` → `<home>/mdt_cert.p12` |
@@ -318,7 +320,7 @@ endpoint가 정해지면 HTTPS 서버는 **endpoint URL에 적힌 포트**로 �
 | --- | --- |
 | `${MDT_INSTANCE_ID}` | 확정된 인스턴스 ID |
 | `${MDT_INSTANCE_ENDPOINT}` | 확정된 endpoint |
-| `${MDT_INSTANCE_PORT}` | HTTPS 포트 |
+| `${MDT_INSTANCE_PORT}` | 확정된 `port` 값(지정하지 않으면 endpoint URL의 포트) |
 | `${MDT_URL}` | Manager URL |
 | `${MDT_INSTANCE_DIR}` | 현재 작업 디렉터리의 절대 경로 |
 
@@ -326,7 +328,7 @@ endpoint가 정해지면 HTTPS 서버는 **endpoint URL에 적힌 포트**로 �
 
 ### 6.4 설정 예
 
-다음은 MQTT로 받은 값을 파라미터에 반영하고, 외부 프로그램과 Python 스크립트를 연산으로 등록한 예다.
+다음은 MQTT로 받은 값을 파라미터에 반영하고, 외부 프로그램을 연산으로 등록한 예다.
 
 ```json
 {
@@ -343,12 +345,6 @@ endpoint가 정해지면 HTTPS 서버는 **endpoint URL에 적힌 포트**로 �
   "operations": {
     "programs": {
       "AddAndSleep:Operation": { "descriptorFile": "AddAndSleep/operation.json" }
-    },
-    "scripts": {
-      "RunScript:Operation": {
-        "scriptFile": "RunScript/calc_text_length.py",
-        "timeout": "30s"
-      }
     }
   }
 }
@@ -392,18 +388,20 @@ DB·브로커처럼 여러 인스턴스가 함께 쓰는 연결 정보는 전역
 
 FA³ST는 모델을 하나의 Persistence 객체에 저장한다. MDT 인스턴스는 여기에 여러 계층을 겹쳐 쌓아,
 요청이 바깥 계층부터 차례로 내려가면서 필요한 처리를 하도록 구성한다.
-가장 아래에는 `model.json`을 담은 메모리 저장소가 있고, 그 위의 계층은 설정에 해당 항목이 있을 때만 추가된다.
+가장 바깥에는 비동기 연산의 실행 ID를 가로채는 `OperationHandleCaptureLayer`가 항상 놓이고, 가장 아래에는 `model.json`을 담은
+메모리 저장소가 있다. 그 사이 계층은 설정에 해당 항목이 있을 때만 추가된다.
 
 ```mermaid
 flowchart TD
-    REQ[AAS API 요청] --> CC
+    REQ[AAS API 요청] --> OH["OperationHandleCaptureLayer<br/>(항상 존재)<br/>invoke-async 실행 ID 가로채기"]
+    OH --> CC
     CC["ConcurrentPersistence<br/>persistenceStacks: concurrent<br/>요청을 하나씩 처리"]
     CC --> TS["TimeSeriesPersistenceStack<br/>timeSeriesSubmodels<br/>시계열 Submodel을 DB에서 조회"]
     TS --> AV["AssertVariableBasedPersistence<br/>assetVariables<br/>등록된 요소 값을 외부 데이터소스와 동기화"]
     AV --> MEM["PersistenceInMemory<br/>model.json<br/>(항상 존재)"]
 ```
 
-`persistenceStacks`에 여러 항목을 넣으면 배열의 첫 항목이 가장 바깥에 놓인다.
+`persistenceStacks`에 여러 항목을 넣으면 그 항목들 중에서는 배열의 첫 항목이 가장 바깥에 놓인다.
 각 계층이 요청을 어떻게 처리하는지는 [mdt.persistence.asset](src/main/java/mdt/persistence/asset/README.md)와
 [mdt.persistence.timeseries](src/main/java/mdt/persistence/timeseries/README.md)에서 설명한다.
 
@@ -435,7 +433,8 @@ flowchart TD
 | 문서 | 다루는 내용 |
 | --- | --- |
 | [mdt 루트 패키지](src/main/java/mdt/README.md) | 요소 위치 표현, FA³ST 요청을 통한 요소 읽기·쓰기, 전역 설정 조회, 연결 설정 참조, MQTT 연결 공유 |
-| [mdt.endpoint 패키지](src/main/java/mdt/endpoint/README.md) | Manager 연결 관리, MQTT 수신, 동반 프로그램의 설정·생명주기·확장 방법 |
+| [mdt.endpoint 패키지](src/main/java/mdt/endpoint/README.md) | Manager 연결 관리, MQTT 수신, 동반 프로그램, AAS 비동기 연산 취소 엔드포인트의 설정·생명주기·확장 방법 |
+| [원격 연산 취소 가이드](docs/operation-cancel-guide.md) | Airflow 연산자 중단이 RPC 서버와 MDT 인스턴스의 원격 연산 취소로 이어지는 구조 |
 | [mdt.assetconnection 패키지](src/main/java/mdt/assetconnection/README.md) | AAS Operation 연결 구조, Java·Program·Script·HTTP 연산의 설정과 실행 계약, RobotTwin·AI 연산과 확장 방법 |
 | [로봇 트윈 연산 Provider](src/main/java/mdt/assetconnection/operation/robot/README.md) | 로봇 이동·그리퍼·파지·장면 관측 연산별 입력·출력과 기본값, 워크플로 구성 |
 | [mdt.persistence.asset 패키지](src/main/java/mdt/persistence/asset/README.md) | 자산 변수 계약과 JDBC·HTTP·MQTT·OPC UA·RobotTwin 연동 설정 |
